@@ -15,6 +15,7 @@ from django.core.mail import send_mail
 from django.conf import settings
 from django.utils import timezone 
 from django.utils.safestring import mark_safe
+from .models import ConfiguracionEmail
 
 from .models import (
     OrdenCompra, PartidaCompra, Inventario, DocumentoOrdenCompra,
@@ -1936,3 +1937,7 @@ class TraspasoIntercompanyAdmin(admin.ModelAdmin):
         return format_html('<b>${}</b>', total_formateado)
         
     mostrar_importe.short_description = "Valor Fiscal Total"
+
+@admin.register(ConfiguracionEmail)
+class ConfiguracionEmailAdmin(admin.ModelAdmin):
+    list_display = ('empresa', 'email_host_user')

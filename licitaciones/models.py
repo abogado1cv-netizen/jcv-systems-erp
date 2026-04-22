@@ -769,3 +769,20 @@ class EntradaAlmacen(models.Model):
             if self.orden.estatus not in ['RECIBIDA', 'CANCELADA']:
                 self.orden.estatus = 'PARCIAL' 
                 self.orden.save()
+
+class ConfiguracionEmail(models.Model):
+    EMPRESA_CHOICES = [
+        ('SAGO', 'Sago Medical'),
+        ('GSM', 'GSM'),
+        ('GAMS', 'GAMS'),
+    ]
+    empresa = models.CharField(max_length=20, choices=EMPRESA_CHOICES, unique=True)
+    email_host_user = models.EmailField()
+    email_host_password = models.CharField(max_length=100, help_text="Usa la Contraseña de Aplicación de 16 letras")
+
+    class Meta:
+        verbose_name = "Configuración de Correo"
+        verbose_name_plural = "Configuraciones de Correos"
+
+    def __str__(self):
+        return f"Correo para {self.empresa}"
