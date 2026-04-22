@@ -1,0 +1,260 @@
+{% extends "admin/base_site.html" %}
+{% load humanize %}
+
+{% block extrahead %}
+{{ block.super }}
+<style>
+    /* VARIABLES DE COLOR BASADAS EN TU IMAGEN SILICON VALLEY */
+    :root {
+        --bg-main: #f5f4ef;
+        --card-bg: #ffffff;
+        --text-main: #1a1a1a;
+        --text-muted: #666666;
+        --green-dark: #3b7c25;
+        --green-light: #dcedc8;
+        --red-dark: #a92c2d;
+        --red-light: #f8d7da;
+        --brown-bar: #8b5a2b;
+        --border-color: #e0e0e0;
+    }
+
+    body { background-color: var(--bg-main); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    
+    .med-container { padding: 20px; max-width: 1400px; margin: 0 auto; color: var(--text-main); }
+    
+    /* ENCABEZADO Y PESTAÑAS */
+    .header-top { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--border-color); padding-bottom: 15px; margin-bottom: 20px; }
+    .header-title { font-size: 20px; font-weight: bold; margin: 0; display: flex; align-items: center; }
+    .header-title::before { content: ''; display: inline-block; width: 10px; height: 10px; background-color: #005b96; border-radius: 50%; margin-right: 10px; }
+    .header-meta { font-size: 13px; color: var(--text-muted); }
+
+    .tabs { display: flex; gap: 10px; margin-bottom: 25px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; }
+    .tab { padding: 10px 20px; font-size: 14px; font-weight: bold; color: var(--text-muted); background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; cursor: pointer; transition: 0.2s; }
+    .tab.active { color: var(--text-main); border: 2px solid var(--text-main); box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+    
+    /* BARRA DE FILTROS INTEGRADA */
+    .filter-bar { background: var(--card-bg); padding: 15px 20px; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 20px; display: flex; gap: 15px; align-items: flex-end; }
+    .filter-group { display: flex; flex-direction: column; flex: 1; }
+    .filter-group label { font-size: 11px; font-weight: bold; color: var(--text-muted); margin-bottom: 5px; text-transform: uppercase; }
+    .filter-group input, .filter-group select { padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; outline: none; font-size: 13px; }
+    .btn-filter { background: var(--text-main); color: white; border: none; padding: 9px 20px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 13px; }
+    .btn-clear { background: #f0f0f0; color: var(--text-main); border: none; padding: 9px 15px; border-radius: 4px; text-decoration: none; font-size: 13px; font-weight: bold; display: inline-flex; align-items: center; justify-content: center;}
+
+    /* TARJETAS SUPERIORES */
+    .top-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px; }
+    .card { background: var(--card-bg); padding: 20px; border-radius: 8px; border: 1px solid var(--border-color); }
+    .card-title { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; font-weight: 600; }
+    .card-value { font-size: 28px; font-weight: 800; margin: 0 0 5px 0; }
+    .card-meta { font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 5px; }
+    .text-green { color: var(--green-dark); }
+    .text-red { color: var(--red-dark); }
+
+    /* FILA DEL MEDIO: SEMÁFORO Y ALERTAS */
+    .middle-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+    
+    .section-title { font-size: 12px; font-weight: bold; text-transform: uppercase; color: var(--text-muted); margin-bottom: 15px; letter-spacing: 0.5px; }
+    
+    /* Semáforo progress bars */
+    .kpi-row { display: flex; align-items: center; margin-bottom: 12px; }
+    .kpi-label { width: 140px; font-size: 13px; font-weight: 500; }
+    .kpi-bar-container { flex: 1; background: #e9ecef; height: 10px; border-radius: 5px; margin: 0 15px; overflow: hidden; }
+    .kpi-bar-fill { height: 100%; border-radius: 5px; min-width: 2%; transition: width 1s ease-in-out;}
+    .kpi-bar-green { background-color: var(--green-dark); }
+    .kpi-bar-brown { background-color: var(--brown-bar); }
+    .kpi-value { width: 50px; text-align: right; font-size: 13px; font-weight: bold; }
+
+    /* Alertas */
+    .alert-list { list-style: none; padding: 0; margin: 0 0 20px 0; }
+    .alert-item { padding: 12px 0; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; font-size: 13px; }
+    .alert-item:last-child { border-bottom: none; }
+    .alert-text { display: flex; align-items: center; font-weight: 500; }
+    .alert-dot { width: 8px; height: 8px; border-radius: 50%; margin-right: 10px; }
+    .dot-red { background-color: var(--red-dark); }
+    .dot-blue { background-color: #1976d2; }
+    .alert-time { color: var(--text-muted); font-size: 12px; }
+    .btn-action-plan { display: block; width: 100%; padding: 12px; text-align: center; border: 1px solid var(--text-main); border-radius: 6px; background: transparent; font-weight: bold; cursor: pointer; transition: 0.2s; }
+    .btn-action-plan:hover { background: var(--text-main); color: white; }
+
+    /* TABLA INFERIOR */
+    .table-container { width: 100%; overflow-x: auto; }
+    .med-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 13px; }
+    .med-table th { padding: 12px; border-bottom: 2px solid var(--border-color); color: var(--text-muted); font-weight: 600; }
+    .med-table td { padding: 15px 12px; border-bottom: 1px solid var(--border-color); font-weight: 500; }
+    
+    .status-badge { padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: bold; }
+    .status-entregada { background-color: var(--green-light); color: var(--green-dark); }
+    .status-transito { background-color: #fff3e0; color: #e65100; }
+    .status-retenida { background-color: var(--red-light); color: var(--red-dark); }
+    .status-default { background-color: #e0e0e0; color: #333; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="med-container">
+    
+    <div class="header-top">
+        <h1 class="header-title">ERP Gpharma — Compras & Abastecimiento</h1>
+        <div class="header-meta">Módulo Operativo - Periodo: Mensual</div>
+    </div>
+
+    </div>
+
+    <form method="GET" class="filter-bar">
+        <div class="filter-group">
+            <label>Fecha Inicio</label>
+            <input type="date" name="fecha_inicio" value="{{ filtros.fecha_inicio }}">
+        </div>
+        <div class="filter-group">
+            <label>Fecha Fin</label>
+            <input type="date" name="fecha_fin" value="{{ filtros.fecha_fin }}">
+        </div>
+        <div class="filter-group" style="flex: 2;">
+            <label>Proveedor</label>
+            <select name="proveedor">
+                <option value="">Todos los proveedores</option>
+                {% for prov in proveedores %}
+                    <option value="{{ prov.id }}" {% if filtros.proveedor == prov.id %}selected{% endif %}>{{ prov.nombre }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="btn-filter">Filtrar</button>
+        <a href="{% url 'dashboard_compras' %}" class="btn-clear">Borrar</a>
+    </form>
+
+    <div class="top-cards">
+        <div class="card">
+            <div class="card-title">Ahorro vs. referencia</div>
+            <div class="card-value text-green">13.4%</div>
+            <div class="card-meta text-green">↑ Meta: ≥10%</div>
+        </div>
+        <div class="card">
+            <div class="card-title">Tasa de desabasto</div>
+            <div class="card-value" style="color: var(--brown-bar);">{{ tasa_desabasto }}%</div>
+            <div class="card-meta" style="color: var(--brown-bar);">↑ Meta: ≤2%</div>
+        </div>
+        <div class="card">
+            <div class="card-title">Cumplimiento OTD</div>
+            <div class="card-value text-green">{{ porcentaje_otd }}%</div>
+            <div class="card-meta text-green">↑ Meta: ≥95%</div>
+        </div>
+        <div class="card">
+            <div class="card-title">Alertas críticas activas</div>
+            <div class="card-value text-red">{{ num_alertas }}</div>
+            <div class="card-meta text-red">Acción requerida</div>
+        </div>
+    </div>
+
+    <div class="middle-grid">
+        <div class="card">
+            <div class="section-title">KPIS SEMÁFORO · MES ACTUAL</div>
+            
+            <div class="kpi-row">
+                <div class="kpi-label">Ahorro vs. ref.</div>
+                <div class="kpi-bar-container"><div class="kpi-bar-fill kpi-bar-green" style="width: 85%;"></div></div>
+                <div class="kpi-value">13.4%</div>
+            </div>
+            <div class="kpi-row">
+                <div class="kpi-label">OTD proveedores</div>
+                <div class="kpi-bar-container"><div class="kpi-bar-fill kpi-bar-green" style="width: {{ porcentaje_otd }}%;"></div></div>
+                <div class="kpi-value">{{ porcentaje_otd }}%</div>
+            </div>
+            <div class="kpi-row">
+                <div class="kpi-label">% genéricos</div>
+                <div class="kpi-bar-container"><div class="kpi-bar-fill kpi-bar-green" style="width: 71%;"></div></div>
+                <div class="kpi-value">71%</div>
+            </div>
+            <div class="kpi-row">
+                <div class="kpi-label">Desabasto</div>
+                <div class="kpi-bar-container"><div class="kpi-bar-fill kpi-bar-brown" style="width: {{ tasa_desabasto }}%;"></div></div>
+                <div class="kpi-value">{{ tasa_desabasto }}%</div>
+            </div>
+            <div class="kpi-row">
+                <div class="kpi-label">Merma caducidad</div>
+                <div class="kpi-bar-container"><div class="kpi-bar-fill kpi-bar-brown" style="width: 25%;"></div></div>
+                <div class="kpi-value">0.78%</div>
+            </div>
+            <div class="kpi-row">
+                <div class="kpi-label">Reg. sanitario 100%</div>
+                <div class="kpi-bar-container"><div class="kpi-bar-fill kpi-bar-green" style="width: 100%;"></div></div>
+                <div class="kpi-value">100%</div>
+            </div>
+            <div class="kpi-row">
+                <div class="kpi-label">Ppto. ejercido</div>
+                <div class="kpi-bar-container"><div class="kpi-bar-fill kpi-bar-green" style="width: 88%;"></div></div>
+                <div class="kpi-value">88%</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="section-title">ALERTAS DEL SISTEMA</div>
+            <ul class="alert-list">
+                {% if alertas %}
+                    {% for alerta in alertas %}
+                    <li class="alert-item">
+                        <div class="alert-text">
+                            <div class="alert-dot dot-red"></div>
+                            {{ alerta.mensaje }}
+                        </div>
+                        <div class="alert-time">Hoy</div>
+                    </li>
+                    {% endfor %}
+                {% else %}
+                    <li class="alert-item">
+                        <div class="alert-text">
+                            <div class="alert-dot dot-blue"></div>
+                            Todo operando con normalidad. Sin atrasos.
+                        </div>
+                        <div class="alert-time">Info</div>
+                    </li>
+                {% endif %}
+            </ul>
+            <button class="btn-action-plan">Ver plan de acción ↗</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="section-title">ÓRDENES DE COMPRA · ESTADO ACTUAL</div>
+        <div class="table-container">
+            <table class="med-table">
+                <thead>
+                    <tr>
+                        <th>OC</th>
+                        <th>Descripción</th>
+                        <th>Proveedor</th>
+                        <th>Monto</th>
+                        <th>Estado</th>
+                        <th>Días</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for oc in tabla_ordenes %}
+                    <tr>
+                        <td><strong>{{ oc.folio }}</strong></td>
+                        <td>{{ oc.descripcion }}</td>
+                        <td>{{ oc.proveedor }}</td>
+                        <td>${{ oc.monto|floatformat:2|intcomma }}</td>
+                        <td>
+                            {% if oc.estatus_raw == 'RECIBIDA' %}
+                                <span class="status-badge status-entregada">Entregada</span>
+                            {% elif oc.estatus_raw == 'TRANSITO' %}
+                                <span class="status-badge status-transito">En tránsito</span>
+                            {% elif oc.estatus_raw == 'CANCELADA' %}
+                                <span class="status-badge status-retenida">Cancelada</span>
+                            {% else %}
+                                <span class="status-badge status-default">{{ oc.estatus }}</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ oc.dias }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" style="text-align: center; color: #999; padding: 30px;">No se encontraron órdenes recientes con estos filtros.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+{% endblock %}

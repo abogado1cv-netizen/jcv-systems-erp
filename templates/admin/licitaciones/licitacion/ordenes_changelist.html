@@ -1,0 +1,63 @@
+{% extends "admin/import_export/change_list_import_export.html" %}
+{% load static %}
+
+{% block object-tools-items %}
+    <!-- Nuestro botón salvavidas permanente -->
+    <li>
+        <a href="#" id="btn-revisar-inventario" class="btn btn-info" style="background-color: #17a2b8; color: white;">
+            📦 Ver Órdenes con Inventario
+        </a>
+    </li>
+    {{ block.super }}
+{% endblock %}
+
+{% block extrajs %}
+{{ block.super }}
+<!-- Usamos SweetAlert2 para unas ventanas emergentes hermosas -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        
+        // Simulación: Aquí en el futuro inyectaremos los datos cruzados desde Python.
+        // Por ahora, asumimos que se detectó inventario para hacer la demo.
+        let ordenesSurtibles = 5; // Cuántas órdenes podemos surtir hoy
+
+        // Función que lanza la ventana
+        function lanzarAlertaInventario() {
+            Swal.fire({
+                title: '¡Inventario Existente!',
+                text: `Hemos detectado que tienes stock para surtir ${ordenesSurtibles} órdenes pendientes.`,
+                icon: 'success',
+                showCancelButton: true,
+                confirmButtonColor: '#28a745',
+                cancelButtonColor: '#6c757d',
+                confirmButtonText: 'Ver Órdenes',
+                cancelButtonText: 'Ignorar'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    // Si le dan a ver órdenes, filtramos la tabla (En el futuro agregaremos el parámetro real a la URL)
+                    Swal.fire(
+                        'Filtrando...',
+                        'Mostrando solo las órdenes que puedes surtir hoy.',
+                        'info'
+                    );
+                    // Aquí mandaremos a la URL filtrada ej: window.location.href = "?con_inventario=true";
+                }
+            });
+        }
+
+        // 1. Que se lance solito al cargar la página (si detecta órdenes)
+        // Puedes comentar esta línea si no quieres que salte siempre al recargar
+        if(ordenesSurtibles > 0){
+            setTimeout(lanzarAlertaInventario, 500); 
+        }
+
+        // 2. Que se lance si le dan click al botón superior (por si le dieron en Ignorar por error)
+        document.getElementById('btn-revisar-inventario').addEventListener('click', function(e){
+            e.preventDefault();
+            lanzarAlertaInventario();
+        });
+    });
+</script>
+{% endblock %}

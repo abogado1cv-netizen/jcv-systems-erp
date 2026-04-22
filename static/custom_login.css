@@ -1,0 +1,32 @@
+/* DISEÑO DE PANTALLA DIVIDIDA PARA LOGIN - GPHARMA */
+
+@media (min-width: 768px) {
+    /* Hacemos la caja principal más ancha y la dividimos en 2 columnas */
+    .login-box {
+        width: 850px !important;
+        display: flex !important;
+        align-items: center;
+        justify-content: center;
+        gap: 40px;
+    }
+
+    /* Columna Izquierda: Logo */
+    .login-logo {
+        width: 50%;
+        margin: 0 !important;
+    }
+
+    /* Hacemos que el logo ocupe todo su lado */
+    .login-logo img {
+        width: 100% !important;
+        max-width: 450px !important;
+        border-radius: 8px; /* Un toque elegante en las esquinas */
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2); /* Sombrita elegante */
+    }
+
+    /* Columna Derecha: Formulario */
+    .login-box .card {
+        width: 50%;
+        margin: 0 !important;
+    }
+}

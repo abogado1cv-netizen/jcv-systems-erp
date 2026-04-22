@@ -1,0 +1,235 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block extrahead %}
+<style>
+    /* ==========================================
+       TEMA "APP LAUNCHER" (ESTILO ODOO/APPLE)
+       ========================================== */
+    :root {
+        --bg-app: #eff3f8;        /* Fondo principal azul cielo muy claro */
+        --bg-card: #ffffff;       /* Fondo de las tarjetas */
+        --text-dark: #374151;     /* Texto principal gris oscuro */
+        --text-muted: #9ca3af;    /* Texto secundario (títulos de sección) */
+        --border-radius-card: 18px;
+        --border-radius-icon: 14px;
+        --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+        --shadow-hover: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    }
+
+    /* FORZAMOS EL FONDO CLARO Y LIMPIO EN TODO EL DASHBOARD */
+    body, .content-wrapper, .app-main, .main-footer { 
+        background-color: var(--bg-app) !important; 
+        color: var(--text-dark);
+        border: none !important;
+        font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    /* -------------------------------------------
+       BARRA SUPERIOR DE BÚSQUEDA (Simulada)
+       ------------------------------------------- */
+    .top-launcher-bar {
+        background-color: var(--bg-card);
+        border-radius: 12px;
+        padding: 15px 25px;
+        margin: 20px 20px 30px 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        box-shadow: var(--shadow-sm);
+    }
+    .brand-title { font-size: 1.25rem; font-weight: 600; color: var(--text-dark); margin: 0; }
+    .brand-title span { color: #8b5cf6; } /* Color morado para "Suite" */
+    
+    .search-box {
+        position: relative;
+        width: 300px;
+    }
+    .search-box input {
+        width: 100%;
+        padding: 8px 15px 8px 35px;
+        border-radius: 8px;
+        border: 1px solid #e5e7eb;
+        background-color: #f9fafb;
+        color: var(--text-dark);
+        outline: none;
+        transition: border-color 0.2s;
+    }
+    .search-box input:focus { border-color: #8b5cf6; }
+    .search-box i { position: absolute; left: 12px; top: 12px; color: #9ca3af; font-size: 0.9rem;}
+
+    /* Avatar circular a la derecha */
+    .user-avatar {
+        width: 35px; height: 35px;
+        background-color: #8b5cf6;
+        color: white;
+        border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        font-weight: 700; font-size: 0.9rem;
+    }
+
+    /* -------------------------------------------
+       SECCIONES Y GRID DE APLICACIONES
+       ------------------------------------------- */
+    .app-section { margin: 0 25px 40px 25px; }
+    .section-title {
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 20px;
+        border-bottom: 1px solid #e5e7eb;
+        padding-bottom: 8px;
+    }
+
+    .app-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+        gap: 20px;
+    }
+
+    /* TARJETA DE APLICACIÓN */
+    .app-card {
+        background-color: var(--bg-card);
+        border-radius: var(--border-radius-card);
+        padding: 20px 10px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-decoration: none;
+        box-shadow: var(--shadow-sm);
+        transition: all 0.2s ease-in-out;
+        cursor: pointer;
+    }
+    .app-card:hover {
+        transform: translateY(-5px);
+        box-shadow: var(--shadow-hover);
+        text-decoration: none;
+    }
+
+    /* CAJA DE COLOR DEL ICONO */
+    .app-icon-box {
+        width: 60px; height: 60px;
+        border-radius: var(--border-radius-icon);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 26px;
+        margin-bottom: 12px;
+    }
+
+    /* Colores Pastel (Fondos y Textos) */
+    .bg-purple-light { background-color: #f3e8ff; color: #9333ea; }
+    .bg-orange-light { background-color: #ffedd5; color: #ea580c; }
+    .bg-green-light { background-color: #dcfce7; color: #16a34a; }
+    .bg-blue-light { background-color: #dbeafe; color: #2563eb; }
+    .bg-pink-light { background-color: #fce7f3; color: #db2777; }
+    .bg-teal-light { background-color: #ccfbf1; color: #0d9488; }
+    .bg-red-light { background-color: #fee2e2; color: #dc2626; }
+
+    .app-label {
+        color: var(--text-dark);
+        font-size: 0.85rem;
+        font-weight: 500;
+        text-align: center;
+        line-height: 1.2;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="top-launcher-bar">
+    <h1 class="brand-title">GPHARMA <span>Suite</span> Pro</h1>
+    <div style="display: flex; gap: 15px; align-items: center;">
+        <div class="search-box">
+            <i class="fas fa-search"></i>
+            <input type="text" placeholder="Buscar aplicación...">
+        </div>
+        <div class="user-avatar">
+            {% if request.user.first_name %}{{ request.user.first_name|first|upper }}{% else %}{{ request.user.username|first|upper }}{% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="app-section">
+    <div class="section-title">Gestión Comercial</div>
+    <div class="app-grid">
+        
+        <a href="/admin/licitaciones/licitacion/" class="app-card">
+            <div class="app-icon-box bg-purple-light"><i class="fas fa-gavel"></i></div>
+            <div class="app-label">Licitaciones</div>
+        </a>
+
+        <a href="/admin/licitaciones/contrato/" class="app-card">
+            <div class="app-icon-box bg-orange-light"><i class="fas fa-file-signature"></i></div>
+            <div class="app-label">Contratos</div>
+        </a>
+
+        <a href="/dashboard/contratos/" class="app-card">
+            <div class="app-icon-box bg-pink-light"><i class="fas fa-chart-pie"></i></div>
+            <div class="app-label">Dashboards</div>
+        </a>
+
+        <a href="/admin/licitaciones/catalogomedicamento/" class="app-card">
+            <div class="app-icon-box bg-teal-light"><i class="fas fa-pills"></i></div>
+            <div class="app-label">Productos</div>
+        </a>
+
+        <a href="/admin/licitaciones/sociocomercial/" class="app-card">
+            <div class="app-icon-box bg-blue-light"><i class="fas fa-handshake"></i></div>
+            <div class="app-label">Socios CRM</div>
+        </a>
+
+    </div>
+</div>
+
+<div class="app-section">
+    <div class="section-title">Logística y Operaciones</div>
+    <div class="app-grid">
+        
+        <a href="/admin/licitaciones/ordensuministro/" class="app-card">
+            <div class="app-icon-box bg-blue-light"><i class="fas fa-file-invoice"></i></div>
+            <div class="app-label">Órdenes (OPM)</div>
+        </a>
+
+        <a href="/admin/licitaciones/inventario/" class="app-card">
+            <div class="app-icon-box bg-green-light"><i class="fas fa-boxes"></i></div>
+            <div class="app-label">Inventario</div>
+        </a>
+
+        <a href="/admin/licitaciones/remisionentrega/" class="app-card">
+            <div class="app-icon-box bg-red-light"><i class="fas fa-truck-loading"></i></div>
+            <div class="app-label">Remisiones</div>
+        </a>
+
+        <a href="/admin/licitaciones/estatusprocedimiento/" class="app-card">
+            <div class="app-icon-box bg-orange-light"><i class="fas fa-tasks"></i></div>
+            <div class="app-label">Flujos Trabajo</div>
+        </a>
+
+    </div>
+</div>
+
+<div class="app-section">
+    <div class="section-title">Administración</div>
+    <div class="app-grid">
+        
+        <a href="/admin/licitaciones/empresa/" class="app-card">
+            <div class="app-icon-box bg-teal-light"><i class="fas fa-building"></i></div>
+            <div class="app-label">Empresas</div>
+        </a>
+
+        <a href="/admin/licitaciones/registroubicacion/" class="app-card">
+            <div class="app-icon-box bg-purple-light"><i class="fas fa-map-marker-alt"></i></div>
+            <div class="app-label">Ubicaciones</div>
+        </a>
+        
+        <a href="/admin/auth/user/" class="app-card">
+            <div class="app-icon-box bg-blue-light"><i class="fas fa-users"></i></div>
+            <div class="app-label">Empleados</div>
+        </a>
+
+    </div>
+</div>
+
+{% endblock %}

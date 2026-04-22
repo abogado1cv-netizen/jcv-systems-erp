@@ -1,0 +1,302 @@
+{% extends "admin/base_site.html" %}
+{% load humanize %} 
+
+{% block content %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+    /* Diseño corporativo ULTRA COMPACTO */
+    body { background-color: #f4f7f6; }
+    .dash-container { padding: 20px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    
+    .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px; }
+    .chart-row { display: grid; grid-template-columns: 1fr 2fr; gap: 15px; margin-bottom: 20px; }
+    .table-row { display: grid; grid-template-columns: 2fr 1fr; gap: 15px; }
+    
+    .card-exe {
+        background: #ffffff;
+        border-radius: 10px;
+        padding: 10px; 
+        box-shadow: 0 4px 6px rgba(0,0,0,0.04);
+        border: 1px solid #f0f0f0;
+        position: relative;
+    }
+    
+    .card-title { 
+        font-size: 11px; color: #888; text-transform: uppercase; font-weight: bold; 
+        margin-bottom: 4px; 
+        display: flex; align-items: center;
+    }
+    .card-title span.dot { height: 8px; width: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+    
+    .card-value { font-size: 22px; font-weight: 800; color: #2c3e50; margin: 0; }
+    .card-subtitle { font-size: 11px; color: #a0aab5; margin-top: 2px; }
+
+    .c-blue { background-color: #3498db; }
+    .c-green { background-color: #2ecc71; }
+    .c-yellow { background-color: #f1c40f; }
+    .c-red { background-color: #e74c3c; }
+
+    /* Tablas súper compactas */
+    .table-custom { width: 100%; border-collapse: collapse; margin-top: 0px; }
+    .table-custom th { text-align: left; padding: 4px 8px; border-bottom: 2px solid #eee; color: #888; font-size: 10px; text-transform: uppercase; }
+    .table-custom td { padding: 4px 8px; border-bottom: 1px solid #f9f9f9; color: #444; font-size: 12px; }
+    .table-custom tr:hover td { background-color: #fcfcfc; }
+    
+    .sticky-header th {
+        position: sticky; top: 0; background: white; z-index: 1; 
+        box-shadow: 0 2px 2px -1px rgba(0,0,0,0.1);
+        padding-top: 2px; padding-bottom: 6px;
+    }
+    
+    /* Alineaciones a la derecha para el dinero */
+    .table-claves-estrella th:last-child, .table-claves-estrella td:last-child { text-align: right; }
+    .table-claves-ganadas-rastreo th:last-child, .table-claves-ganadas-rastreo td:last-child,
+    .table-claves-perdidas-rastreo th:last-child, .table-claves-perdidas-rastreo td:last-child { text-align: right; }
+</style>
+
+<div class="dash-container">
+    
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+        <h2 style="color: #2c3e50; font-weight: 800; margin: 0; font-size: 20px;">GPHARMA | Licitaciones</h2>
+        
+        <form method="GET" action="" style="display: flex; gap: 10px; width: 100%; max-width: 500px; margin: 0;">
+            
+            <select name="empresa" style="padding: 8px 10px; border-radius: 20px; border: 1px solid #ddd; outline: none; font-size: 12px; color: #333; background: white; cursor: pointer; min-width: 150px;" onchange="this.form.submit()">
+                <option value="">🏢 Todas las Empresas</option>
+                {% for emp in empresas_disponibles %}
+                    <option value="{{ emp.id }}" {% if filtro_empresa == emp.id %}selected{% endif %}>{{ emp.nombre }}</option>
+                {% endfor %}
+            </select>
+
+            <div style="position: relative; width: 100%;">
+                <span style="position: absolute; left: 12px; top: 8px; color: #888;">🔍</span>
+                <input type="text" name="q" value="{{ q }}" placeholder="Buscar clave o evento..." 
+                       style="width: 100%; padding: 8px 15px 8px 35px; border-radius: 20px; border: 1px solid #ddd; outline: none; box-shadow: 0 2px 5px rgba(0,0,0,0.05); font-size: 12px; color: #333;">
+                {% if q or filtro_empresa %}
+                <a href="?" style="position: absolute; right: 12px; top: 8px; color: #e74c3c; text-decoration: none; font-weight: bold;" title="Limpiar filtros">✖</a>
+                {% endif %}
+            </div>
+            <input type="submit" style="display: none;">
+        </form>
+    </div>
+
+    <div class="kpi-row">
+        <div class="card-exe">
+            <div class="card-title"><span class="dot c-blue"></span> TOTAL OFERTADO</div>
+            <div class="card-value">{{ monto_total_str }}</div>
+            <div class="card-subtitle">Valor global cotizado</div>
+        </div>
+        <div class="card-exe">
+            <div class="card-title"><span class="dot c-green"></span> INGRESOS GANADOS</div>
+            <div class="card-value">{{ monto_ganado_str }}</div>
+            <div class="card-subtitle">Partidas Adjudicadas</div>
+        </div>
+        <div class="card-exe">
+            <div class="card-title"><span class="dot c-yellow"></span> EN EVALUACIÓN</div>
+            <div class="card-value">{{ monto_en_proceso_str }}</div>
+            <div class="card-subtitle">Esperando Fallo</div>
+        </div>
+        <div class="card-exe">
+            <div class="card-title"><span class="dot c-red"></span> MONTO PERDIDO</div>
+            <div class="card-value">{{ monto_perdido_str }}</div>
+            <div class="card-subtitle">Por precio o técnica</div>
+        </div>
+    </div>
+
+    <div class="chart-row">
+        <div class="card-exe" style="display: flex; flex-direction: column; align-items: center;">
+            <div class="card-title" style="width: 100%;">ESTADO DEL PORTAFOLIO</div>
+            <div style="width: 80%; max-height: 200px;">
+                <canvas id="donutChart"></canvas>
+            </div>
+        </div>
+
+        <div class="card-exe">
+            <div class="card-title">TOP 5 CLAVES (INGRESOS ADJUDICADOS)</div>
+            <div style="width: 100%; max-height: 200px;">
+                <canvas id="barChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div class="table-row">
+        <div class="card-exe">
+            <div class="card-title">🏆 DESGLOSE DE CLAVES ESTRELLA</div>
+            <table class="table-custom table-claves-estrella">
+                <tr>
+                    <th style="width: 25%;">Clave Sector</th>
+                    <th style="width: 50%;">Laboratorio / Fabricante</th>
+                    <th style="width: 25%;">Ingreso Asignado</th>
+                </tr>
+                {% for clave in top_claves %}
+                <tr>
+                    <td><b>{{ clave.medicamento__clave_sector }}</b></td>
+                    <td>{{ clave.medicamento__fabricante|default:"Sin asignar" }}</td>
+                    <td style="color: #2ecc71; font-weight: bold;">
+                        ${{ clave.total_importe|floatformat:2|intcomma }}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="3" style="text-align: center; color: #888;">Aún no hay partidas asignadas con precio.</td></tr>
+                {% endfor %}
+            </table>
+        </div>
+
+        <div class="card-exe">
+            <div class="card-title">📅 PRÓXIMOS FALLOS</div>
+            <table class="table-custom">
+                <tr>
+                    <th style="width: 60%;">Evento</th>
+                    <th style="text-align: right; width: 40%;">Fecha / Hora</th>
+                </tr>
+                {% for lic in proximos_fallos %}
+                <tr>
+                    <td style="color: #3498db; font-weight: bold;">{{ lic.num_procedimiento }}</td>
+                    <td style="text-align: right;">{{ lic.fecha_fallo|date:"d/m/Y H:i" }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="2" style="text-align: center; color: #888;">Sin agenda pendiente.</td></tr>
+                {% endfor %}
+            </table>
+            
+            <div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid #eee;">
+                <div class="card-title" style="margin-bottom: 8px; justify-content: center;">MÉTRICAS DE EVENTOS</div>
+                <div style="display: flex; justify-content: space-around; text-align: center;">
+                    <div>
+                        <div style="font-size: 9px; color: #888; text-transform: uppercase;">Presentadas</div>
+                        <div style="font-size: 16px; font-weight: bold; color: #333;">{{ total_licitaciones|intcomma }}</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 9px; color: #2ecc71; text-transform: uppercase;">Ganadas</div>
+                        <div style="font-size: 16px; font-weight: bold; color: #2ecc71;">{{ adjudicadas|intcomma }}</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 9px; color: #e74c3c; text-transform: uppercase;">Perdidas</div>
+                        <div style="font-size: 16px; font-weight: bold; color: #e74c3c;">{{ perdidas|intcomma }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 15px;">
+        
+        <div class="card-exe">
+            <div class="card-title"><span class="dot c-green"></span> HISTORIAL DE CLAVES GANADAS</div>
+            <div style="max-height: 220px; overflow-y: auto;">
+                <table class="table-custom table-claves-ganadas-rastreo">
+                    <thead class="sticky-header">
+                        <tr>
+                            <th style="width: 40%;">Evento</th>
+                            <th style="width: 35%;">Clave</th>
+                            <th style="width: 25%;">Importe Asignado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for p in detalle_ganadas %}
+                        <tr>
+                            <td style="color: #3498db; font-weight: bold; font-size: 11px;">{{ p.licitacion.num_procedimiento }}</td>
+                            <td><b>{{ p.medicamento.clave_sector|default:"S/C" }}</b></td>
+                            <td style="color: #2ecc71; font-weight: bold;">${{ p.importe_ganado|floatformat:2|intcomma }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="3" style="text-align: center; color: #888;">Aún no hay claves ganadas.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card-exe">
+            <div class="card-title"><span class="dot c-red"></span> HISTORIAL DE CLAVES PERDIDAS</div>
+            <div style="max-height: 220px; overflow-y: auto;">
+                <table class="table-custom table-claves-perdidas-rastreo">
+                    <thead class="sticky-header">
+                        <tr>
+                            <th style="width: 40%;">Evento</th>
+                            <th style="width: 35%;">Clave</th>
+                            <th style="width: 25%;">Motivo / Estatus</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for p in detalle_perdidas %}
+                        <tr>
+                            <td style="color: #3498db; font-weight: bold; font-size: 11px;">{{ p.licitacion.num_procedimiento }}</td>
+                            <td><b>{{ p.medicamento.clave_sector|default:"S/C" }}</b></td>
+                            <td>
+                                <span style="color: #e74c3c; font-weight: bold; font-size: 10px; text-transform: uppercase;">{{ p.resultado }}</span><br>
+                                <span style="color: #888; font-size: 10px;">{{ p.motivo_perdida|default:"Sin especificar" }}</span>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="3" style="text-align: center; color: #888;">Aún no hay claves perdidas.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // 🔥 ELIMINAMOS EL CÓDIGO JAVASCRIPT DEL BUSCADOR VIEJO 🔥
+        
+        // --- GRÁFICAS ---
+        const ctxDonut = document.getElementById('donutChart').getContext('2d');
+        new Chart(ctxDonut, {
+            type: 'doughnut',
+            data: {
+                labels: ['Ganado', 'En Proceso', 'Perdido'],
+                datasets: [{
+                    data: [{{ monto_ganado_raw }}, {{ monto_en_proceso_raw }}, {{ monto_perdido_raw }}],
+                    backgroundColor: ['#2ecc71', '#f1c40f', '#e74c3c'],
+                    borderWidth: 0,
+                    hoverOffset: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '75%',
+                plugins: {
+                    legend: { position: 'right', labels: { usePointStyle: true, boxWidth: 8, font: { size: 10 } } }
+                }
+            }
+        });
+
+        const ctxBar = document.getElementById('barChart').getContext('2d');
+        const etiquetasClaves = JSON.parse('{{ nombres_top_json|safe }}');
+        const datosMontos = JSON.parse('{{ montos_top_json|safe }}');
+
+        new Chart(ctxBar, {
+            type: 'bar',
+            data: {
+                labels: etiquetasClaves,
+                datasets: [{
+                    label: 'Ingreso Asignado ($)',
+                    data: datosMontos,
+                    backgroundColor: '#3498db',
+                    borderRadius: 4,
+                    barThickness: 15
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: { 
+                        beginAtZero: true, 
+                        grid: { borderDash: [4, 4], color: '#f0f0f0' },
+                        ticks: { font: { size: 9 }, callback: function(value) { return '$' + value.toLocaleString(); } }
+                    },
+                    x: { grid: { display: false }, ticks: { font: { size: 9 } } }
+                }
+            }
+        });
+    });
+</script>
+{% endblock %}

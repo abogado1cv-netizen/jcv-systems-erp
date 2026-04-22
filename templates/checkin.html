@@ -1,0 +1,53 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mt-5 pt-5 text-center">
+    <div class="card shadow-lg border-0 rounded-lg mx-auto" style="max-width: 400px;">
+        <div class="card-header bg-success text-white py-4">
+            <h3 class="mb-0">📍 Check-in GPS</h3>
+        </div>
+        <div class="card-body p-4">
+            <p class="text-muted mb-4">Presiona el botón para registrar tu ubicación actual y enviarla al sistema central.</p>
+            
+            <form method="post" id="form-gps">
+                {% csrf_token %}
+                <input type="hidden" name="latitud" id="latitud">
+                <input type="hidden" name="longitud" id="longitud">
+                
+                <button type="button" class="btn btn-success btn-lg w-100 rounded-pill shadow" onclick="obtenerUbicacion()">
+                    🛰️ Registrar Visita
+                </button>
+            </form>
+            
+            <p id="mensaje-estado" class="mt-4 text-primary fw-bold"></p>
+        </div>
+    </div>
+</div>
+
+<script>
+    function obtenerUbicacion() {
+        const mensaje = document.getElementById("mensaje-estado");
+        mensaje.innerHTML = "Buscando satélites... ⏳";
+
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                function(position) {
+                    // Si encuentra la ubicación, llena los campos y envía el formulario
+                    document.getElementById("latitud").value = position.coords.latitude;
+                    document.getElementById("longitud").value = position.coords.longitude;
+                    mensaje.innerHTML = "¡Ubicación capturada! Enviando... ✅";
+                    document.getElementById("form-gps").submit();
+                },
+                function(error) {
+                    mensaje.innerHTML = "❌ Error: Debes darle permisos de ubicación a tu navegador.";
+                    mensaje.className = "mt-4 text-danger fw-bold";
+                },
+                // Forzamos a que busque la ubicación más exacta posible
+                { enableHighAccuracy: true } 
+            );
+        } else {
+            mensaje.innerHTML = "Tu dispositivo no soporta GPS.";
+        }
+    }
+</script>
+{% endblock %}

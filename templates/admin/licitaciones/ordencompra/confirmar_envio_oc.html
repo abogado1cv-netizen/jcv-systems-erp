@@ -1,0 +1,81 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+{% load humanize %}
+
+{% block extrahead %}
+{{ block.super }}
+<style>
+    .confirm-container { max-width: 650px; margin: 40px auto; background: #fff; border-radius: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); overflow: hidden; font-family: 'Segoe UI', sans-serif; border: 1px solid #e2e8f0; }
+    .confirm-header { background: #5e35b1; color: white; padding: 25px; text-align: center; }
+    .confirm-header h2 { margin: 0; font-size: 22px; font-weight: 600; }
+    .confirm-header p { margin: 5px 0 0 0; font-size: 14px; opacity: 0.9; }
+    .confirm-body { padding: 30px; }
+    
+    /* FIX: Forzamos la columna y el ancho al 100% para que no se apachurre */
+    .info-box { background: #f8fafc; border-radius: 8px; padding: 20px; margin-bottom: 25px; border: 1px solid #e2e8f0; display: flex; flex-direction: column; width: 100%; box-sizing: border-box; }
+    
+    /* FIX: Filas con línea separadora y anchos fijos */
+    .info-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #e2e8f0; width: 100%; box-sizing: border-box;}
+    .info-row:last-child { border-bottom: none; padding-bottom: 0; }
+    
+    .info-label { color: #64748b; font-weight: 600; text-transform: uppercase; font-size: 12px; width: 35%; text-align: left; }
+    
+    /* FIX: Permitimos que los textos largos (como correos) bajen de renglón automáticamente */
+    .info-val { color: #1e293b; font-weight: 700; text-align: right; width: 65%; word-break: break-word; line-height: 1.4; } 
+    
+    .btn-action { background: #10b981; color: white; border: none; padding: 12px 25px; border-radius: 6px; font-size: 15px; font-weight: 600; cursor: pointer; width: 100%; transition: background 0.3s; display: block; text-align: center; text-decoration: none;}
+    .btn-action:hover { background: #059669; color: white; text-decoration: none;}
+    .btn-cancel { display: block; text-align: center; color: #64748b; margin-top: 15px; text-decoration: none; font-size: 14px; font-weight: 500; }
+    .btn-cancel:hover { color: #dc3545; text-decoration: none; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="confirm-container">
+    <div class="confirm-header">
+        <i class="fas fa-paper-plane" style="font-size: 40px; margin-bottom: 15px;"></i>
+        <h2>Confirmar Envío de Orden de Compra</h2>
+        <p>Se enviará el documento oficial al proveedor por correo electrónico.</p>
+    </div>
+    
+    <div class="confirm-body">
+        <div class="info-box">
+            <div class="info-row">
+                <span class="info-label">Proveedor / Laboratorio</span>
+                <span class="info-val">{{ proveedor.nombre }}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Correos Destino</span>
+                <span class="info-val" style="color: #3b82f6;">{{ proveedor.correos }}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Folio OC</span>
+                <span class="info-val">{{ oc.folio }}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Empresa que compra</span>
+                <span class="info-val">{{ oc.empresa_compradora.nombre }}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Total a Pagar</span>
+                <span class="info-val" style="color: #10b981; font-size: 18px;">${{ oc.total_compra|floatformat:2|intcomma }}</span>
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 15px; margin-bottom: 15px;">
+            <a href="{% url 'admin:vista_previa_pdf_oc' oc.id %}" target="_blank" class="btn-action" style="background: #3b82f6; text-decoration: none;">
+                <i class="fas fa-file-pdf"></i> Ver PDF Previo
+            </a>
+            
+            <form method="POST" style="flex: 1; margin: 0;">
+                {% csrf_token %}
+                <button type="submit" class="btn-action">
+                    <i class="fas fa-check-circle"></i> Confirmar y Enviar Correo
+                </button>
+            </form>
+        </div>
+
+        <a href="{% url 'admin:licitaciones_ordencompra_changelist' %}" class="btn-cancel">Cancelar y regresar</a>
+    </div>
+</div>
+{% endblock %}

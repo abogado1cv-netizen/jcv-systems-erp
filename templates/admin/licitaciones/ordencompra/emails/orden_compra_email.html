@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Orden de Compra - {{ oc.folio }}</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f4f6f9; font-family: Arial, sans-serif; color: #333333;">
+
+    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f4f6f9; padding: 40px 20px;">
+        <tr>
+            <td align="center">
+                <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
+                    
+                    <tr>
+                        <td style="background-color: {{ color_empresa }}; padding: 30px; text-align: center;">
+                            {% if url_logo %}
+                                <img src="{{ url_logo }}" alt="{{ empresa.nombre }}" style="max-width: 180px; margin-bottom: 15px;">
+                            {% else %}
+                                <h1 style="color: #ffffff; margin: 0; font-size: 24px; letter-spacing: 1px;">{{ empresa.nombre }}</h1>
+                            {% endif %}
+                            <p style="color: #ffffff; opacity: 0.9; margin: 10px 0 0 0; font-size: 14px;">NOTIFICACIÓN DE ORDEN DE COMPRA</p>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td style="padding: 40px 30px;">
+                            <h2 style="margin: 0 0 15px 0; color: #1e293b; font-size: 20px;">Hola, equipo de {{ proveedor.nombre }}</h2>
+                            <p style="margin: 0 0 20px 0; line-height: 1.6; color: #475569;">Por medio del presente correo, adjuntamos los detalles de nuestra <strong>Orden de Compra Oficial (Folio: {{ oc.folio }})</strong>. Solicitamos amablemente la confirmación de recepción y el procesamiento de los siguientes insumos:</p>
+
+                            <table width="100%" cellpadding="12" cellspacing="0" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; margin-bottom: 25px;">
+                                <tr>
+                                    <td width="50%" style="border-bottom: 1px solid #e2e8f0;"><strong style="color: #64748b; font-size: 12px; text-transform: uppercase;">Folio:</strong><br><span style="font-size: 15px; font-weight: bold; color: #1e293b;">{{ oc.folio }}</span></td>
+                                    <td width="50%" style="border-bottom: 1px solid #e2e8f0;"><strong style="color: #64748b; font-size: 12px; text-transform: uppercase;">Fecha Esperada:</strong><br><span style="font-size: 15px; color: #1e293b;">{{ oc.fecha_entrega_esperada|date:"d/m/Y" }}</span></td>
+                                </tr>
+                                <tr>
+                                    <td colspan="2"><strong style="color: #64748b; font-size: 12px; text-transform: uppercase;">Destino de Entrega:</strong><br><span style="font-size: 14px; color: #1e293b;">{{ oc.destino }}</span></td>
+                                </tr>
+                            </table>
+
+                            <h3 style="margin: 0 0 15px 0; color: #1e293b; font-size: 16px; border-bottom: 2px solid {{ color_empresa }}; padding-bottom: 5px; display: inline-block;">Detalle de Partidas</h3>
+                            
+                            <table width="100%" cellpadding="10" cellspacing="0" style="border: 1px solid #e2e8f0; border-collapse: collapse; font-size: 13px;">
+                                <thead>
+                                    <tr style="background-color: #f1f5f9; color: #475569;">
+                                        <th align="left" style="border: 1px solid #e2e8f0; padding: 10px;">CLAVE</th>
+                                        <th align="left" style="border: 1px solid #e2e8f0; padding: 10px;">MEDICAMENTO</th>
+                                        <th align="center" style="border: 1px solid #e2e8f0; padding: 10px;">PZAS</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for p in partidas %}
+                                    <tr>
+                                        <td style="border: 1px solid #e2e8f0; font-weight: bold;">{{ p.medicamento.clave_sector }}</td>
+                                        <td style="border: 1px solid #e2e8f0;">{{ p.medicamento.denominacion_generica }}<br><small style="color: #94a3b8;">{{ p.medicamento.denominacion_distintiva }}</small></td>
+                                        <td align="center" style="border: 1px solid #e2e8f0; font-weight: bold; color: {{ color_empresa }};">{{ p.cantidad }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+
+                            <p style="margin: 25px 0 0 0; line-height: 1.6; color: #475569;">Agradecemos enviar la factura correspondiente y el comprobante de embarque a la brevedad posible.</p>
+                            <p style="margin: 10px 0 0 0; font-weight: bold; color: #1e293b;">Atentamente,<br>El equipo de {{ empresa.nombre }}</p>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td style="background-color: #e2e8f0; padding: 20px; text-align: center; font-size: 12px; color: #64748b;">
+                            Este es un correo generado automáticamente por el Sistema ERP de GPHARMA.<br>Copyright © 2026 . Todos los derechos reservados.
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+
+</body>
+</html>

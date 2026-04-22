@@ -1,0 +1,12 @@
+{% extends "admin/change_form.html" %}
+
+{% block object-tools-items %}
+    {% if original.pk and original.licitacion_origen %}
+        <li>
+            <a href="{% url 'admin:seleccionar_claves_contrato' original.pk %}" class="btn" style="background-color: #28a745; color: white; border: none; font-weight: bold; width: 100%; margin-bottom: 10px; display: block; text-align: center; padding: 10px;">
+                <i class="fas fa-check-square"></i> Seleccionar Claves Ganadas
+            </a>
+        </li>
+    {% endif %}
+    {{ block.super }}
+{% endblock %}

@@ -1,0 +1,56 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mt-4 pt-3">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>💊 Catálogo Virtual</h2>
+        <a href="{% url 'dashboard' %}" class="btn btn-secondary">⬅️ Volver al Panel</a>
+    </div>
+
+    <div class="card shadow-sm border-0 mb-4 bg-light">
+        <div class="card-body">
+            <form method="GET" class="d-flex">
+                <input type="text" name="q" class="form-control me-2 form-control-lg" placeholder="Escribe una Clave de Sector, o el nombre del medicamento..." value="{{ query|default_if_none:'' }}">
+                <button type="submit" class="btn btn-primary btn-lg">🔍 Buscar</button>
+                <a href="{% url 'catalogo' %}" class="btn btn-outline-secondary btn-lg ms-2">Limpiar</a>
+            </form>
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-striped mb-0">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Clave Sector</th>
+                            <th>Medicamento</th>
+                            <th>Fabricante</th>
+                            <th>Registro Sanitario</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for med in medicamentos %}
+                        <tr>
+                            <td class="align-middle text-primary fw-bold">{{ med.clave_sector }}</td>
+                            <td class="align-middle">
+                                <strong>{{ med.denominacion_generica }}</strong><br>
+                                <small class="text-muted">{{ med.denominacion_distintiva }}</small>
+                            </td>
+                            <td class="align-middle">{{ med.fabricante }}</td>
+                            <td class="align-middle">{{ med.num_registro_sanitario }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="4" class="text-center py-5 text-muted h5">
+                                ❌ No se encontraron medicamentos con esa búsqueda.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

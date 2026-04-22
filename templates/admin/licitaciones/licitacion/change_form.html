@@ -1,0 +1,106 @@
+{% extends "admin/change_form.html" %}
+
+{% block object-tools-items %}
+    {% if original.pk %}
+        <li>
+            <a href="{% url 'admin:borrar_partidas_licitacion' original.pk %}" class="btn" style="background-color: #dc3545; color: white; border: none; font-weight: bold; margin-right: 5px; width: 100%; margin-bottom: 10px;" onclick="return confirm('⚠️ ¿Estás seguro de que quieres BORRAR TODAS LAS PARTIDAS de este requerimiento? \n\nTranquilo, los datos de la Licitación NO se borrarán.');">
+                <i class="fas fa-trash-alt"></i> Vaciar Requerimiento
+            </a>
+        </li>
+        
+        <li>
+            <a href="{% url 'admin:exportar_analisis_licitacion' original.pk %}" class="btn" style="background-color: #ff9800; color: white; border: none; font-weight: bold; width: 100%; margin-bottom: 10px;">
+                <i class="fas fa-file-excel"></i> Descargar Análisis Comercial
+            </a>
+        </li>
+
+        <li>
+            <a href="{% url 'admin:exportar_reporte_laboratorios_licitacion' original.pk %}" class="btn" style="background-color: #6f42c1; color: white; border: none; font-weight: bold; width: 100%; margin-bottom: 10px;">
+                <i class="fas fa-industry"></i> Reporte por Socio Comercial
+            </a>
+        </li>
+        
+        <li>
+            <a href="{% url 'admin:notificar_socios_licitacion' original.pk %}" class="btn btn-info" style="background-color: #17a2b8; color: white; padding: 10px 15px; border-radius: 4px; text-decoration: none; width: 100%; margin-bottom: 10px; display: block; text-align: center; font-weight: bold;">
+                <i class="fas fa-envelope"></i> Notificar a Socios
+            </a>
+        </li>
+
+        <li>
+            <a href="{% url 'admin:notificar_resultados_licitacion' original.pk %}" class="btn btn-success" style="background-color: #28a745; color: white; padding: 10px 15px; border-radius: 4px; text-decoration: none; width: 100%; margin-bottom: 10px; display: block; text-align: center; font-weight: bold;">
+                <i class="fas fa-bullhorn"></i> Notificar Resultados
+            </a>
+        </li>
+    {% endif %}
+    
+    <style>
+    /* Convertir la tabla interminable en una caja con scroll */
+    .inline-group .table-responsive,
+    .inline-group .tabular {
+        max-height: 550px !important; /* El alto de la ventana */
+        overflow-y: auto !important;
+        border-radius: 4px;
+        border: 1px solid #ccc;
+    }
+    
+    /* Congelar los títulos en la parte superior (Efecto Excel) */
+    .inline-group table thead th {
+        position: sticky !important;
+        top: 0 !important;
+        background-color: #e9ecef !important;
+        z-index: 100 !important;
+        outline: 1px solid #ccc; /* Bordes fijos */
+    }
+    </style>
+    
+    <div id="caja-buscador" style="margin: 20px 0 10px 0; padding: 15px; background-color: #f4f6f9; border-left: 5px solid #28a745; border-radius: 4px; display: none;">
+        <label for="buscadorPartidas" style="font-weight: bold; margin-right: 10px; color: #333;">🔍 Buscar en Partidas:</label>
+        <input type="text" id="buscadorPartidas" placeholder="Escribe clave, partida o medicamento..." style="width: 350px; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px;">
+        <span style="font-size: 12px; color: #666; margin-left: 10px;">Filtra la tabla en tiempo real.</span>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const buscador = document.getElementById('buscadorPartidas');
+            const cajaBuscador = document.getElementById('caja-buscador');
+            
+            // Buscamos la tabla de partidas en la pantalla
+            const inlineGroup = document.querySelector('.inline-group');
+            const filas = document.querySelectorAll('.inline-group .tabular table tbody tr:not(.add-row)');
+
+            // Si existen partidas, mostramos el buscador y lo ponemos justo arriba de la tabla
+            if(buscador && filas.length > 0 && inlineGroup) {
+                cajaBuscador.style.display = 'block';
+                inlineGroup.parentNode.insertBefore(cajaBuscador, inlineGroup);
+
+                // Escuchamos cada vez que tecleas algo
+                buscador.addEventListener('keyup', function(e) {
+                    const textoBusqueda = e.target.value.toLowerCase();
+                    
+                    filas.forEach(fila => {
+                        // Leemos el texto normal de la fila
+                        let textoFila = fila.textContent.toLowerCase();
+                        
+                        // También leemos lo que está adentro de las cajas de texto y listas desplegables
+                        const inputs = fila.querySelectorAll('input, select');
+                        inputs.forEach(input => {
+                            if(input.value) textoFila += " " + input.value.toLowerCase();
+                            if(input.options && input.selectedIndex >= 0) {
+                                textoFila += " " + input.options[input.selectedIndex].text.toLowerCase();
+                            }
+                        });
+
+                        // Si el texto coincide, mostramos la fila, si no, la escondemos
+                        if(textoFila.includes(textoBusqueda)) {
+                            fila.style.display = '';
+                        } else {
+                            fila.style.display = 'none';
+                        }
+                    });
+                });
+            }
+        });
+    </script>
+    
+    {{ block.super }}
+{% endblock %}

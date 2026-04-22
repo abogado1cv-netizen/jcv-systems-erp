@@ -1,0 +1,11 @@
+runtime: python311  # Le decimos a Google qué versión de motor usar
+instance_class: F1  # Servidor tamaño estándar (tiene una capa gratuita mensual)
+
+handlers:
+# Le decimos a la nube dónde empacaste los colores y diseños visuales
+- url: /static
+  static_dir: staticfiles/
+
+# Le decimos que todo lo demás lo maneja Django
+- url: /.*
+  script: auto

@@ -1,0 +1,771 @@
+import os
+from decimal import Decimal
+from django.db import models
+from django.db.models import Sum, F 
+from django.conf import settings
+from django.contrib.auth.models import User
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+from django.utils import timezone
+from datetime import date
+
+class EstatusProcedimiento(models.Model):
+    ESTATUS_CHOICES = [
+        ('ADJUDICADO', 'Adjudicado'),
+        ('PERDIDO', 'Perdido'),
+        ('EN_PROCESO', 'En proceso'),
+    ]
+    estado = models.CharField(max_length=20, choices=ESTATUS_CHOICES, default='EN_PROCESO')
+
+    def __str__(self):
+        return self.estado
+
+class Licitacion(models.Model):
+    num_procedimiento = models.CharField(max_length=100, unique=True, verbose_name="Número de procedimiento")
+    empresa = models.ForeignKey('Empresa', on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Empresa Participante")
+    fecha_publicacion = models.DateTimeField(verbose_name="Fecha y hora de publicación", null=True, blank=True)
+    fecha_apertura = models.DateTimeField(verbose_name="Fecha y hora de apertura", null=True, blank=True)
+    fecha_junta = models.DateTimeField(verbose_name="Fecha y hora de junta de aclaraciones", null=True, blank=True)
+    fecha_fallo = models.DateTimeField(verbose_name="Fecha y hora del acto del Fallo", null=True, blank=True)
+    dependencia = models.CharField(max_length=150, verbose_name="Dependencia")
+    estatus = models.ForeignKey(EstatusProcedimiento, on_delete=models.SET_NULL, null=True)
+    url_carpeta_drive = models.URLField(max_length=500, blank=True, null=True, verbose_name="URL Carpeta Drive") # <--- Agregado para que no falle el save
+
+    class Meta:
+        verbose_name = "Licitación"
+        verbose_name_plural = "Licitaciones"
+
+    def __str__(self):
+        return f"{self.num_procedimiento} - {self.dependencia}"
+
+    def save(self, *args, **kwargs):
+        es_nuevo = self.pk is None 
+        if es_nuevo and not self.url_carpeta_drive:
+            try:
+                ruta_token = os.path.join(settings.BASE_DIR, 'token.json')
+                if os.path.exists(ruta_token):
+                    creds = Credentials.from_authorized_user_file(ruta_token, ['https://www.googleapis.com/auth/drive'])
+                    service = build('drive', 'v3', credentials=creds)
+                    resultados = service.files().list(q="name='ERP_Licitaciones_Maestra' and mimeType='application/vnd.google-apps.folder'", spaces='drive', fields='files(id, name)').execute()
+                    carpetas_maestras = resultados.get('files', [])
+                    if carpetas_maestras:
+                        id_maestra = carpetas_maestras[0]['id']
+                        nombre_nueva_carpeta = f"{self.num_procedimiento} - {self.dependencia}"
+                        metadatos = {'name': nombre_nueva_carpeta, 'mimeType': 'application/vnd.google-apps.folder', 'parents': [id_maestra]}
+                        carpeta_creada = service.files().create(body=metadatos, fields='id, webViewLink').execute()
+                        self.url_carpeta_drive = carpeta_creada.get('webViewLink')
+            except Exception as e:
+                print(f"Error Drive: {e}")
+        super().save(*args, **kwargs)
+
+class CatalogoMedicamento(models.Model):
+    clave_sector = models.CharField(max_length=50)
+    descripcion = models.TextField()
+    denominacion_generica = models.CharField(max_length=150)
+    denominacion_distintiva = models.CharField(max_length=150)
+    fabricante = models.CharField(max_length=150)
+    socio_contacto = models.ForeignKey('SocioComercial', on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Contacto para Notificaciones")
+    rfc_fabricante = models.CharField(max_length=20)
+    pais_fabricacion = models.CharField(max_length=50)
+    num_registro_sanitario = models.CharField(max_length=50)
+    num_prorroga = models.CharField(max_length=50, default="NO APLICA")
+    codigo_barras = models.CharField(max_length=50)
+    fecha_expedicion = models.DateField(null=True, blank=True)
+    fecha_vigencia = models.DateField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Producto"
+        verbose_name_plural = "Productos"
+
+    def __str__(self):
+        marca = self.denominacion_distintiva if self.denominacion_distintiva else "Genérico"
+        lab = self.fabricante if self.fabricante else "Sin Laboratorio"
+        return f"Clave: {self.clave_sector} | Marca: {marca} | Lab: {lab}"
+
+class PartidaRequerimiento(models.Model):
+    licitacion = models.ForeignKey(Licitacion, on_delete=models.CASCADE, related_name='partidas')
+    numero_partida = models.IntegerField(verbose_name="No. Partida", null=True, blank=True) 
+    medicamento = models.ForeignKey(CatalogoMedicamento, on_delete=models.PROTECT, verbose_name="Medicamento")
+    cantidad_minima = models.PositiveIntegerField(null=True, blank=True, default=0)
+    cantidad_maxima = models.PositiveIntegerField(null=True, blank=True, default=0)
+    costo = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, default=0)
+    precio = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, default=0)
+
+    RESULTADOS_OPCIONES = [
+        ('Pendiente', 'Pendiente'),
+        ('Asignada', 'Asignada'),
+        ('Perdida por precio', 'Perdida por precio'),
+        ('Perdida técnicamente', 'Perdida técnicamente'),
+    ]
+    resultado = models.CharField(
+        max_length=30, 
+        choices=RESULTADOS_OPCIONES, 
+        default='Pendiente', 
+        verbose_name="Resultado"
+    )
+    motivo_perdida = models.CharField(
+        max_length=255, 
+        blank=True, 
+        null=True, 
+        verbose_name="Motivo Técnico",
+        help_text="Escribe por qué se perdió (solo si fue pérdida técnica)."
+    )
+    
+    @property
+    def valor_minimo_costo(self): return (self.costo * self.cantidad_minima) if self.costo and self.cantidad_minima else 0
+    @property
+    def valor_maximo_costo(self): return (self.costo * self.cantidad_maxima) if self.costo and self.cantidad_maxima else 0
+    @property
+    def valor_minimo_precio(self): return (self.precio * self.cantidad_minima) if self.precio and self.cantidad_minima else 0
+    @property
+    def valor_maximo_precio(self): return (self.precio * self.cantidad_maxima) if self.precio and self.cantidad_maxima else 0
+
+class RegistroUbicacion(models.Model):
+    usuario = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="Empleado")
+    latitud = models.CharField(max_length=50)
+    longitud = models.CharField(max_length=50)
+    fecha_hora = models.DateTimeField(auto_now_add=True, verbose_name="Fecha y hora del Check-in")
+
+    class Meta:
+        verbose_name = "Registro de Ubicación"
+        verbose_name_plural = "Registros de Ubicaciones"
+
+    def __str__(self):
+        return f"{self.usuario.username} - {self.fecha_hora.strftime('%d/%m/%Y %H:%M')}"
+
+class Empresa(models.Model):
+    nombre = models.CharField(max_length=200, verbose_name="Nombre de la Empresa")
+    rfc = models.CharField(max_length=20, blank=True, null=True, verbose_name="RFC")
+    representante = models.CharField(max_length=150, blank=True, null=True, verbose_name="Representante Legal")
+    telefono = models.CharField(max_length=20, blank=True, null=True, verbose_name="Teléfono")
+    PROVEEDOR_CHOICES = [('smtp.gmail.com', 'Gmail'), ('smtp.office365.com', 'Outlook / Office 365')]
+    servidor_correo = models.CharField(max_length=50, choices=PROVEEDOR_CHOICES, default='smtp.gmail.com', verbose_name="Proveedor de Correo", blank=True, null=True)
+    correo_remitente = models.EmailField(blank=True, null=True, verbose_name="Correo Emisor (Gmail/Outlook)")
+    password_aplicacion = models.CharField(max_length=100, blank=True, null=True, verbose_name="Contraseña de Aplicación (16 letras)")
+    url_logo = models.URLField(max_length=500, null=True, blank=True, verbose_name="URL del Logo (Público)", help_text="Pega aquí el link directo a la imagen del logo (debe terminar en .png o .jpg). Ej: https://tudominio.com/logo_sago.png")
+
+    class Meta:
+        verbose_name = "Empresa"
+        verbose_name_plural = "Empresas"
+
+    def __str__(self):
+        return self.nombre
+
+class SocioComercial(models.Model):
+    nombre = models.CharField(max_length=200, verbose_name="Nombre del Laboratorio / Socio")
+    correos = models.CharField(max_length=250, verbose_name="Correos Electrónicos", help_text="Puedes poner varios correos separados por coma (Ej: ventas@pisa.com, dir@pisa.com)")
+    telefono = models.CharField(max_length=50, blank=True, null=True, verbose_name="Teléfono de Contacto")
+
+    class Meta:
+        verbose_name = "Socio Comercial"
+        verbose_name_plural = "Directorio de Socios"
+
+    def __str__(self):
+        return self.nombre
+
+# ==========================================
+# FASE 2: MÓDULO DE CONTRATOS Y ABASTO LOGÍSTICO
+# ==========================================
+
+class Contrato(models.Model):
+    empresa = models.ForeignKey('Empresa', on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Empresa GPHARMA")
+    numero_contrato = models.CharField(max_length=100, unique=True, verbose_name="Número de Contrato")
+    dependencia = models.CharField(max_length=200, verbose_name="Dependencia / Cliente")
+    fecha_inicio = models.DateField(verbose_name="Inicio de Vigencia", null=True, blank=True)
+    fecha_fin = models.DateField(verbose_name="Fin de Vigencia", null=True, blank=True)
+    licitacion_origen = models.ForeignKey('Licitacion', on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Viene de la Licitación")
+    ruta_carpeta_servidor = models.CharField(max_length=500, blank=True, null=True, verbose_name="Ruta en Servidor Local (Ej: V:\\REPORTES...)")
+    porcentaje_penalizacion_diaria = models.DecimalField("Penalización Diaria (%)", max_digits=5, decimal_places=2, default=2.5, help_text="Ej. 2.5% por día de atraso")
+    tope_penalizacion = models.DecimalField("Tope de Penalización (%)", max_digits=5, decimal_places=2, default=10.0, help_text="Límite de la penalización (Ej. 10%)")
+    monto_fianza = models.DecimalField("Monto de Fianza (10%)", max_digits=15, decimal_places=2, blank=True, null=True, help_text="Se calcula en automático (10% del monto total).")
+
+
+# Modificamos el guardado para que calcule la fianza solo
+    def save(self, *args, **kwargs):
+        from decimal import Decimal
+        # OJO: Cambia 'monto_total' por el nombre real de tu campo si se llama 'monto_maximo' u otro
+        if hasattr(self, 'monto_total') and self.monto_total: 
+            self.monto_fianza = self.monto_total * Decimal('0.10')
+        super().save(*args, **kwargs)
+
+    class Meta:
+        verbose_name = "Contrato Maestro"
+        verbose_name_plural = "1. Contratos Maestros"
+        
+    def __str__(self):
+        return f"{self.numero_contrato} - {self.dependencia}"
+
+    @property
+    def monto_total_contrato(self):
+        res = self.claves.aggregate(total=Sum(F('cantidad_maxima') * F('precio_neto')))
+        return res['total'] or Decimal('0.00')
+
+    @property
+    def porcentaje_avance(self):
+        maximo = self.monto_total_contrato
+        if maximo == 0: return 0.0
+        res = OrdenSuministro.objects.filter(clave_contrato__contrato=self).aggregate(
+            consumido=Sum(F('cantidad_solicitada') * F('clave_contrato__precio_neto'))
+        )
+        consumido = res['consumido'] or Decimal('0.00')
+        return round((float(consumido) / float(maximo)) * 100, 2)
+
+    @property
+    def porcentaje_abasto(self):
+        res_solicitado = OrdenSuministro.objects.filter(clave_contrato__contrato=self).aggregate(total=Sum('cantidad_solicitada'))
+        solicitado = res_solicitado['total'] or 0
+        if solicitado == 0: return 0.0
+        res_entregado = RemisionEntrega.objects.filter(orden__clave_contrato__contrato=self).aggregate(total=Sum('cantidad_entregada'))
+        entregado = res_entregado['total'] or 0
+        return round((entregado / float(solicitado)) * 100, 2)
+
+    @property
+    def piezas_totales_maximas(self):
+        res = self.claves.aggregate(total=Sum('cantidad_maxima'))
+        return res['total'] or 0
+
+    @property
+    def piezas_totales_minimas(self):
+        res = self.claves.aggregate(total=Sum('cantidad_minima'))
+        return res['total'] or 0
+
+class FianzaContrato(models.Model):
+    TIPO_FIANZA = [
+        ('ANTICIPO', 'Fianza de Anticipo'),
+        ('LICITACION', 'Fianza de Licitación'),
+        ('CUMPLIMIENTO', 'Fianza de Cumplimiento'),
+        ('VICIOS', 'Fianza de Vicios Ocultos / Buena Calidad'),
+        ('OTRA', 'Otra...'),
+    ]
+    contrato = models.ForeignKey(Contrato, on_delete=models.CASCADE, related_name='fianzas', verbose_name="Contrato")
+    tipo = models.CharField(max_length=20, choices=TIPO_FIANZA, verbose_name="Tipo de Fianza")
+    numero_fianza = models.CharField(max_length=100, verbose_name="No. de Póliza / Fianza")
+    afianzadora = models.CharField(max_length=150, blank=True, null=True, verbose_name="Aseguradora / Afianzadora", help_text="Ej. Sofimex, Aserta, etc.")
+    monto = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True, verbose_name="Monto Asegurado")
+
+    class Meta:
+        verbose_name = "Fianza / Garantía"
+        verbose_name_plural = "Fianzas del Contrato"
+
+    def __str__(self):
+        return f"{self.get_tipo_display()} - {self.numero_fianza}"
+
+class ClaveContrato(models.Model):
+    contrato = models.ForeignKey(Contrato, on_delete=models.CASCADE, related_name='claves')
+    medicamento = models.ForeignKey('CatalogoMedicamento', on_delete=models.CASCADE, verbose_name="Clave / Medicamento")
+    cantidad_minima = models.IntegerField(default=0, verbose_name="Cant. Mínima")
+    cantidad_maxima = models.IntegerField(default=0, verbose_name="Cant. Máxima")
+    precio_neto = models.DecimalField(max_digits=10, decimal_places=2, default=0.00, verbose_name="Precio Neto")
+
+    class Meta:
+        verbose_name = "Clave Asignada"
+        verbose_name_plural = "Claves del Contrato"
+
+    def __str__(self):
+        return f"{self.medicamento.clave_sector} - {self.contrato.numero_contrato}"
+
+class OrdenSuministro(models.Model):
+    ESTATUS_ORDEN = [
+        ('PENDIENTE', 'Pendiente'),
+        ('PARCIAL', 'Entrega Parcial'),
+        ('ENTREGADA', 'Entregada'),
+        ('DEVUELTA', 'Devuelta / Rechazada'),
+        ('NO_ATENDIDA', 'No Atendida'),
+        # --- NUEVAS OPCIONES DE CANCELACIÓN ---
+        ('CANCELADA', 'Cancelada (Sin entrega)'),
+        ('CANCELADA_EVIDENCIA', 'Cancelada (CON EVIDENCIA DE ENTREGA)'),
+    ]
+    
+    # === VÍNCULO INTELIGENTE ===
+    clave_contrato = models.ForeignKey(ClaveContrato, on_delete=models.CASCADE, related_name='ordenes', verbose_name="Clave del Contrato", null=True, blank=True)
+    
+    # === CAMPOS DE TU EXCEL ===
+    razon_social = models.CharField(max_length=200, blank=True, null=True, verbose_name="Razón Social (Empresa)")
+    numero_orden_suministro = models.CharField(max_length=150, verbose_name="No. Orden Suministro")
+    numero_procedimiento_extra = models.CharField(max_length=150, blank=True, null=True, verbose_name="No. Procedimiento (Histórico)")
+    
+    # Guardamos estos dos en texto por si el Excel trae info que no cruzó con la base de datos
+    numero_contrato_historico = models.CharField(max_length=150, blank=True, null=True, verbose_name="No. Contrato (Excel)")
+    clave_medicamento_historico = models.CharField(max_length=50, blank=True, null=True, verbose_name="Clave (Excel)")
+    
+    descripcion_medicamento = models.TextField(blank=True, null=True, verbose_name="Descripción del Medicamento")
+    cantidad_solicitada = models.IntegerField(verbose_name="Cantidad Solicitada")
+    cantidad_entregada = models.IntegerField(default=0, verbose_name="Cantidad Entregada (Histórica)")
+    precio_unitario = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, verbose_name="Precio Unitario")
+    
+    clues_destino = models.CharField(max_length=100, blank=True, null=True, verbose_name="CLUES Destino")
+    entidad_destino = models.CharField(max_length=250, blank=True, null=True, verbose_name="Entidad / Lugar de Entrega")
+    nombre_unidad = models.CharField(max_length=250, blank=True, null=True, verbose_name="Nombre de Unidad / Dependencia")
+    
+    fecha_recepcion = models.DateField(verbose_name="Fecha en que se recibió", default=timezone.now)
+    fecha_limite = models.DateField(verbose_name="Fecha Límite de Entrega")
+    fecha_entrega_real = models.DateField(null=True, blank=True, verbose_name='Fecha real de entrega')
+
+    # === STATUS LOGÍSTICO ===
+    estatus = models.CharField(max_length=20, choices=ESTATUS_ORDEN, default='PENDIENTE', verbose_name="Estatus Logístico")
+    motivo_incidencia = models.TextField(blank=True, null=True, verbose_name="Motivo (Rechazo / No Atención)")
+
+    class Meta:
+        verbose_name = "Orden de Suministro"
+        verbose_name_plural = "3. Órdenes de Suministro"
+        ordering = ['fecha_limite'] 
+
+    def __str__(self):
+        # 1. Obtenemos el número de orden de forma segura
+        num_orden = getattr(self, 'numero_orden_suministro', 'Sin Folio')
+        
+        # 2. Obtenemos la clave de forma ultra segura, asumiendo que CUALQUIER cosa puede fallar
+        try:
+            if self.clave_contrato and self.clave_contrato.medicamento:
+                clave = self.clave_contrato.medicamento.clave_sector
+            else:
+                clave = self.clave_medicamento_historico or "Sin Clave"
+        except Exception:
+            clave = "Error al leer clave"
+
+        # 3. Retornamos un string simple y limpio
+        return f"Orden: {num_orden} | {clave}"
+
+    @property
+    def dias_atraso(self):
+        if not self.fecha_limite: 
+            return 0
+            
+        # Si ya se entregó al 100%
+        if self.estatus == 'ENTREGADA':
+            if self.fecha_entrega_real:
+                # Calculamos la multa hasta el día exacto que se entregó
+                dias = (self.fecha_entrega_real - self.fecha_limite).days
+                return dias if dias > 0 else 0
+            else:
+                # Si está entregada pero no anotaron cuándo, asumimos por buena fe que se entregó a tiempo
+                return 0 
+                
+        # Si sigue PENDIENTE o PARCIAL, el reloj sigue corriendo hasta el día de hoy
+        from django.utils import timezone
+        hoy = timezone.now().date()
+        dias = (hoy - self.fecha_limite).days
+        return dias if dias > 0 else 0
+
+    @property
+    def penalizacion_estimada(self):
+        if self.dias_atraso <= 0: return 0.0
+        monto_orden = float(self.cantidad_solicitada) * float(self.precio_unitario)
+        tasa = self.dias_atraso * 0.02 # 2% diario
+        if tasa > 0.10: tasa = 0.10 # Tope 10%
+        return monto_orden * tasa
+    
+    # ==========================================================
+    # ⚖️ MOTOR FINANCIERO DE PENALIZACIONES (CONGELADO AL ENTREGAR)
+    # ==========================================================
+    @property
+    def dias_atraso(self):
+        from django.utils import timezone
+        
+        if not self.fecha_limite:
+            return 0
+            
+        # 1. Si la orden ya se entregó, el reloj se detiene. 
+        # Calculamos el atraso basado en CUÁNDO llegó realmente.
+        if self.estatus in ['ENTREGADA', 'CANCELADA_EVIDENCIA']:
+            # Usamos la fecha real de entrega. Si por error no la llenaron, 
+            # usamos hoy como respaldo para no perder el cálculo.
+            fecha_cierre = self.fecha_entrega_real or timezone.now().date()
+            dias = (fecha_cierre - self.fecha_limite).days
+            
+        # 2. Si sigue en tránsito o pendiente, el reloj sigue corriendo contra el día de hoy.
+        else:
+            hoy = timezone.now().date()
+            dias = (hoy - self.fecha_limite).days
+            
+        return dias if dias > 0 else 0
+
+    @property
+    def penalizacion_estimada(self):
+        dias = self.dias_atraso
+        
+        # Si no hay atraso, no hay multa
+        if dias <= 0:
+            return 0.0
+            
+        try:
+            cantidad = float(self.cantidad_solicitada or 0)
+            precio = float(self.precio_unitario or 0)
+            importe_total = cantidad * precio
+        except (ValueError, TypeError):
+            return 0.0
+            
+        # ⚙️ CÁLCULO DE MULTA (Gobierno suele cobrar 2% o 2.5% por día)
+        # Ajusta este 0.02 según lo que dicte tu contrato marco
+        porcentaje_multa = dias * 0.02 
+        
+        # 🛡️ TOPE LEGAL DEL 10% (EL ESCUDO QUE PEDISTE)
+        if porcentaje_multa > 0.10:
+            porcentaje_multa = 0.10
+            
+        # Multiplicamos el importe total de la orden por el porcentaje topado
+        multa_final = importe_total * porcentaje_multa
+        
+        return multa_final
+    
+class RemisionEntrega(models.Model):
+    orden = models.ForeignKey(OrdenSuministro, on_delete=models.CASCADE, related_name='remisiones', verbose_name="Orden de Suministro")
+    folio_remision_factura = models.CharField(max_length=100, verbose_name="Folio Remisión / Factura")
+    cantidad_entregada = models.IntegerField(verbose_name="Piezas Enviadas en este viaje")
+    lote = models.CharField(max_length=50, verbose_name="Lote del Medicamento")
+    caducidad = models.DateField(verbose_name="Fecha de Caducidad")
+    
+    fecha_salida = models.DateTimeField(auto_now_add=True, verbose_name="Fecha y Hora de Salida")
+    archivo_evidencia = models.FileField(upload_to='logistica/evidencias/', blank=True, null=True, verbose_name="PDF Remisión Sellada/Firmada", help_text="Sube aquí el acuse firmado para dar la orden por Entregada.")
+    
+    ESTATUS_VIAJE = [
+        ('EN_RUTA', '🚚 En Ruta hacia el Instituto'), 
+        ('ENTREGADA', '✅ Entregada y Comprobada'),
+        ('PARCIAL', '🔵 Entrega Parcial (Faltan piezas)'),
+        ('RECHAZO', '🔴 Rechazada por el Instituto')
+    ]
+    estatus_viaje = models.CharField(max_length=20, choices=ESTATUS_VIAJE, default='EN_RUTA', verbose_name="Estatus del Viaje")
+
+    # --- INCIDENCIAS LOGÍSTICAS (Solo dejamos el Rechazo) ---
+    evidencia_rechazo = models.FileField(upload_to='logistica/rechazos/', blank=True, null=True, verbose_name="Evidencia del Rechazo (Acta/Foto)")
+    motivo_rechazo = models.TextField("Motivo del Rechazo", blank=True, null=True)
+
+    class Meta:
+        verbose_name = "Remisión Física"
+        verbose_name_plural = "4. Remisiones de Almacén"
+
+    def __str__(self):
+        return f"Remisión {self.folio_remision_factura} - Orden: {self.orden.numero_orden_suministro}"
+        
+    def save(self, *args, **kwargs):
+        # 1. Automatización: Si suben el PDF, se pasa a Entregada por default
+        if self.archivo_evidencia and self.estatus_viaje == 'EN_RUTA':
+            self.estatus_viaje = 'ENTREGADA'
+            
+        # 2. Guardamos primero la remisión para que los cálculos sean reales
+        super().save(*args, **kwargs)
+
+        # 3. Actualización Forzosa de la Orden Padre
+        orden = self.orden
+        piezas_comprobadas = sum(r.cantidad_entregada for r in orden.remisiones.all() if r.estatus_viaje == 'ENTREGADA')
+        
+        if self.estatus_viaje == 'ENTREGADA':
+            if piezas_comprobadas >= orden.cantidad_solicitada:
+                orden.estatus = 'ENTREGADA'
+            else:
+                orden.estatus = 'PARCIAL'
+        elif self.estatus_viaje == 'PARCIAL':
+            orden.estatus = 'PARCIAL'
+        elif self.estatus_viaje == 'RECHAZO':
+            # Si rechazaron el camión y no tenemos ninguna otra remisión entregada
+            if piezas_comprobadas == 0:
+                orden.estatus = 'DEVUELTA'
+            
+        orden.save()
+
+ # ==========================================
+# FASE 3: MÓDULO DE INVENTARIOS Y ALMACÉN
+# ==========================================
+
+class Almacen(models.Model):
+    nombre = models.CharField("Nombre del Almacén", max_length=100, unique=True)
+    descripcion = models.TextField("Descripción / Ubicación Físca", blank=True, null=True)
+
+    class Meta:
+        verbose_name = "Almacén"
+        verbose_name_plural = "🏢 Almacenes Físicos"
+
+    def __str__(self):
+        return self.nombre
+
+# ==========================================
+# FASE 3: MÓDULO DE INVENTARIOS Y ALMACÉN
+# ==========================================
+
+class Inventario(models.Model):
+    almacen = models.ForeignKey(Almacen, on_delete=models.CASCADE, verbose_name="Almacén", null=True, blank=True) # Lo dejamos null=True temporalmente para que no llore la migración
+    medicamento = models.ForeignKey(CatalogoMedicamento, on_delete=models.CASCADE, verbose_name="Clave / Medicamento")
+    lote = models.CharField(max_length=50, verbose_name="Lote del Producto")
+    fecha_caducidad = models.DateField(verbose_name="Fecha de Caducidad")
+    cantidad_disponible = models.IntegerField(default=0, verbose_name="Piezas Físicas Disponibles")
+    fecha_ingreso = models.DateTimeField(auto_now_add=True, verbose_name="Fecha de Ingreso al Sistema")
+
+    class Meta:
+        verbose_name = "Inventario Físico"
+        verbose_name_plural = "5. Inventarios (Stock)"
+        ordering = ['fecha_caducidad']
+        # 🔒 EL CANDADO AHORA INCLUYE EL ALMACÉN: No puede haber el mismo lote en el MISMO almacén (pero sí en almacenes distintos)
+        unique_together = ('almacen', 'medicamento', 'lote', 'fecha_caducidad')
+
+    def __str__(self):
+        nombre_almacen = self.almacen.nombre if self.almacen else "Sin Almacén"
+        return f"[{nombre_almacen}] {self.medicamento.clave_sector} | Lote: {self.lote} | Disp: {self.cantidad_disponible}"
+    
+    def clean(self):
+        super().clean()
+        if self.lote and self.medicamento:
+            choque = Inventario.objects.filter(lote__iexact=self.lote).exclude(medicamento=self.medicamento).first()
+            if choque:
+                lab_original = choque.medicamento.fabricante or "Otro Laboratorio"
+                from django.core.exceptions import ValidationError
+                raise ValidationError({
+                    'lote': f"🚨 ALERTA DE TRAZABILIDAD: El lote '{self.lote}' ya pertenece al fabricante '{lab_original}'."
+                })
+
+# ==========================================
+# 🔄 MÓDULO DE TRASPASOS INTER-COMPAÑÍAS
+# ==========================================
+class TraspasoIntercompany(models.Model):
+    almacen_origen = models.ForeignKey(Almacen, on_delete=models.PROTECT, related_name='traspasos_salida', verbose_name="Almacén Origen (El que Vende)")
+    almacen_destino = models.ForeignKey(Almacen, on_delete=models.PROTECT, related_name='traspasos_entrada', verbose_name="Almacén Destino (El que Compra)")
+    folio_factura = models.CharField("Folio de Orden / Factura Fiscal", max_length=100, help_text="Folio del documento fiscal que ampara este movimiento.")
+    
+    medicamento = models.ForeignKey(CatalogoMedicamento, on_delete=models.CASCADE, verbose_name="Clave a Transferir")
+    lote = models.CharField("Lote Físico", max_length=50)
+    cantidad = models.PositiveIntegerField("Cantidad de Piezas")
+    precio_unitario = models.DecimalField("Precio Unitario Fiscal", max_digits=10, decimal_places=2, default=0.00, help_text="A cuánto se lo está vendiendo internamente.")
+    
+    fecha_operacion = models.DateTimeField("Fecha del Traspaso", auto_now_add=True)
+    
+    ESTATUS_TRASPASO = [
+        ('BORRADOR', 'Borrador 📝 (No afecta inventario)'), 
+        ('COMPLETADO', 'Completado ✅ (Inventario movido)')
+    ]
+    estatus = models.CharField(max_length=20, choices=ESTATUS_TRASPASO, default='BORRADOR', verbose_name="Estado del Traspaso")
+    procesado = models.BooleanField(default=False, editable=False) # Para que no descuente 2 veces si le dan guardar de nuevo
+
+    class Meta:
+        verbose_name = "Traspaso Interno"
+        verbose_name_plural = "🔄 Traspasos Inter-Compañías"
+
+    def __str__(self):
+        return f"Traspaso {self.folio_factura}: {self.almacen_origen.nombre} ➔ {self.almacen_destino.nombre}"
+
+    def clean(self):
+        super().clean()
+        if self.almacen_origen == self.almacen_destino:
+            from django.core.exceptions import ValidationError
+            raise ValidationError("El almacén de origen y destino no pueden ser el mismo.")
+        
+        # Validamos que de verdad tengan esas cajas antes de autorizar el traspaso
+        if self.estatus == 'COMPLETADO' and not self.procesado:
+            stock_origen = Inventario.objects.filter(almacen=self.almacen_origen, medicamento=self.medicamento, lote__iexact=self.lote).first()
+            if not stock_origen or stock_origen.cantidad_disponible < self.cantidad:
+                from django.core.exceptions import ValidationError
+                raise ValidationError(f"🚨 IMPOSIBLE: El almacén '{self.almacen_origen.nombre}' no tiene {self.cantidad} piezas del lote '{self.lote}'.")
+
+    def save(self, *args, **kwargs):
+        # Si le dan "Completado" y no se ha movido el inventario, hacemos la magia
+        if self.estatus == 'COMPLETADO' and not self.procesado:
+            # 1. Le quitamos las cajas a Novag (Origen)
+            stock_origen = Inventario.objects.get(almacen=self.almacen_origen, medicamento=self.medicamento, lote__iexact=self.lote)
+            stock_origen.cantidad_disponible -= self.cantidad
+            stock_origen.save()
+            
+            # 2. Le creamos/sumamos las cajas a SAGO (Destino)
+            stock_destino, creado = Inventario.objects.get_or_create(
+                almacen=self.almacen_destino,
+                medicamento=self.medicamento,
+                lote=self.lote,
+                defaults={
+                    'fecha_caducidad': stock_origen.fecha_caducidad,
+                    'cantidad_disponible': 0
+                }
+            )
+            stock_destino.cantidad_disponible += self.cantidad
+            stock_destino.save()
+            
+            # 3. Le ponemos candado para que ya no vuelva a restar si editan algo
+            self.procesado = True
+            
+        super().save(*args, **kwargs)
+
+# 1. Catálogo de Proveedores / Laboratorios
+class Proveedor(models.Model):
+    nombre = models.CharField("Razón Social", max_length=200)
+    rfc = models.CharField("RFC", max_length=20, blank=True, null=True)
+    contacto_principal = models.CharField(max_length=150, blank=True, null=True)
+    correo_ventas = models.EmailField(blank=True, null=True)
+    telefono = models.CharField(max_length=50, blank=True, null=True)
+    dias_credito = models.PositiveIntegerField("Días de Crédito", default=30)
+
+    class Meta:
+        verbose_name = "Proveedor"
+        verbose_name_plural = "1. Catálogo de Proveedores"
+
+    def __str__(self):
+        return self.nombre
+
+# 2. La Cabecera de la Orden de Compra
+# 2. La Cabecera de la Orden de Compra (Actualizada)
+class OrdenCompra(models.Model):
+    ESTATUS_COMPRA = [
+        ('BORRADOR', '📝 Borrador'),
+        ('AUTORIZADA', '✅ Autorizada (Enviada)'),
+        ('TRANSITO', '🚚 En Tránsito'),
+        ('RECIBIDA', '📦 Recibida en Almacén'),
+        ('CANCELADA', '❌ Cancelada'),
+    ]
+
+    folio = models.CharField("Folio OC", max_length=50, unique=True, help_text="Ej. OC-GAMS-2026-001")
+    empresa_compradora = models.ForeignKey('Empresa', on_delete=models.CASCADE, verbose_name="Empresa que Compra")
+    
+    # 🚀 LA MAGIA: Ahora apunta a tu Directorio de Socios Maestro
+    proveedor = models.ForeignKey('SocioComercial', on_delete=models.PROTECT, verbose_name="Proveedor (Socio Comercial)")
+    
+    fecha_emision = models.DateField(default=timezone.now)
+    fecha_entrega_esperada = models.DateField()
+    
+    estatus = models.CharField(max_length=20, choices=ESTATUS_COMPRA, default='BORRADOR')
+    destino = models.CharField("Destino de Entrega", max_length=255, default="ALMACÉN GENERAL GPHARMA", help_text="Dirección o unidad donde se recibirá el medicamento")
+    observaciones = models.TextField(blank=True, null=True)
+
+    class Meta:
+        verbose_name = "Orden de Compra"
+        verbose_name_plural = "2. Órdenes de Compra (OC)"
+
+    def __str__(self):
+        return f"{self.folio} - {self.proveedor.nombre}"
+
+    @property
+    def total_compra(self):
+        return sum(partida.importe for partida in self.partidas_compra.all())
+    
+    # Adentro de tu clase OrdenCompra (o OrdenSuministro) agrega esto al final:
+
+    @property
+    def penalizacion_calculada(self):
+        from decimal import Decimal
+        from django.utils import timezone
+        
+        # 1. Revisamos si la orden está vinculada a un contrato (Asegúrate de tener un campo ForeignKey hacia Contrato)
+        if not hasattr(self, 'contrato') or not self.contrato:
+            return Decimal('0.00')
+            
+        # 2. Revisamos si hay fecha límite
+        if not self.fecha_entrega_esperada:
+            return Decimal('0.00')
+            
+        # 3. Calculamos la fecha en la que realmente llegó (si no ha llegado, usamos la de hoy para proyectar el castigo)
+        fecha_cierre = self.fecha_emision # Por defecto algo seguro
+        if hasattr(self, 'fecha_recepcion_real') and self.fecha_recepcion_real:
+            fecha_cierre = self.fecha_recepcion_real.date() if hasattr(self.fecha_recepcion_real, 'date') else self.fecha_recepcion_real
+        else:
+            fecha_cierre = timezone.now().date()
+            
+        dias_atraso = (fecha_cierre - self.fecha_entrega_esperada).days
+        
+        if dias_atraso <= 0:
+            return Decimal('0.00') # Llegó a tiempo, premio para el proveedor
+            
+        # 4. Traemos las reglas letales del contrato
+        porc_diario = self.contrato.porcentaje_penalizacion_diaria / Decimal('100')
+        tope_maximo = self.contrato.tope_penalizacion / Decimal('100')
+        
+        # 5. Calculamos el castigo
+        castigo_porcentaje = Decimal(str(dias_atraso)) * porc_diario
+        
+        # 6. Topamos el castigo al 10% (o lo que dicte el contrato)
+        if castigo_porcentaje > tope_maximo:
+            castigo_porcentaje = tope_maximo
+            
+        # 7. El hachazo final al dinero
+        descuento = self.total_compra * castigo_porcentaje
+        return round(descuento, 2)
+
+# 3. El Detalle (Las claves que estás comprando)
+class PartidaCompra(models.Model):
+    orden = models.ForeignKey(OrdenCompra, related_name='partidas_compra', on_delete=models.CASCADE)
+    medicamento = models.ForeignKey('CatalogoMedicamento', on_delete=models.PROTECT)
+    cantidad = models.PositiveIntegerField("Cantidad (Piezas)")
+    precio_unitario = models.DecimalField("Costo Unitario", max_digits=12, decimal_places=2)
+    
+    # Campo para control logístico interno
+    cantidad_recibida = models.PositiveIntegerField("Pzas Recibidas", default=0, help_text="Se llena al llegar al almacén")
+
+    class Meta:
+        verbose_name = "Partida"
+        verbose_name_plural = "Partidas"
+
+    @property
+    def importe(self):
+        return self.cantidad * self.precio_unitario
+    # 4. Documentos y Evidencias de la Orden de Compra
+class DocumentoOrdenCompra(models.Model):
+    orden = models.ForeignKey(OrdenCompra, related_name='documentos', on_delete=models.CASCADE)
+    archivo = models.FileField(upload_to='ordenes_compra/evidencias/', verbose_name="Archivo Adjunto")
+    descripcion = models.CharField("Descripción / Título", max_length=150, help_text="Ej. Cotización del proveedor, Autorización del jefe, etc.")
+    fecha_subida = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Documento de Evidencia"
+        verbose_name_plural = "📂 Documentos y Evidencias"
+
+    def __str__(self):
+        return f"{self.descripcion} - {self.orden.folio}"
+from django.core.exceptions import ValidationError # <--- Asegúrate de que esta línea esté hasta arriba de tu models.py, o déjala aquí, no pasa nada.
+
+# ==========================================
+# 📦 MÓDULO DE ADUANA / RECEPCIÓN ALMACÉN
+# ==========================================
+class EntradaAlmacen(models.Model):
+    orden = models.ForeignKey(OrdenCompra, on_delete=models.CASCADE, verbose_name="Orden de Compra Vinculada")
+    almacen_destino = models.ForeignKey(Almacen, on_delete=models.PROTECT, verbose_name="Almacén Destino", null=True, blank=True)
+    folio_remision = models.CharField("Folio de Remisión / Factura", max_length=100, default="S/F", help_text="Anota el número de ticket o factura.")
+    medicamento = models.ForeignKey('CatalogoMedicamento', on_delete=models.CASCADE, verbose_name="Clave / Medicamento")
+    
+    cantidad_recibida = models.PositiveIntegerField("Piezas Físicas Recibidas")
+    lote = models.CharField("Lote Impreso", max_length=50)
+    fecha_caducidad = models.DateField("Fecha de Caducidad")
+    
+    documentacion_completa = models.BooleanField("¿Llegó con Remisión y Certificados Analíticos?", default=True)
+    ubicacion = models.CharField("Ubicación Física (Ej. Pasillo 3, Anaquel B)", max_length=150, help_text="¿En qué parte del almacén se guardará?")
+    observaciones_calidad = models.TextField("Observaciones de Calidad", blank=True, null=True)
+    acuse_recibo = models.FileField("Acuse de Recibo / Remisión Firmada", upload_to='almacen/acuses/', blank=True, null=True, help_text="Sube el PDF o Foto del acuse firmado al recibir la mercancía.")
+    factura_proveedor = models.FileField("Factura del Proveedor (PDF/XML)", upload_to='almacen/facturas/', blank=True, null=True, help_text="Sube la factura correspondiente a esta entrega.")
+    fecha_ingreso = models.DateTimeField("Fecha y Hora de Recepción", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Entrada de Almacén"
+        verbose_name_plural = "📥 Recepciones de Almacén"
+
+    def __str__(self):
+        return f"Remisión: {self.folio_remision} | OC-{self.orden.folio} | {self.cantidad_recibida} pzas"
+
+    def clean(self):
+        super().clean()
+        if self.lote and hasattr(self, 'medicamento') and self.medicamento:
+            from django.core.exceptions import ValidationError
+            query = EntradaAlmacen.objects.filter(lote__iexact=self.lote).exclude(medicamento=self.medicamento)
+            if self.pk:
+                query = query.exclude(pk=self.pk)
+            choque = query.first()
+            if choque:
+                lab_original = choque.medicamento.fabricante or "Otro Laboratorio"
+                marca_original = choque.medicamento.denominacion_distintiva or "Genérico"
+                raise ValidationError({
+                    'lote': f"🚨 BARRERA DE SEGURIDAD: El lote '{self.lote}' ya fue ingresado antes como '{marca_original}' ({lab_original})."
+                })
+
+    def save(self, *args, **kwargs):
+        es_nuevo = self.pk is None
+        super().save(*args, **kwargs)
+
+        if es_nuevo:
+            # 🚀 AHORA EL INVENTARIO SE CREA ESPECÍFICAMENTE EN EL ALMACÉN SELECCIONADO
+            inventario_obj, creado = Inventario.objects.get_or_create(
+                almacen=self.almacen_destino,
+                medicamento=self.medicamento,
+                lote=self.lote,
+                fecha_caducidad=self.fecha_caducidad,
+                defaults={
+                    'cantidad_disponible': 0,
+                    'fecha_ingreso': self.fecha_ingreso.date()
+                }
+            )
+            inventario_obj.cantidad_disponible += self.cantidad_recibida
+            inventario_obj.save()
+
+            if self.orden.estatus not in ['RECIBIDA', 'CANCELADA']:
+                self.orden.estatus = 'PARCIAL' 
+                self.orden.save()

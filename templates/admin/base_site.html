@@ -1,0 +1,62 @@
+{% extends "admin/base.html" %}
+{% load static %}
+
+{% block extrahead %}
+{{ block.super }}
+<style>
+    /* Efecto de transición suave al cambiar de tema */
+    body, .content-wrapper, .main-header, .main-sidebar, .app-main {
+        transition: background-color 0.4s ease, color 0.4s ease !important;
+    }
+    
+    /* Diseño del botón Sol/Luna */
+    #theme-toggle { font-size: 1.2rem; color: #6c757d; cursor: pointer; display: flex; align-items: center; justify-content: center; height: 100%;}
+    #theme-toggle:hover { color: #3b82f6; }
+    body.dark-mode #theme-toggle { color: #fbbf24; } /* Amarillo para el sol en modo oscuro */
+</style>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        // 1. Creamos el botón en la barra superior
+        const toggleBtn = document.createElement('li');
+        toggleBtn.className = 'nav-item';
+        toggleBtn.innerHTML = '<a class="nav-link" href="#" id="theme-toggle" title="Cambiar Tema"><i class="fas fa-moon"></i></a>';
+        
+        // Lo insertamos a la derecha (junto al usuario)
+        const rightNavbar = document.querySelector('.navbar-nav.ml-auto');
+        if (rightNavbar) { rightNavbar.prepend(toggleBtn); }
+
+        const themeToggle = document.getElementById('theme-toggle');
+        if(!themeToggle) return;
+        const icon = themeToggle.querySelector('i');
+        const body = document.body;
+        
+        // 2. Leemos si el usuario ya había elegido un tema (Por defecto dejamos Dark)
+        const currentTheme = localStorage.getItem('gpharma_theme') || 'dark';
+        
+        function applyTheme(theme) {
+            let link = document.getElementById('jazzmin-theme');
+            if (theme === 'dark') {
+                body.classList.add('dark-mode');
+                icon.className = 'fas fa-sun'; // Si está oscuro, mostramos el sol para cambiar a claro
+                if(link) link.href = "{% static 'vendor/bootswatch/darkly/bootstrap.min.css' %}";
+            } else {
+                body.classList.remove('dark-mode');
+                icon.className = 'fas fa-moon'; // Si está claro, mostramos la luna para cambiar a oscuro
+                if(link) link.href = "{% static 'vendor/bootswatch/lumen/bootstrap.min.css' %}";
+            }
+        }
+
+        // Aplicamos el tema al cargar
+        applyTheme(currentTheme);
+
+        // 3. Acción al hacer clic
+        themeToggle.addEventListener('click', function(e) {
+            e.preventDefault();
+            let newTheme = body.classList.contains('dark-mode') ? 'light' : 'dark';
+            localStorage.setItem('gpharma_theme', newTheme);
+            applyTheme(newTheme);
+        });
+    });
+</script>
+{% endblock %}
