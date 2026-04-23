@@ -243,7 +243,6 @@ def exportar_reporte_laboratorios(modeladmin, request, queryset):
     borde_delgado = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
     formato_moneda = '"$"#,##0.00'
 
-    # 🚀 CAMBIO 1: Agregamos "Ubicación del Inventario" (Ahora son 10 columnas en total)
     encabezados = ['Socio Comercial', 'Partida', 'Clave', 'Descripción', 'Cantidad solicitada', '# de apoyos', 'Cantidad de piezas', 'Ubicación del Inventario', '$ referencia', 'Importe']
     ws.append(encabezados)
     
@@ -263,12 +262,10 @@ def exportar_reporte_laboratorios(modeladmin, request, queryset):
             precio = float(partida.precio or 0)
             importe_max = cant_max * precio
             
-            # 🚀 CAMBIO 2: Motor de búsqueda de Inventario en vivo
             total_piezas = 0
             texto_ubicaciones = "Sin Inventario"
             
             if med and clave != 'S/C':
-                # Buscamos todas las cajas de esa clave que no estén en ceros
                 stock_disponible = Inventario.objects.filter(
                     medicamento__clave_sector=clave, 
                     cantidad_disponible__gt=0
@@ -295,7 +292,6 @@ def exportar_reporte_laboratorios(modeladmin, request, queryset):
                         if m.denominacion_distintiva:
                             desc += f" / Marca: {m.denominacion_distintiva}"
                         
-                        # Inyectamos el stock y la ubicación en el Excel
                         filas.append([nombre_socio, partida.numero_partida, clave, desc, cant_max, 0, total_piezas, texto_ubicaciones, precio, importe_max])
                 else:
                     filas.append(['SIN REGISTRO', partida.numero_partida, clave, 'S/D', cant_max, 0, total_piezas, texto_ubicaciones, precio, importe_max])
@@ -311,7 +307,6 @@ def exportar_reporte_laboratorios(modeladmin, request, queryset):
         fab = fila[0]
         if current_fab != fab:
             if current_fab is not None:
-                # 🚀 CAMBIO 3: Ajuste geométrico. Pasamos de 9 a 10 columnas
                 ws.append(['', f'Total {current_fab}', '', '', '', '', '', '', '', subtotal_importe])
                 fila_subtotal = ws.max_row
                 for c in range(1, 11): 
@@ -326,7 +321,7 @@ def exportar_reporte_laboratorios(modeladmin, request, queryset):
         else:
             mostrar_fab = ''
             
-        subtotal_importe += fila[9] # El importe ahora vive en el índice 9
+        subtotal_importe += fila[9] 
         
         ws.append([mostrar_fab, fila[1], fila[2], fila[3], fila[4], fila[5], fila[6], fila[7], fila[8], fila[9]])
         fila_actual = ws.max_row
@@ -334,11 +329,11 @@ def exportar_reporte_laboratorios(modeladmin, request, queryset):
         for c in range(1, 11):
             celda = ws.cell(row=fila_actual, column=c)
             celda.border = borde_delgado
-            if c in [9, 10]: # $ Referencia e Importe
+            if c in [9, 10]: 
                 celda.number_format = formato_moneda
-            if c in [2, 5, 6, 7]: # Centrar partida, solicitadas, apoyos y piezas
+            if c in [2, 5, 6, 7]: 
                 celda.alignment = alineacion_centro
-            if c in [4, 8]: # Alinear a la izquierda descripción y ubicación
+            if c in [4, 8]: 
                 celda.alignment = alineacion_izq
 
     if current_fab is not None:
@@ -350,20 +345,20 @@ def exportar_reporte_laboratorios(modeladmin, request, queryset):
             ws.cell(row=fila_subtotal, column=c).border = borde_delgado
         ws.cell(row=fila_subtotal, column=10).number_format = formato_moneda
 
-    # 🚀 CAMBIO 4: Anchos de las nuevas columnas
     ws.column_dimensions['A'].width = 35 
     ws.column_dimensions['B'].width = 10 
     ws.column_dimensions['C'].width = 18 
     ws.column_dimensions['D'].width = 45 
     ws.column_dimensions['E'].width = 15 
     ws.column_dimensions['F'].width = 12 
-    ws.column_dimensions['G'].width = 18 # Cantidad piezas 
-    ws.column_dimensions['H'].width = 35 # Ubicación
-    ws.column_dimensions['I'].width = 15 # $ Referencia
-    ws.column_dimensions['J'].width = 18 # Importe
+    ws.column_dimensions['G'].width = 18 
+    ws.column_dimensions['H'].width = 35 
+    ws.column_dimensions['I'].width = 15 
+    ws.column_dimensions['J'].width = 18 
 
     wb.save(response)
     return response
+
 # ==========================================
 # --- CLASES DEL ADMIN ---
 # ==========================================
@@ -455,15 +450,9 @@ class PartidaRequerimientoInline(admin.TabularInline):
     fields = ('numero_partida', 'medicamento', 'cantidad_maxima', 'precio', 'resultado', 'motivo_perdida')
     ordering = ['numero_partida']
 
-    # ==========================================
-    # 🔒 CANDADO PARA PROTEGER PRECIOS Y COSTOS
-    # ==========================================
     def get_readonly_fields(self, request, obj=None):
-        # Si NO eres el superusuario, te bloqueo estos campos
         if not request.user.is_superuser:
             return ('precio', 'cantidad_maxima', 'licitacion', 'medicamento')
-        
-        # Si eres el jefe (tú), tienes control total (no se bloquea nada)
         return super().get_readonly_fields(request, obj)
 
 @admin.register(Licitacion)
@@ -743,12 +732,21 @@ class LicitacionAdmin(admin.ModelAdmin):
         context = {'title': f'Notificar Resultados: {licitacion.num_procedimiento}', 'licitacion': licitacion, 'socios_data': socios_dict.values(), 'opts': self.model._meta, 'empresas_grupo': Empresa.objects.all(), 'has_view_permission': self.has_view_permission(request, licitacion)}
         return render(request, 'admin/licitaciones/licitacion/notificar_resultados.html', context)
 
+
 @admin.register(Empresa)
 class EmpresaAdmin(ImportExportModelAdmin):
     list_per_page = 30
     list_display = ('nombre', 'rfc', 'representante', 'telefono')
     search_fields = ('nombre', 'rfc')
     
+    # --- CANDADO DE SEGURIDAD (Solo Superusuario) ---
+    def has_module_permission(self, request):
+        return request.user.is_superuser
+        
+    def has_view_permission(self, request, obj=None):
+        return request.user.is_superuser
+
+
 @admin.register(SocioComercial)
 class SocioComercialAdmin(admin.ModelAdmin):
     list_per_page = 30
@@ -764,6 +762,10 @@ class PartidaRequerimientoAdmin(admin.ModelAdmin):
     ordering = ('licitacion', 'numero_partida')
     list_editable = ('precio', 'resultado')
 
+    # --- Ocultar del menú principal pero mantenerla funcional ---
+    def has_module_permission(self, request):
+        return False
+
     def clave_medicamento(self, obj):
         return f"{obj.medicamento.clave_sector} - {obj.medicamento.denominacion_generica[:30]}..."
     clave_medicamento.short_description = "Clave / Medicamento"
@@ -775,7 +777,8 @@ class PartidaRequerimientoAdmin(admin.ModelAdmin):
     importe_total.short_description = "Importe Máximo"
     importe_total.admin_order_field = 'cantidad_maxima'
 
-admin.site.register(EstatusProcedimiento)
+
+# admin.site.register(EstatusProcedimiento) # <-- Oculto del panel
 admin.site.register(CatalogoMedicamento, CatalogoMedicamentoAdmin)
 admin.site.register(RegistroUbicacion, RegistroUbicacionAdmin)
 
@@ -1052,7 +1055,6 @@ class ContratoAdmin(ImportExportModelAdmin):
 # ==========================================
 class ClaveContratoWidget(ForeignKeyWidget):
     def clean(self, value, row=None, **kwargs):
-        # BÚSQUEDA ESTRICTA PARA EVITAR CRUCE DE CONTRATOS
         num_contrato = str(row.get('numero_contrato', '')).strip()
         clave_sec = str(row.get('clave_medicamento', '')).strip()
         
@@ -1139,19 +1141,14 @@ class OrdenSuministroAdmin(ImportExportModelAdmin):
     change_list_template = "admin/ordenes_changelist.html"
     readonly_fields = ('alerta_inventario',)
 
-# ==========================================================
-    # 📊 CÁLCULOS EN TIEMPO REAL PARA LOGÍSTICA
-    # ==========================================================
     def piezas_entregadas(self, obj):
         from django.utils.html import format_html
         
         enviadas = sum((r.cantidad_entregada or 0) for r in obj.remisiones.exclude(estatus_viaje='RECHAZO'))
         
-        # 1. Le ponemos las comitas aquí en Python puro
         enviadas_texto = f"{enviadas:,}"
         
         if enviadas >= obj.cantidad_solicitada and obj.cantidad_solicitada > 0:
-            # 2. Le pasamos el texto ya formateado ({}) en lugar de pedirle a Django que lo haga
             return format_html('<b style="color: #28a745;">{}</b>', enviadas_texto) 
         else:
             return format_html('<b style="color: #007bff;">{}</b>', enviadas_texto)
@@ -1160,7 +1157,7 @@ class OrdenSuministroAdmin(ImportExportModelAdmin):
 
     def piezas_pendientes(self, obj):
         from django.utils.html import format_html
-        from django.utils.safestring import mark_safe # <--- Importamos mark_safe para cuando no hay variables
+        from django.utils.safestring import mark_safe 
         
         enviadas = sum((r.cantidad_entregada or 0) for r in obj.remisiones.exclude(estatus_viaje='RECHAZO'))
         pendientes = obj.cantidad_solicitada - enviadas
@@ -1168,13 +1165,12 @@ class OrdenSuministroAdmin(ImportExportModelAdmin):
         pendientes_texto = f"{pendientes:,}"
         
         if pendientes <= 0:
-            # EL ARREGLO: Usamos mark_safe porque es texto estático sin llaves {}
             return mark_safe('<b style="color: #28a745;">0</b>') 
         else:
-            # Usamos format_html porque le estamos inyectando pendientes_texto
             return format_html('<b style="color: #dc3545;">{}</b>', pendientes_texto)
             
     piezas_pendientes.short_description = "Cant. Pendiente"
+    
     def mostrar_contrato(self, obj):
         if obj.clave_contrato:
             return obj.clave_contrato.contrato.numero_contrato
@@ -1190,7 +1186,7 @@ class OrdenSuministroAdmin(ImportExportModelAdmin):
     def estatus_logistico(self, obj):
         from django.utils.html import format_html
         
-        color = "#6c757d" # Gris
+        color = "#6c757d"
         texto = obj.get_estatus_display()
         
         if obj.estatus == 'ENTREGADA': color = "#28a745"
@@ -1199,13 +1195,10 @@ class OrdenSuministroAdmin(ImportExportModelAdmin):
         elif obj.estatus == 'PARCIAL': color = "#17a2b8"
         elif obj.estatus == 'NO_ATENDIDA': color = "#343a40"
 
-        # 🚀 MAGIA DE AUDITORÍA: ESCUDO LEGAL CONTRA CANCELACIONES
         if obj.estatus in ['CANCELADA', 'CANCELADA_EVIDENCIA']:
-            # Sumamos lo que los choferes realmente entregaron
             piezas_entregadas = sum((r.cantidad_entregada or 0) for r in obj.remisiones.exclude(estatus_viaje='RECHAZO'))
             
             if piezas_entregadas > 0:
-                # Si la cancelaron pero SÍ entregamos, mostramos un escudo negro con letras rojas
                 return format_html(
                     '<div style="text-align: center; line-height: 1.2;">'
                     '<span style="background-color: #000000; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 10px; display: block; margin-bottom: 2px;">🚨 CANCELADA (TIENE EVIDENCIA)</span>'
@@ -1213,7 +1206,6 @@ class OrdenSuministroAdmin(ImportExportModelAdmin):
                     '</div>', piezas_entregadas
                 )
             else:
-                # Cancelada normal y justa
                 return format_html('<span style="background-color: #6f42c1; color: white; padding: 5px 10px; border-radius: 4px; font-weight: bold; font-size: 11px;">🚫 CANCELADA (Sin entregas)</span>')
 
         if obj.estatus in ['PENDIENTE', 'PARCIAL'] and obj.dias_atraso > 0:
@@ -1244,7 +1236,6 @@ class OrdenSuministroAdmin(ImportExportModelAdmin):
         if obj.estatus == 'ENTREGADA':
             return mark_safe('<span style="color: #28a745; font-weight: bold;">✔ STOCK ENTREGADO</span>')
 
-        # 1. Obtenemos la clave de forma indestructible (incluso si cruzó mal en Excel)
         clave_buscar = None
         if obj.clave_contrato and obj.clave_contrato.medicamento:
             clave_buscar = obj.clave_contrato.medicamento.clave_sector
@@ -1254,15 +1245,12 @@ class OrdenSuministroAdmin(ImportExportModelAdmin):
         if not clave_buscar: 
             return mark_safe('<span style="color: #ccc;">Sin Clave</span>')
             
-        # 2. Buscamos TODAS las cajas que tengan esa clave (sin importar el laboratorio)
         stock = Inventario.objects.filter(
             medicamento__clave_sector=clave_buscar, 
             cantidad_disponible__gt=0
         ).aggregate(total=Sum('cantidad_disponible'))['total'] or 0
 
-        # 3. Mostramos los números exactos para que nadie entre en pánico
         if stock == 0:
-            # EL ARREGLO ESTÁ AQUÍ: Cambiamos format_html por mark_safe
             return mark_safe('<b style="color: #dc3545;">❌ 0 en Stock (Agotado)</b>') 
         elif stock >= obj.cantidad_solicitada:
             return format_html('<b style="color: #28a745;">✅ {} en Stock</b>', f"{stock:,}")
@@ -1271,12 +1259,12 @@ class OrdenSuministroAdmin(ImportExportModelAdmin):
             return format_html('<b style="color: #ffc107;">⚠️ {} en Stock<br><small>(Faltan {})</small></b>', f"{stock:,}", f"{faltan:,}")
             
     alerta_inventario.short_description = "Validación de Almacén"
+    
     def btn_surtir(self, obj):
         from django.utils.html import format_html
-        from django.utils.safestring import mark_safe # <--- Importamos mark_safe
+        from django.utils.safestring import mark_safe 
         
         if obj.estatus == 'ENTREGADA':
-            # Cambiamos format_html por mark_safe aquí
             return mark_safe('<span style="color: green; font-weight:bold;">✔ Completada</span>')
             
         return format_html(
@@ -1284,6 +1272,7 @@ class OrdenSuministroAdmin(ImportExportModelAdmin):
             obj.id
         )
     btn_surtir.short_description = "Logística"
+    
     def get_urls(self):
         urls = super().get_urls()
         from django.urls import path
@@ -1299,13 +1288,8 @@ class OrdenSuministroAdmin(ImportExportModelAdmin):
         
         orden = self.get_object(request, object_id)
         
-        # Conseguir la clave de la orden
         clave_buscar = orden.clave_contrato.medicamento.clave_sector if (orden.clave_contrato and orden.clave_contrato.medicamento) else orden.clave_medicamento_historico
-        
-        # Buscar el inventario disponible de esa clave
         lotes_disponibles = Inventario.objects.filter(medicamento__clave_sector=clave_buscar, cantidad_disponible__gt=0).order_by('fecha_caducidad')
-        
-        # Calcular cuánto falta por entregar
         ya_enviado = sum(r.cantidad_entregada for r in orden.remisiones.all())
         falta_enviar = orden.cantidad_solicitada - ya_enviado
 
@@ -1317,14 +1301,12 @@ class OrdenSuministroAdmin(ImportExportModelAdmin):
             if cantidad_a_enviar > 0 and lote_id and folio_remision:
                 lote_seleccionado = Inventario.objects.get(id=lote_id)
                 
-                # 1. Descontar del inventario
                 if cantidad_a_enviar > lote_seleccionado.cantidad_disponible:
                     messages.error(request, "No puedes enviar más piezas de las que hay en ese lote.")
                 else:
                     lote_seleccionado.cantidad_disponible -= cantidad_a_enviar
                     lote_seleccionado.save()
                     
-                    # 2. Crear la remisión en tránsito
                     RemisionEntrega.objects.create(
                         orden=orden,
                         folio_remision_factura=folio_remision,
@@ -1333,7 +1315,6 @@ class OrdenSuministroAdmin(ImportExportModelAdmin):
                         caducidad=lote_seleccionado.fecha_caducidad
                     )
                     
-                    # 3. Cambiar estatus de la orden
                     orden.estatus = 'EN_RUTA'
                     orden.save()
                     
@@ -1349,16 +1330,12 @@ class OrdenSuministroAdmin(ImportExportModelAdmin):
         }
         return render(request, 'admin/licitaciones/ordensuministro/surtir_orden.html', context)
 
-# ==========================================
-    # 🚫 ACCIÓN MASIVA: CANCELAR CON AUDITORÍA
-    # ==========================================
     @admin.action(description='🚫 Marcar seleccionadas como CANCELADAS (Audita evidencia automático)')
     def marcar_como_canceladas(self, request, queryset):
         ordenes_procesadas = 0
         con_evidencia = 0
         
         for orden in queryset:
-            # Revisamos si hay remisiones entregadas
             piezas_entregadas = sum((r.cantidad_entregada or 0) for r in orden.remisiones.exclude(estatus_viaje='RECHAZO'))
             
             if piezas_entregadas > 0:
@@ -1376,15 +1353,9 @@ class OrdenSuministroAdmin(ImportExportModelAdmin):
         else:
             messages.success(request, f"Se cancelaron {ordenes_procesadas} órdenes correctamente.")
 
-# ==========================================
-    # 🔒 CANDADO DE SEGURIDAD PARA BOTONES
-    # ==========================================
     def get_actions(self, request):
         actions = super().get_actions(request)
-        
-        # Si el usuario NO es un Jefe (Superusuario)...
         if not request.user.is_superuser:
-            # Le escondemos el botón de cancelar masivamente
             if 'marcar_como_canceladas' in actions:
                 del actions['marcar_como_canceladas']
                 
@@ -1397,10 +1368,8 @@ class OrdenSuministroAdmin(ImportExportModelAdmin):
 @admin.register(Inventario)
 class InventarioAdmin(admin.ModelAdmin):
     list_per_page = 50
-    # Aquí le agregamos 'almacen' al principio
     list_display = ('almacen', 'medicamento', 'lote', 'fecha_caducidad', 'cantidad_disponible', 'fecha_ingreso')
     search_fields = ('medicamento__clave_sector', 'medicamento__denominacion_generica', 'lote')
-    # Aquí le agregamos 'almacen' a los filtros de la derecha
     list_filter = ('almacen', 'fecha_caducidad',)
     autocomplete_fields = ['medicamento']
 
@@ -1408,10 +1377,8 @@ class InventarioAdmin(admin.ModelAdmin):
 @admin.register(RemisionEntrega)
 class RemisionEntregaAdmin(admin.ModelAdmin):
     list_per_page = 50
-    # Quitamos la insignia de alerta de la lista
     list_display = ('folio_remision_factura', 'orden_vinculada', 'cantidad_entregada', 'estatus_viaje')
     search_fields = ('folio_remision_factura', 'lote', 'orden__numero_orden_suministro')
-    # Quitamos el filtro de compras
     list_filter = ('estatus_viaje',)
 
     fieldsets = (
@@ -1421,7 +1388,6 @@ class RemisionEntregaAdmin(admin.ModelAdmin):
         ('🚚 Logística y Comprobación', {
             'fields': ('estatus_viaje', 'archivo_evidencia')
         }),
-        # Eliminamos el bloque entero de Incidencias de Entrega Parcial
         ('🔴 Incidencias: Rechazo', {
             'fields': ('motivo_rechazo', 'evidencia_rechazo'),
             'description': 'Llena esto si el Instituto rechazó las cajas por caducidad, maltrato, etc.'
@@ -1470,13 +1436,9 @@ class PartidaCompraInline(admin.TabularInline):
         return "$0.00"
     importe_visual.short_description = "Importe"
 
-    # =========================================================
-    # 🚀 TRUCO PARA ENSANCHAR EL BUSCADOR DE MEDICAMENTOS
-    # =========================================================
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         formfield = super().formfield_for_foreignkey(db_field, request, **kwargs)
         if db_field.name == "medicamento":
-            # Forzamos un ancho mínimo de 450px para que se lea perfecto
             formfield.widget.attrs.update({'style': 'width: 450px; min-width: 450px;'})
         return formfield
 
@@ -1487,11 +1449,9 @@ class DocumentoOrdenCompraInline(admin.TabularInline):
 
 @admin.register(OrdenCompra)
 class OrdenCompraAdmin(admin.ModelAdmin):
-    # Agregamos destino y el botón de enviar
     list_display = ('folio', 'proveedor', 'fecha_entrega_esperada', 'mostrar_total', 'penalizacion_calculada', 'auditoria_ciega', 'estatus_badge', 'enviar_oc_link')
     list_filter = ('estatus', 'empresa_compradora', 'proveedor')
     
-    # Busca por el nombre del Socio Comercial y el destino
     search_fields = ('folio', 'proveedor__nombre', 'destino') 
     
     inlines = [PartidaCompraInline, DocumentoOrdenCompraInline]
@@ -1504,7 +1464,6 @@ class OrdenCompraAdmin(admin.ModelAdmin):
         return f"${obj.penalizacion_calculada:,.2f}"
     penalizacion_calculada.short_description = "📉 Penalización por Atraso"
 
-    # --- BOTÓN INDIVIDUAL EN LA LISTA ---
     def enviar_oc_link(self, obj):
         return format_html(
             '<a class="button" href="{}" style="background-color: #5e35b1; color:white; padding: 5px 10px; border-radius: 4px; text-decoration: none;">✉️ Enviar OC</a>',
@@ -1512,25 +1471,21 @@ class OrdenCompraAdmin(admin.ModelAdmin):
         )
     enviar_oc_link.short_description = "Notificar"
 
-    # --- REGISTRO DE LAS URLS ---
     def get_urls(self):
         urls = super().get_urls()
         from django.urls import path
         custom_urls = [
             path('<path:object_id>/notificar-proveedor/', self.admin_site.admin_view(self.notificar_proveedor_view), name='notificar_proveedor_oc'),
-            # 🚀 NUEVA RUTA PARA LA VISTA PREVIA:
             path('<path:object_id>/vista-previa-pdf/', self.admin_site.admin_view(self.vista_previa_pdf_view), name='vista_previa_pdf_oc'),
         ]
         return custom_urls + urls
 
-    # --- 👁️ NUEVA FUNCIÓN: VISTA PREVIA DEL PDF (A PRUEBA DE FALLOS) ---
     def vista_previa_pdf_view(self, request, object_id):
         from django.http import HttpResponse
         from django.template.loader import render_to_string
         from django.shortcuts import redirect
         from io import BytesIO
         
-        # Usamos xhtml2pdf que no depende de Windows
         try:
             from xhtml2pdf import pisa
         except ImportError:
@@ -1558,7 +1513,6 @@ class OrdenCompraAdmin(admin.ModelAdmin):
         html_pdf = render_to_string('admin/licitaciones/ordencompra/pdf/orden_compra_pdf.html', contexto)
         result_file = BytesIO()
         
-        # Generamos el PDF
         pisa_status = pisa.CreatePDF(html_pdf, dest=result_file)
         
         if not pisa_status.err:
@@ -1569,13 +1523,12 @@ class OrdenCompraAdmin(admin.ModelAdmin):
             self.message_user(request, "⚠️ Hubo un error al procesar el PDF de vista previa.", level='error')
             return redirect('admin:licitaciones_ordencompra_changelist')
 
-    # --- VISTA PARA CONFIRMAR Y ENVIAR EL CORREO ---
     def notificar_proveedor_view(self, request, object_id):
         from django.core.mail import EmailMultiAlternatives, get_connection
         from django.template.loader import render_to_string
         from django.utils.html import strip_tags
         from django.shortcuts import render, redirect
-        from django.contrib import messages # <--- Para avisarte del error
+        from django.contrib import messages 
         import mimetypes
         from io import BytesIO
         
@@ -1591,7 +1544,6 @@ class OrdenCompraAdmin(admin.ModelAdmin):
         if request.method == 'POST':
             empresa = oc.empresa_compradora
             
-            # --- VALIDACIÓN DE SEGURIDAD ---
             if not empresa.servidor_correo or not empresa.correo_remitente or not empresa.password_aplicacion:
                 messages.error(request, f"❌ ERROR DE CONFIGURACIÓN: La empresa '{empresa.nombre}' no tiene llenos los campos de Correo, Servidor o Password en el módulo de Empresas.")
                 return redirect(request.path)
@@ -1608,9 +1560,8 @@ class OrdenCompraAdmin(admin.ModelAdmin):
                 asunto = f"ORDEN DE COMPRA OFICIAL: {oc.folio} - {empresa.nombre}"
                 partidas = oc.partidas_compra.all()
                 
-                # Colores corporativos (SAGO, GAMS, GSM)
                 nombre_empresa = empresa.nombre.upper()
-                color_empresa = "#5e35b1" # Default Morado
+                color_empresa = "#5e35b1" 
                 if "SAGO" in nombre_empresa: color_empresa = "#8B0000"
                 elif "GAMS" in nombre_empresa: color_empresa = "#005b96"
                 elif "GSM" in nombre_empresa: color_empresa = "#218838"
@@ -1628,7 +1579,6 @@ class OrdenCompraAdmin(admin.ModelAdmin):
                 msg = EmailMultiAlternatives(asunto, text_content, empresa.correo_remitente, destinatarios, connection=conexion)
                 msg.attach_alternative(html_content, "text/html")
                 
-                # PDF
                 html_pdf = render_to_string('admin/licitaciones/ordencompra/pdf/orden_compra_pdf.html', contexto)
                 result_file = BytesIO()
                 pisa_status = pisa.CreatePDF(html_pdf, dest=result_file)
@@ -1636,7 +1586,6 @@ class OrdenCompraAdmin(admin.ModelAdmin):
                 if not pisa_status.err:
                     msg.attach(f"Orden_de_Compra_{oc.folio}.pdf", result_file.getvalue(), 'application/pdf')
 
-                # Evidencias
                 for documento in oc.documentos.all():
                     if documento.archivo:
                         content_type, _ = mimetypes.guess_type(documento.archivo.name)
@@ -1652,7 +1601,6 @@ class OrdenCompraAdmin(admin.ModelAdmin):
                 return redirect('admin:licitaciones_ordencompra_changelist')
             
             except Exception as e:
-                # 🚨 ESTA LÍNEA NOS VA A DECIR LA VERDAD:
                 messages.error(request, f"❌ ERROR DE GMAIL/RED: {str(e)}")
 
         context = {
@@ -1661,19 +1609,17 @@ class OrdenCompraAdmin(admin.ModelAdmin):
         }
         return render(request, 'admin/licitaciones/ordencompra/confirmar_envio_oc.html', context)
 
-    # --- ACCIÓN MASIVA ---
     @admin.action(description='✉️ Enviar OC seleccionadas a Proveedores')
     def notificar_proveedor_masivo(self, request, queryset):
-        # Lógica masiva lista para habilitarse en el futuro
         self.message_user(request, "Las órdenes seleccionadas han sido procesadas.")
 
     def estatus_badge(self, obj):
         colores = {
-            'BORRADOR': '#6c757d',   # Gris
-            'AUTORIZADA': '#007bff', # Azul
-            'TRANSITO': '#fd7e14',   # Naranja
-            'RECIBIDA': '#28a745',   # Verde
-            'CANCELADA': '#dc3545'   # Rojo
+            'BORRADOR': '#6c757d',   
+            'AUTORIZADA': '#007bff', 
+            'TRANSITO': '#fd7e14',   
+            'RECIBIDA': '#28a745',   
+            'CANCELADA': '#dc3545'   
         }
         color = colores.get(obj.estatus, '#000')
         return format_html(
@@ -1687,34 +1633,26 @@ class OrdenCompraAdmin(admin.ModelAdmin):
         return format_html('<b style="color: #5e35b1;">${}</b>', total_formateado)
     mostrar_total.short_description = "Total OC"
 
-    # ==============================================================
-    # 🚀 LA MAGIA: AUTOMATIZACIÓN DE INVENTARIO
-    # ==============================================================
     @admin.action(description='📦 Marcar como RECIBIDA e Ingresar al Inventario')
     def marcar_recibida_y_crear_inventario(self, request, queryset):
         ordenes_procesadas = 0
         for orden in queryset:
             if orden.estatus == 'RECIBIDA':
-                continue # Evita duplicar inventario si ya estaba recibida
+                continue 
                 
-            # 1. Cambiamos el estatus
             orden.estatus = 'RECIBIDA'
             orden.save()
             
-            # 2. Ingresamos las piezas al Inventario General
             import datetime
             for partida in orden.partidas_compra.all():
-                # Actualizamos la partida de compra
                 partida.cantidad_recibida = partida.cantidad
                 partida.save()
                 
-                # Creamos el registro en Inventario
                 Inventario.objects.create(
                     medicamento=partida.medicamento,
                     cantidad_disponible=partida.cantidad,
-                    lote=f"LOT-{orden.folio}", # Lote temporal basado en la OC
+                    lote=f"LOT-{orden.folio}", 
                     fecha_ingreso=datetime.date.today(),
-                    # Por defecto le damos 2 años de caducidad si no especifican
                     fecha_caducidad=datetime.date.today() + datetime.timedelta(days=730) 
                 )
             ordenes_procesadas += 1
@@ -1724,20 +1662,13 @@ class OrdenCompraAdmin(admin.ModelAdmin):
         else:
             messages.warning(request, "Las órdenes seleccionadas ya estaban recibidas previamente.")
 
-# ==========================================================
-    # ⚖️ AUDITORÍA: COMPRAS VS ALMACÉN FÍSICO
-    # ==========================================================
     def auditoria_ciega(self, obj):
         from django.utils.html import format_html
         
-        # 1. ¿Cuánto dice Compras que llegó?
         reclamado_compras = sum(p.cantidad_recibida for p in obj.partidas_compra.all() if p.cantidad_recibida)
-        
-        # 2. ¿Cuánto contó Almacén físicamente?
         recibido_almacen = sum(e.cantidad_recibida for e in obj.entradaalmacen_set.all() if e.cantidad_recibida)
         
         if reclamado_compras == 0 and recibido_almacen == 0:
-            # EL ERROR ESTABA AQUÍ: format_html necesita al menos un {} y una variable. Así que mejor usamos mark_safe
             from django.utils.safestring import mark_safe
             return mark_safe('<span style="color: #95a5a6; font-weight: bold;">➖ Pendiente</span>')
             
@@ -1767,22 +1698,17 @@ class EntradaAlmacenForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         
-        # 1. Optimización: No cargamos las 10,000 claves para que no se trabe el navegador
         if self.instance and self.instance.pk and self.instance.orden_id:
-            # Si estamos editando un registro, solo mostramos las de esa orden
             self.fields['medicamento'].queryset = CatalogoMedicamento.objects.filter(
                 id__in=PartidaCompra.objects.filter(orden=self.instance.orden).values('medicamento')
             )
         elif self.data.get('orden'):
-            # Si falló la validación de un campo, mantenemos la lista viva
             self.fields['medicamento'].queryset = CatalogoMedicamento.objects.filter(
                 id__in=PartidaCompra.objects.filter(orden_id=self.data.get('orden')).values('medicamento')
             )
         else:
-            # Registro nuevo: la lista de medicamentos empieza totalmente vacía
             self.fields['medicamento'].queryset = CatalogoMedicamento.objects.none()
 
-        # 2. Inyectamos la magia de JavaScript directo en el campo "orden"
         if 'orden' in self.fields:
             js = """
             <script type="text/javascript">
@@ -1802,7 +1728,6 @@ class EntradaAlmacenForm(forms.ModelForm):
                         
                         $medSelect.html('<option value="">🔄 Buscando claves en la OC...</option>');
                         
-                        // Llamamos al servidor
                         var url = '/admin/licitaciones/entradaalmacen/ajax/load-medicamentos/?orden_id=' + ordenId;
                         
                         $.ajax({
@@ -1817,7 +1742,7 @@ class EntradaAlmacenForm(forms.ModelForm):
                                         $medSelect.append('<option value="' + item.id + '">' + item.text + '</option>');
                                     });
                                 }
-                                $medSelect.trigger('change'); // Refresca el diseño visual
+                                $medSelect.trigger('change');
                             },
                             error: function() {
                                 alert("Error al conectar. Revisa tu internet.");
@@ -1834,14 +1759,13 @@ class EntradaAlmacenForm(forms.ModelForm):
 # ==========================================
 @admin.register(EntradaAlmacen)
 class EntradaAlmacenAdmin(admin.ModelAdmin):
-    form = EntradaAlmacenForm # <--- AQUÍ CONECTAMOS EL CEREBRO AJAX
+    form = EntradaAlmacenForm 
     
     list_per_page = 30
     list_display = ('orden', 'almacen_destino', 'medicamento', 'cantidad_recibida', 'lote', 'ver_acuse', 'ver_factura', 'documentacion_ok', 'fecha_ingreso')
     search_fields = ('orden__folio', 'medicamento__clave_sector', 'lote', 'ubicacion')
     list_filter = ('almacen_destino', 'documentacion_completa', 'fecha_ingreso')
     
-    # OJO: Quitamos 'medicamento'. Solo dejamos 'orden' para que el AJAX pueda manipular la lista.
     autocomplete_fields = ['orden']
 
     fieldsets = (
@@ -1856,9 +1780,6 @@ class EntradaAlmacenAdmin(admin.ModelAdmin):
         }),
     )
 
-    # ==========================================
-    # 🔗 RUTAS AJAX PARA LISTAS DEPENDIENTES
-    # ==========================================
     def get_urls(self):
         urls = super().get_urls()
         from django.urls import path
@@ -1875,20 +1796,15 @@ class EntradaAlmacenAdmin(admin.ModelAdmin):
         if not orden_id:
             return JsonResponse([])
             
-        # Traemos SOLO las partidas de la OC que el usuario acaba de seleccionar
         partidas = PartidaCompra.objects.filter(orden_id=orden_id).select_related('medicamento')
         data = []
         for p in partidas:
-            # 🚀 TOQUE MAESTRO: Le mostramos al de almacén cuánto falta por recibir en el mismo menú
             faltantes = (p.cantidad or 0) - (p.cantidad_recibida or 0)
             texto = f"Clave: {p.medicamento.clave_sector} | {p.medicamento.denominacion_generica[:40]}... (Esperando: {faltantes} pz)"
             data.append({'id': p.medicamento.id, 'text': texto})
             
         return JsonResponse(data, safe=False)
 
-    # ==========================================
-    # 🖱️ BOTONES DE DOCUMENTOS EN TABLA
-    # ==========================================
     def ver_acuse(self, obj):
         from django.utils.html import format_html
         if obj.acuse_recibo:
@@ -1910,7 +1826,7 @@ class EntradaAlmacenAdmin(admin.ModelAdmin):
         return mark_safe('<span style="color: #dc3545; font-weight: bold;">❌ Faltante</span>')
     documentacion_ok.short_description = "Documentación"
 
-    # ==========================================
+# ==========================================
 # PANTALLA DE TRASPASOS ENTRE ALMACENES
 # ==========================================
 @admin.register(TraspasoIntercompany)
@@ -1920,7 +1836,6 @@ class TraspasoIntercompanyAdmin(admin.ModelAdmin):
     list_filter = ('estatus', 'almacen_origen', 'almacen_destino', 'fecha_operacion')
     autocomplete_fields = ['medicamento']
     
-    # Bloqueamos los campos si ya está procesado para evitar fraudes contables
     def get_readonly_fields(self, request, obj=None):
         if obj and obj.procesado:
             return ('almacen_origen', 'almacen_destino', 'medicamento', 'lote', 'cantidad', 'precio_unitario', 'folio_factura', 'estatus')
@@ -1929,15 +1844,11 @@ class TraspasoIntercompanyAdmin(admin.ModelAdmin):
     def mostrar_importe(self, obj):
         from django.utils.html import format_html
         total = obj.cantidad * obj.precio_unitario
-        
-        # 1. Primero le damos el formato de moneda aquí en Python puro
         total_formateado = f"{total:,.2f}"
-        
-        # 2. Luego se lo pasamos a Django ya formateado usando solo {}
         return format_html('<b>${}</b>', total_formateado)
         
     mostrar_importe.short_description = "Valor Fiscal Total"
 
-@admin.register(ConfiguracionEmail)
-class ConfiguracionEmailAdmin(admin.ModelAdmin):
-    list_display = ('empresa', 'email_host_user')
+# @admin.register(ConfiguracionEmail) # <-- Oculto porque la configuración se hace en el modelo Empresa
+# class ConfiguracionEmailAdmin(admin.ModelAdmin):
+#     list_display = ('empresa', 'email_host_user')
