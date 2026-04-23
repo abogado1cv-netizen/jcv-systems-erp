@@ -73,9 +73,8 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
 
 # ==========================================
-# GESTIÓN DE ARCHIVOS SUBIDOS (NUEVO)
+# GESTIÓN DE ARCHIVOS SUBIDOS
 # ==========================================
-# Aquí es donde se guardarán los PDFs de las OC y evidencias
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
@@ -95,7 +94,7 @@ SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 # ==========================================
 JAZZMIN_SETTINGS = {
     "site_title": "GPHARMA ERP",
-    "site_header": "Gestión Integral",
+    "site_header": "Módulos",
     "site_brand": "GPHARMA",
     
     "site_logo": "logo.png",
@@ -104,7 +103,8 @@ JAZZMIN_SETTINGS = {
     "site_logo_classes": "img-fluid",
     "login_logo_classes": "img-fluid", 
     
-    "welcome_sign": "Gestión Integral GPHARMA - Bienvenido",
+    "welcome_sign": "Bienvenido al Centro de Control GPHARMA",
+    "copyright": "JCV Systems",
     
     "topmenu_links": [
         {"name": "📊 KPIs Licitaciones", "url": "/dashboard/licitaciones/"},
@@ -112,31 +112,52 @@ JAZZMIN_SETTINGS = {
         {"name": "🛒 KPIs Compras", "url": "/dashboard/compras/"},
         {"name": "📦 Almacén / Inventario", "url": "/dashboard/inventario/"},
         {'name': '🚚 KPIs Logística (OPMs)', 'url': '/dashboard/ordenes/'},
-        {"name": " Atención (Pronto)", "url": "#"},
     ],
 
+    # 🚫 AQUÍ ESCONDEMOS LOS MÓDULOS QUE NO QUEREMOS VER EN EL MENÚ
+    "hide_models": [
+        "licitaciones.estatusprocedimiento",
+        "licitaciones.configuracionemail",
+        "licitaciones.partidarequerimiento",
+    ],
+    "hide_apps": ["auth"], # Oculta la app de Usuarios y Grupos
+
+    # 🎨 ICONOS EXACTOS DE TUS MÓDULOS ACTUALES
     "icons": {
-        "licitaciones.Licitacion": "fas fa-chart-line",           
-        "licitaciones.CatalogoMedicamento": "fas fa-pills", 
-        "licitaciones.ContratoMaestro": "fas fa-file-signature", 
-        "licitaciones.Contrato": "fas fa-database",          
-        "licitaciones.Empresa": "fas fa-building",           
-        "licitaciones.RegistroUbicacion": "fas fa-map-marker-alt",
-        
-        # --- LOS NUEVOS MÓDULOS ---
-        "licitaciones.SocioComercial": "fas fa-handshake-angle", 
-        "licitaciones.Proveedor": "fas fa-truck-field",          
-        "licitaciones.OrdenCompra": "fas fa-file-invoice-dollar",
-        "licitaciones.Inventario": "fas fa-boxes",               
-        
-        "auth.Group": "fas fa-users",
-        "auth.User": "fas fa-user-circle",
+        "licitaciones.licitacion": "fas fa-gavel",           
+        "licitaciones.contrato": "fas fa-file-signature",          
+        "licitaciones.ordensuministro": "fas fa-truck-loading",
+        "licitaciones.remisionentrega": "fas fa-receipt",
+        "licitaciones.ordencompra": "fas fa-shopping-cart",
+        "licitaciones.entradaalmacen": "fas fa-dolly",
+        "licitaciones.inventario": "fas fa-boxes",               
+        "licitaciones.almacen": "fas fa-warehouse",
+        "licitaciones.traspasointercompany": "fas fa-exchange-alt",
+        "licitaciones.catalogomedicamento": "fas fa-pills", 
+        "licitaciones.sociocomercial": "fas fa-handshake-angle", 
+        "licitaciones.empresa": "fas fa-building",           
+        "licitaciones.registroubicacion": "fas fa-map-marker-alt",
     },
     
-    "order_with_respect_to": ["licitaciones.Licitacion", "licitaciones.ContratoMaestro", "licitaciones.Empresa", "licitaciones.CatalogoMedicamento"],
+    # 📋 ORDEN EXACTO DE APARICIÓN EN LA BARRA LATERAL (Flujo lógico de negocio)
+    "order_with_respect_to": [
+        "licitaciones.licitacion",
+        "licitaciones.contrato",
+        "licitaciones.ordensuministro",
+        "licitaciones.remisionentrega",
+        "licitaciones.ordencompra",
+        "licitaciones.entradaalmacen",
+        "licitaciones.inventario",
+        "licitaciones.almacen",
+        "licitaciones.traspasointercompany",
+        "licitaciones.catalogomedicamento",
+        "licitaciones.sociocomercial",
+        "licitaciones.empresa",
+        "licitaciones.registroubicacion",
+    ],
+    
     "show_sidebar": True,
     "navigation_expanded": True,
-    "hide_apps": ["auth"], 
 }
 
 JAZZMIN_UI_TWEAKS = {
