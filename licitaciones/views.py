@@ -291,6 +291,10 @@ def dashboard_licitaciones(request):
 # ==========================================
 # 3. DASHBOARD DE ÓRDENES DE SUMINISTRO (LOGÍSTICA)
 # ==========================================
+from django.db.models import Sum, Count, Q
+from django.utils import timezone
+import json
+
 @staff_member_required
 def dashboard_ordenes(request):
     busqueda = request.GET.get('q', '').strip()
@@ -305,7 +309,7 @@ def dashboard_ordenes(request):
             Q(razon_social__icontains=busqueda)
         ).distinct()
 
-    # KPIs Básicos
+    # KPIs Básicos (Las Órdenes)
     total_ordenes = ordenes.count()
     entregadas = ordenes.filter(estatus='ENTREGADA').count()
     pendientes = ordenes.filter(estatus__in=['PENDIENTE', 'PARCIAL']).count()
@@ -318,7 +322,34 @@ def dashboard_ordenes(request):
     monto_total_solicitado = sum((float(o.cantidad_solicitada or 0) * float(o.precio_unitario or 0)) for o in ordenes)
     penalizaciones_totales = sum(float(o.penalizacion_estimada) for o in ordenes)
 
-    # Top 5 Unidades/Hospitales con más pedidos
+    # ==========================================
+    # 🔥 NUEVOS CÁLCULOS: INTELIGENCIA DE PIEZAS
+    # ==========================================
+    # 1. Total de Piezas Solicitadas
+    total_piezas_solicitadas = ordenes.aggregate(total=Sum('cantidad_solicitada'))['total'] or 0
+    
+    # 2. Total de Piezas Entregadas
+    total_piezas_entregadas = ordenes.aggregate(total=Sum('cantidad_entregada'))['total'] or 0
+    
+    # 3. Total de Piezas Pendientes (Calculado)
+    total_piezas_pendientes = total_piezas_solicitadas - total_piezas_entregadas
+    if total_piezas_pendientes < 0:
+        total_piezas_pendientes = 0 # Protección por si hay entregas de más
+        
+    # 4. Total de Piezas Canceladas (Asumiendo que tienes un estatus CANCELADA)
+    total_piezas_canceladas = ordenes.filter(estatus='CANCELADA').aggregate(total=Sum('cantidad_solicitada'))['total'] or 0
+
+    # ==========================================
+    # 🔥 NUEVO TOP: CLAVES MÁS ENTREGADAS
+    # ==========================================
+    # Agrupamos por la clave del medicamento y sumamos sus cantidades entregadas
+    top_claves_entregadas = ordenes.filter(cantidad_entregada__gt=0).values(
+        'clave_contrato__medicamento__clave_sector'
+    ).annotate(
+        total_entregado=Sum('cantidad_entregada')
+    ).order_by('-total_entregado')[:10] # Top 10
+
+    # Top 5 Unidades/Hospitales con más pedidos (Para la gráfica)
     top_unidades = ordenes.values('nombre_unidad').annotate(
         total=Count('id')
     ).order_by('-total')[:5]
@@ -328,11 +359,12 @@ def dashboard_ordenes(request):
 
     # Órdenes Críticas (Atrasadas con multas creciendo)
     ordenes_criticas = [o for o in ordenes if o.dias_atraso > 0 and o.estatus in ['PENDIENTE', 'PARCIAL']]
-    ordenes_criticas.sort(key=lambda x: x.penalizacion_estimada, reverse=True) # Ordenamos por la multa más cara
-    ordenes_criticas = ordenes_criticas[:50] # Mostramos el top 50 crítico
+    ordenes_criticas.sort(key=lambda x: x.penalizacion_estimada, reverse=True)
+    ordenes_criticas = ordenes_criticas[:50] 
 
     context = {
         'busqueda': busqueda,
+        # KPIs Originales
         'total_ordenes': total_ordenes,
         'entregadas': entregadas,
         'pendientes': pendientes,
@@ -342,33 +374,16 @@ def dashboard_ordenes(request):
         'nombres_unidades_json': json.dumps(nombres_unidades),
         'cantidades_unidades_json': json.dumps(cantidades_unidades),
         'ordenes_criticas': ordenes_criticas,
+        
+        # 🔥 Nuevas variables inyectadas al HTML
+        'piezas_solicitadas': total_piezas_solicitadas,
+        'piezas_entregadas': total_piezas_entregadas,
+        'piezas_pendientes': total_piezas_pendientes,
+        'piezas_canceladas': total_piezas_canceladas,
+        'top_claves_entregadas': top_claves_entregadas,
     }
     
     return render(request, 'dashboard_ordenes.html', context)
-from django.utils import timezone
-from datetime import timedelta
-
-from django.contrib.admin.views.decorators import staff_member_required
-from django.shortcuts import render
-from .models import Contrato, OrdenSuministro, Licitacion, Inventario
-
-from django.contrib.admin.views.decorators import staff_member_required
-from django.shortcuts import render
-from .services import DashboardService # <--- Importamos tu nuevo servicio
-
-@staff_member_required
-def dashboard_inicio(request):
-    # Instanciamos tu código
-    svc = DashboardService("GPHARMA")
-    
-    # Extraemos los datos (por ejemplo, del Año a la Fecha 'YTD')
-    datos_ejecutivos = svc.obtener_datos_dashboard("YTD")
-    
-    context = {
-        'title': 'Inicio',
-        'datos': datos_ejecutivos, # Mandamos todo tu paquete al HTML
-    }
-    return render(request, 'dashboard_inicio.html', context)
 
 from django.shortcuts import render
 from django.db.models import Sum, F, FloatField

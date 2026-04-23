@@ -33,7 +33,6 @@
         <a href="{% url 'dashboard_ordenes' %}" class="btn btn-sm btn-light" style="border-radius: 20px;">Refrescar Tablero</a>
     </div>
 
-    <!-- BUSCADOR -->
     <div class="search-bar-container">
         <form method="GET" action="">
             <div class="input-group">
@@ -49,7 +48,6 @@
         </form>
     </div>
 
-    <!-- KPIs -->
     <div class="row mb-4">
         <div class="col-md-3">
             <div class="kpi-card">
@@ -81,7 +79,37 @@
         </div>
     </div>
 
-    <!-- Gráficas -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="kpi-card" style="border-left: 4px solid #007bff; background-color: #f8fbff;">
+                <div class="kpi-title"><span class="dot" style="background-color: #007bff;"></span> Pz. Solicitadas</div>
+                <div class="kpi-value" style="color: #007bff;">{{ piezas_solicitadas|intcomma }}</div>
+                <div class="kpi-subtitle">Total requerido por dependencias</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="kpi-card" style="border-left: 4px solid #28a745; background-color: #f8fff9;">
+                <div class="kpi-title"><span class="dot" style="background-color: #28a745;"></span> Pz. Entregadas</div>
+                <div class="kpi-value" style="color: #28a745;">{{ piezas_entregadas|intcomma }}</div>
+                <div class="kpi-subtitle">Ingresadas exitosamente</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="kpi-card" style="border-left: 4px solid #fd7e14; background-color: #fffaf6;">
+                <div class="kpi-title"><span class="dot" style="background-color: #fd7e14;"></span> Pz. Pendientes</div>
+                <div class="kpi-value" style="color: #fd7e14;">{{ piezas_pendientes|intcomma }}</div>
+                <div class="kpi-subtitle">Faltantes por entregar</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="kpi-card" style="border-left: 4px solid #6c757d; background-color: #fdfdfd;">
+                <div class="kpi-title"><span class="dot" style="background-color: #6c757d;"></span> Pz. Canceladas</div>
+                <div class="kpi-value" style="color: #6c757d;">{{ piezas_canceladas|intcomma }}</div>
+                <div class="kpi-subtitle">Mermas o cancelaciones</div>
+            </div>
+        </div>
+    </div>
+
     <div class="row mb-4">
         <div class="col-md-5">
             <div class="modern-panel">
@@ -102,9 +130,8 @@
         </div>
     </div>
 
-    <!-- TABLA CRÍTICA -->
     <div class="row">
-        <div class="col-md-12">
+        <div class="col-lg-8 mb-4">
             <div class="modern-panel">
                 <div class="panel-title" style="color: #dc3545;">🚨 Órdenes Críticas (Atrasadas con Multa Activa)</div>
                 <div class="table-responsive" style="max-height: 400px;">
@@ -116,14 +143,14 @@
                                 <th>CLAVE</th>
                                 <th>FECHA LÍMITE</th>
                                 <th>DÍAS ATRASO</th>
-                                <th class="text-right">MULTA ESTIMADA (-10% MAX)</th>
+                                <th class="text-right">MULTA ESTIMADA</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for orden in ordenes_criticas %}
                             <tr>
                                 <td><a href="/admin/licitaciones/ordensuministro/{{ orden.id }}/change/"><b>{{ orden.numero_orden_suministro }}</b></a></td>
-                                <td>{{ orden.nombre_unidad|truncatechars:40|default:"Sin Asignar" }}</td>
+                                <td>{{ orden.nombre_unidad|truncatechars:35|default:"Sin Asignar" }}</td>
                                 <td>
                                     {% if orden.clave_contrato %}
                                         {{ orden.clave_contrato.medicamento.clave_sector }}
@@ -145,6 +172,38 @@
                             <tr>
                                 <td colspan="6" class="text-center" style="padding: 20px; color: #28a745; font-weight: bold;">
                                     🎉 ¡Felicidades! No hay órdenes atrasadas generando penalizaciones.
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4 mb-4">
+            <div class="modern-panel">
+                <div class="panel-title" style="color: #28a745;">🏆 Top 10 Claves Entregadas</div>
+                <div class="table-responsive" style="max-height: 400px;">
+                    <table class="clean-table">
+                        <thead>
+                            <tr>
+                                <th>CLAVE (SECTOR)</th>
+                                <th class="text-right">PIEZAS ENTREGADAS</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in top_claves_entregadas %}
+                            <tr>
+                                <td><b style="color: #2c3e50;">{{ item.clave_contrato__medicamento__clave_sector|default:"S/N" }}</b></td>
+                                <td class="text-right" style="color: #28a745; font-weight: bold; font-size: 15px;">
+                                    {{ item.total_entregado|intcomma }}
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="2" class="text-center" style="padding: 20px; color: #888;">
+                                    No hay entregas registradas aún.
                                 </td>
                             </tr>
                             {% endfor %}
