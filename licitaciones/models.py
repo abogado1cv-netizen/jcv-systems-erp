@@ -9,6 +9,7 @@ from googleapiclient.discovery import build
 from django.utils import timezone
 from datetime import date
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 
 class EstatusProcedimiento(models.Model):
     ESTATUS_CHOICES = [
@@ -416,10 +417,14 @@ class Almacen(models.Model):
         return self.nombre
 
 class Inventario(models.Model):
-    almacen = models.ForeignKey(Almacen, on_delete=models.CASCADE, verbose_name="Almacén", null=True, blank=True)
-    medicamento = models.ForeignKey(CatalogoMedicamento, on_delete=models.CASCADE, verbose_name="Clave / Medicamento")
+    almacen = models.ForeignKey('Almacen', on_delete=models.CASCADE, verbose_name="Almacén", null=True, blank=True)
+    medicamento = models.ForeignKey('CatalogoMedicamento', on_delete=models.CASCADE, verbose_name="Clave / Medicamento")
     lote = models.CharField(max_length=50, verbose_name="Lote del Producto")
     fecha_caducidad = models.DateField(verbose_name="Fecha de Caducidad")
+    
+    # 🔥 NUEVO CAMPO: Código de barras para la pistola
+    codigo_barras = models.CharField(max_length=150, blank=True, null=True, verbose_name="Código de Barras", help_text="Escanea aquí con la pistola de códigos")
+    
     cantidad_disponible = models.IntegerField(default=0, verbose_name="Piezas Físicas Disponibles")
     fecha_ingreso = models.DateTimeField(auto_now_add=True, verbose_name="Fecha de Ingreso al Sistema")
 
@@ -435,7 +440,7 @@ class Inventario(models.Model):
     
     def clean(self):
         super().clean()
-        if self.lote and self.medicamento:
+        if self.lote and hasattr(self, 'medicamento') and self.medicamento:
             choque = Inventario.objects.filter(lote__iexact=self.lote).exclude(medicamento=self.medicamento).first()
             if choque:
                 lab_original = choque.medicamento.fabricante or "Otro Laboratorio"
@@ -443,12 +448,46 @@ class Inventario(models.Model):
                     'lote': f"🚨 ALERTA DE TRAZABILIDAD: El lote '{self.lote}' ya pertenece al fabricante '{lab_original}'."
                 })
 
+# ==========================================
+# 🔥 EL CORAZÓN DEL ALMACÉN: EL KARDEX
+# ==========================================
+class MovimientoKardex(models.Model):
+    TIPO_MOVIMIENTO = [
+        ('ENTRADA_COMPRA', '📥 Entrada por Compra'),
+        ('SALIDA_OPM', '📤 Salida por OPM'),
+        ('TRASPASO_IN', '🔄 Entrada por Traspaso'),
+        ('TRASPASO_OUT', '🔄 Salida por Traspaso'),
+        ('MERMA', '❌ Merma / Caducidad'),
+        ('AJUSTE', '⚙️ Ajuste Manual'),
+    ]
+    
+    fecha = models.DateTimeField("Fecha y Hora", auto_now_add=True)
+    almacen = models.ForeignKey('Almacen', on_delete=models.CASCADE, verbose_name="Almacén")
+    medicamento = models.ForeignKey('CatalogoMedicamento', on_delete=models.CASCADE, verbose_name="Clave")
+    lote = models.CharField("Lote Físico", max_length=50)
+    
+    tipo = models.CharField("Tipo de Movimiento", max_length=20, choices=TIPO_MOVIMIENTO)
+    cantidad = models.PositiveIntegerField("Cantidad Movida")
+    saldo_restante = models.IntegerField("Saldo Posterior", help_text="Cuántas piezas quedaron después de este movimiento")
+    
+    folio_documento = models.CharField("Folio Relacionado", max_length=100, help_text="Ej. OC-123, REM-456, TRAS-789")
+    observaciones = models.TextField("Observaciones", blank=True, null=True)
+
+    class Meta:
+        verbose_name = "Movimiento de Kardex"
+        verbose_name_plural = "📊 Kardex (Historial Exacto)"
+        ordering = ['-fecha'] # Siempre muestra el más reciente primero
+
+    def __str__(self):
+        signo = "+" if "ENTRADA" in self.tipo or "IN" in self.tipo else "-"
+        return f"{self.fecha.strftime('%d/%m/%Y %H:%M')} | {self.tipo} | {self.lote} | {signo}{self.cantidad} pzs (Quedan: {self.saldo_restante})"
+
 class TraspasoIntercompany(models.Model):
-    almacen_origen = models.ForeignKey(Almacen, on_delete=models.PROTECT, related_name='traspasos_salida', verbose_name="Almacén Origen (El que Vende)")
-    almacen_destino = models.ForeignKey(Almacen, on_delete=models.PROTECT, related_name='traspasos_entrada', verbose_name="Almacén Destino (El que Compra)")
+    almacen_origen = models.ForeignKey('Almacen', on_delete=models.PROTECT, related_name='traspasos_salida', verbose_name="Almacén Origen (El que Vende)")
+    almacen_destino = models.ForeignKey('Almacen', on_delete=models.PROTECT, related_name='traspasos_entrada', verbose_name="Almacén Destino (El que Compra)")
     folio_factura = models.CharField("Folio de Orden / Factura Fiscal", max_length=100, help_text="Folio del documento fiscal que ampara este movimiento.")
     
-    medicamento = models.ForeignKey(CatalogoMedicamento, on_delete=models.CASCADE, verbose_name="Clave a Transferir")
+    medicamento = models.ForeignKey('CatalogoMedicamento', on_delete=models.CASCADE, verbose_name="Clave a Transferir")
     lote = models.CharField("Lote Físico", max_length=50)
     cantidad = models.PositiveIntegerField("Cantidad de Piezas")
     precio_unitario = models.DecimalField("Precio Unitario Fiscal", max_digits=10, decimal_places=2, default=0.00, help_text="A cuánto se lo está vendiendo internamente.")
@@ -612,7 +651,7 @@ class DocumentoOrdenCompra(models.Model):
 
 class EntradaAlmacen(models.Model):
     orden = models.ForeignKey(OrdenCompra, on_delete=models.CASCADE, verbose_name="Orden de Compra Vinculada")
-    almacen_destino = models.ForeignKey(Almacen, on_delete=models.PROTECT, verbose_name="Almacén Destino", null=True, blank=True)
+    almacen_destino = models.ForeignKey('Almacen', on_delete=models.PROTECT, verbose_name="Almacén Destino", null=True, blank=True)
     folio_remision = models.CharField("Folio de Remisión / Factura", max_length=100, default="S/F", help_text="Anota el número de ticket o factura.")
     medicamento = models.ForeignKey('CatalogoMedicamento', on_delete=models.CASCADE, verbose_name="Clave / Medicamento")
     
