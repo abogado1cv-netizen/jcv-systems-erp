@@ -24,8 +24,6 @@ urlpatterns = [
     # La ruta oficial del admin
     path('admin/', admin.site.urls),
     
-    # --- LA LÍNEA DEL ERROR LA BORRAMOS ---
-    
     # Rutas para tus dashboards independientes
     path('dashboard/inicio/', views.dashboard_inicio, name='dashboard_inicio'),
     path('dashboard/contratos/', views.dashboard_contratos, name='dashboard_contratos'),
@@ -33,6 +31,9 @@ urlpatterns = [
     path('dashboard/ordenes/', views.dashboard_ordenes, name='dashboard_ordenes'),
     path('dashboard/compras/', views.dashboard_compras, name='dashboard_compras'),
     path('dashboard/inventario/', views.dashboard_inventario, name='dashboard_inventario'),
+    
+    # 🔥 NUEVA RUTA: El escáner del Kardex
+    path('dashboard/kardex/', views.buscar_kardex, name='buscar_kardex'),
 ]
 
 # ==============================================================
