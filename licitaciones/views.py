@@ -8,6 +8,7 @@ from django.db.models.functions import TruncMonth, Coalesce
 from django.utils import timezone
 from django.contrib.admin.views.decorators import staff_member_required
 from .models import Inventario
+from .services import DashboardService
 
 # Traemos todos los modelos
 from .models import (
@@ -533,3 +534,17 @@ def dashboard_inventario(request):
     }
     
     return render(request, 'dashboard_inventario.html', context)
+
+@staff_member_required
+def dashboard_inicio(request):
+    # Instanciamos tu código
+    svc = DashboardService("GPHARMA")
+    
+    # Extraemos los datos (por ejemplo, del Año a la Fecha 'YTD')
+    datos_ejecutivos = svc.obtener_datos_dashboard("YTD")
+    
+    context = {
+        'title': 'Inicio',
+        'datos': datos_ejecutivos, # Mandamos todo tu paquete al HTML
+    }
+    return render(request, 'dashboard_inicio.html', context)
