@@ -1852,3 +1852,13 @@ class TraspasoIntercompanyAdmin(admin.ModelAdmin):
 # @admin.register(ConfiguracionEmail) # <-- Oculto porque la configuración se hace en el modelo Empresa
 # class ConfiguracionEmailAdmin(admin.ModelAdmin):
 #     list_display = ('empresa', 'email_host_user')
+
+from django.http import HttpResponseRedirect
+from django.urls import reverse
+from .models import EscanerKardex # Asegúrate de importar el modelo que acabamos de crear
+
+@admin.register(EscanerKardex)
+class EscanerKardexAdmin(admin.ModelAdmin):
+    # Esto intercepta el clic y te manda a la ruta secreta
+    def changelist_view(self, request, extra_context=None):
+        return HttpResponseRedirect(reverse('buscar_kardex'))

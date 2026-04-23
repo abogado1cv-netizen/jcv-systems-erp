@@ -725,3 +725,12 @@ class ConfiguracionEmail(models.Model):
 
     def __str__(self):
         return f"Correo para {self.empresa}"
+    
+    # ==========================================
+# 📱 BOTÓN FANTASMA PARA EL MENÚ DEL ESCÁNER
+# ==========================================
+class EscanerKardex(Inventario):
+    class Meta:
+        proxy = True
+        verbose_name = "📱 Escáner Kardex (Cámara)"
+        verbose_name_plural = "📱 Escáner Kardex (Cámara)"
