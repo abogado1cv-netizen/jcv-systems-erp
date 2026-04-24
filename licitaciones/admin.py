@@ -1130,7 +1130,7 @@ class OrdenSuministroAdmin(ImportExportModelAdmin):
     
     list_per_page = 50
     list_display = (
-        'numero_orden_suministro', 'razon_social', 'mostrar_contrato', 'mostrar_clave', 'nombre_unidad', 'dependencia', 'nombre_unidad',
+        'razon_social', 'numero_orden_suministro', 'mostrar_contrato', 'mostrar_clave', 'dependencia', 'nombre_unidad',
         'cantidad_solicitada', 'piezas_entregadas', 'piezas_pendientes', 'alerta_inventario', 'fecha_limite', 
         'estatus_logistico', 'monto_penalizacion', 'estatus', 'btn_surtir'
     )
