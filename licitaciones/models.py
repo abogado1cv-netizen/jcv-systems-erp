@@ -383,7 +383,7 @@ class RemisionEntrega(models.Model):
     def __str__(self):
         return f"Remisión {self.folio_remision_factura} - Orden: {self.orden.numero_orden_suministro}"
         
-def save(self, *args, **kwargs):
+    def save(self, *args, **kwargs):
         es_nuevo = self.pk is None # Detectar si apenas se está creando el viaje
 
         if self.archivo_evidencia and self.estatus_viaje == 'EN_RUTA':
