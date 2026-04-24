@@ -86,7 +86,7 @@
                             <tr>
                                 <th>FECHA</th>
                                 <th>TIPO</th>
-                                <th>FOLIO</th>
+                                <th>FOLIO / DESTINO</th>
                                 <th>CANTIDAD</th>
                                 <th class="text-right">SALDO FINAL</th>
                             </tr>
@@ -102,7 +102,10 @@
                                         <span class="badge-salida">{{ mov.get_tipo_display }}</span>
                                     {% endif %}
                                 </td>
-                                <td><b>{{ mov.folio_documento|default:"-" }}</b></td>
+                                <td>
+                                    <b>{{ mov.folio_documento|default:"Sin Folio" }}</b><br>
+                                    <small style="color: #666; font-style: italic;">{{ mov.observaciones|default:"-" }}</small>
+                                </td>
                                 <td>
                                     {% if "ENTRADA" in mov.tipo or "IN" in mov.tipo %}
                                         <span style="color: #16a34a; font-weight: bold;">+{{ mov.cantidad|intcomma }}</span>
@@ -148,11 +151,16 @@
             readerDiv.style.display = 'block';
             btnScan.style.display = 'none'; // Ocultar botón temporalmente
 
-            // Iniciar la magia de la cámara
+            // 🔥 CAMBIO: MODO FRANCOTIRADOR (30 FPS y área rectangular)
             html5QrcodeScanner = new Html5QrcodeScanner(
                 "reader", 
-                { fps: 10, qrbox: {width: 250, height: 150} }, 
-                /* verbose= */ false
+                { 
+                    fps: 30, 
+                    qrbox: {width: 300, height: 100}, 
+                    aspectRatio: 1.0, 
+                    disableFlip: false 
+                }, 
+                false
             );
             
             html5QrcodeScanner.render(onScanSuccess, onScanFailure);
