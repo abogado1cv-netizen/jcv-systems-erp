@@ -278,6 +278,23 @@ class OrdenSuministro(models.Model):
     clave_contrato = models.ForeignKey(ClaveContrato, on_delete=models.CASCADE, related_name='ordenes', verbose_name="Clave del Contrato", null=True, blank=True)
     
     razon_social = models.CharField(max_length=200, blank=True, null=True, verbose_name="Razón Social (Empresa)")
+    DEPENDENCIAS = [
+        ('IMSS_BIENESTAR', 'IMSS-Bienestar'),
+        ('IMSS_ORDINARIO', 'IMSS Ordinario'),
+        ('ISSSTE', 'ISSSTE'),
+        ('SSA', 'Secretaría de Salud (SSA)'),
+        ('SEDENA', 'SEDENA'),
+        ('SEMAR', 'SEMAR'),
+        ('OTRA', 'Otra Dependencia'),
+    ]
+    dependencia = models.CharField(
+        max_length=50, 
+        choices=DEPENDENCIAS, 
+        blank=True, 
+        null=True, 
+        verbose_name="Dependencia / Institución",
+        help_text="Selecciona la institución que solicitó esta orden."
+    )
     numero_orden_suministro = models.CharField(max_length=150, verbose_name="No. Orden Suministro")
     numero_procedimiento_extra = models.CharField(max_length=150, blank=True, null=True, verbose_name="No. Procedimiento (Histórico)")
     
