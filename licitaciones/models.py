@@ -383,7 +383,9 @@ class RemisionEntrega(models.Model):
     def __str__(self):
         return f"Remisión {self.folio_remision_factura} - Orden: {self.orden.numero_orden_suministro}"
         
-    def save(self, *args, **kwargs):
+def save(self, *args, **kwargs):
+        es_nuevo = self.pk is None # Detectar si apenas se está creando el viaje
+
         if self.archivo_evidencia and self.estatus_viaje == 'EN_RUTA':
             self.estatus_viaje = 'ENTREGADA'
             
@@ -404,6 +406,30 @@ class RemisionEntrega(models.Model):
                 orden.estatus = 'DEVUELTA'
             
         orden.save()
+
+        # 🔥 LA MAGIA: KARDEX Y DESCUENTO DE INVENTARIO PARA SALIDAS
+        if es_nuevo:
+            from .models import MovimientoKardex, Inventario
+            # Buscamos el producto en el almacén basándonos en el Lote
+            stock = Inventario.objects.filter(lote__iexact=self.lote).first()
+
+            if stock:
+                # 1. Descontamos las piezas del almacén
+                stock.cantidad_disponible -= self.cantidad_entregada
+                stock.save()
+
+                # 2. Escribimos en el diario del Kardex
+                destino_final = orden.nombre_unidad or orden.entidad_destino or "Instituto"
+                MovimientoKardex.objects.create(
+                    almacen=stock.almacen,
+                    medicamento=stock.medicamento,
+                    lote=self.lote,
+                    tipo='SALIDA_OPM',
+                    cantidad=self.cantidad_entregada,
+                    saldo_restante=stock.cantidad_disponible,
+                    folio_documento=self.folio_remision_factura,
+                    observaciones=f"Enviado con Orden {orden.numero_orden_suministro} a {destino_final}"
+                )
 
 class Almacen(models.Model):
     nombre = models.CharField("Nombre del Almacén", max_length=100, unique=True)
@@ -708,6 +734,19 @@ class EntradaAlmacen(models.Model):
             if self.orden.estatus not in ['RECIBIDA', 'CANCELADA']:
                 self.orden.estatus = 'PARCIAL' 
                 self.orden.save()
+
+            # 🔥 LA MAGIA: KARDEX PARA ENTRADAS DE COMPRA
+            from .models import MovimientoKardex
+            MovimientoKardex.objects.create(
+                almacen=self.almacen_destino,
+                medicamento=self.medicamento,
+                lote=self.lote,
+                tipo='ENTRADA_COMPRA',
+                cantidad=self.cantidad_recibida,
+                saldo_restante=inventario_obj.cantidad_disponible,
+                folio_documento=self.folio_remision,
+                observaciones=f"Recepcionada desde OC-{self.orden.folio}"
+            )
 
 class ConfiguracionEmail(models.Model):
     EMPRESA_CHOICES = [
