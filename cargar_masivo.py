@@ -10,7 +10,7 @@ from licitaciones.models import OrdenSuministro
 
 def importar_ordenes():
     # 🔥 OJO: Pon aquí el nombre exacto de tu archivo
-    archivo = 'ordenes erp PRUEBA 2.xlsx' 
+    archivo = 'ordenes.xlsx'
     
     print(f"🚀 Iniciando lectura hiper-inteligente de: {archivo}...")
     
