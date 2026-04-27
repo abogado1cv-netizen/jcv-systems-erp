@@ -1368,9 +1368,9 @@ class OrdenSuministroAdmin(ImportExportModelAdmin):
 @admin.register(Inventario)
 class InventarioAdmin(admin.ModelAdmin):
     list_per_page = 50
-    list_display = ('almacen', 'medicamento', 'lote', 'fecha_caducidad', 'cantidad_disponible', 'fecha_ingreso')
+    list_display = ('almacen', 'medicamento', 'tipo_producto', 'lote', 'fecha_caducidad', 'cantidad_disponible', 'fecha_ingreso')
     search_fields = ('medicamento__clave_sector', 'medicamento__denominacion_generica', 'lote')
-    list_filter = ('almacen', 'fecha_caducidad',)
+    list_filter = ('tipo_producto', 'almacen', 'fecha_caducidad',)
     autocomplete_fields = ['medicamento']
 
 # 4. PANTALLA FÍSICA: Remisiones de Almacén (Viajes)
