@@ -1438,8 +1438,24 @@ class OrdenSuministroAdmin(ImportExportModelAdmin):
 # ==========================================
 # REGISTRO DEL NUEVO MÓDULO DE INVENTARIO
 # ==========================================
+
+# 1. Creamos el "Mapa" (Resource) para que el botón de Excel sepa de dónde jalar los datos extra
+class InventarioResource(resources.ModelResource):
+    clave_sector = fields.Field(attribute='medicamento__clave_sector', column_name='CLAVE SECTOR')
+    descripcion = fields.Field(attribute='medicamento__denominacion_generica', column_name='DESCRIPCIÓN')
+    fabricante = fields.Field(attribute='medicamento__fabricante', column_name='FABRICANTE')
+    socio_comercial = fields.Field(attribute='medicamento__socio_contacto__nombre', column_name='SOCIO COMERCIAL')
+
+    class Meta:
+        model = Inventario
+        # 2. Le dictamos el orden exacto de las columnas que queremos en el Excel
+        fields = ('almacen__nombre', 'clave_sector', 'descripcion', 'socio_comercial', 'fabricante', 'tipo_producto', 'lote', 'fecha_caducidad', 'cantidad_disponible')
+        export_order = fields
+
+# 3. Le inyectamos el "Mapa" al panel de administración
 @admin.register(Inventario)
 class InventarioAdmin(ImportExportModelAdmin):
+    resource_class = InventarioResource # <--- ESTA ES LA LÍNEA MÁGICA QUE FALTABA
     list_per_page = 50
     list_display = ('almacen', 'medicamento', 'tipo_producto', 'lote', 'fecha_caducidad', 'cantidad_disponible', 'fecha_ingreso')
     search_fields = ('medicamento__clave_sector', 'medicamento__denominacion_generica', 'lote')
