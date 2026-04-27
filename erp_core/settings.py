@@ -219,3 +219,16 @@ DATETIME_INPUT_FORMATS = [
 # --- CONFIGURACIÓN PARA LÍMITES MASIVOS ---
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 100000
 DATA_UPLOAD_MAX_MEMORY_SIZE = 52428800
+
+# ==========================================
+# 🔥 MOTOR DE CORREOS RESEND (Puerto 2525)
+# ==========================================
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.resend.com'
+EMAIL_PORT = 2525  # El puerto mágico que DigitalOcean SÍ permite
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = 'resend'  # Esto siempre va así, literal la palabra 'resend'
+EMAIL_HOST_PASSWORD = '6TWDC3T65ZVC1BQ299NCQAD8'
+
+# El correo desde donde van a salir los mensajes
+DEFAULT_FROM_EMAIL = 'onboarding@resend.dev'
