@@ -9,6 +9,7 @@ from django.utils import timezone
 from django.contrib.admin.views.decorators import staff_member_required
 from .models import Inventario
 from .services import DashboardService
+from django.db.models import Q
 
 # Traemos todos los modelos
 from .models import (
@@ -561,21 +562,20 @@ def buscar_kardex(request):
     mensaje_error = None
 
     if query:
-        # 1. Intentamos buscar por el código de barras escaneado
-        inventario_actual = Inventario.objects.filter(codigo_barras=query).first()
-        
-        # 2. Si no es código de barras, tal vez escribieron el Lote a mano
-        if not inventario_actual:
-            inventario_actual = Inventario.objects.filter(lote__icontains=query).first()
+        # Usamos Q para buscar en código de barras O lote en una sola consulta
+        # icontains ayuda por si escriben el lote en minúsculas o incompleto
+        inventario_actual = Inventario.objects.filter(
+            Q(codigo_barras=query) | Q(lote__icontains=query)
+        ).first()
 
-        # 3. Si encontramos el producto, jalamos todo su historial del Kardex
         if inventario_actual:
+            # Si lo encontramos, traemos su historial del Kardex
             movimientos = MovimientoKardex.objects.filter(
                 medicamento=inventario_actual.medicamento,
                 lote=inventario_actual.lote
             ).order_by('-fecha')
         else:
-            mensaje_error = f"No se encontró ningún producto ni lote con el código: {query}"
+            mensaje_error = f"No hay existencias ni registros para: {query}"
 
     context = {
         'query': query,

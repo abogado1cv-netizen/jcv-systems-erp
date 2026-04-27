@@ -42,18 +42,29 @@
 
                 <hr style="margin: 25px 0;">
 
-                <form method="GET" action="" id="search-form">
-                    <label style="font-weight: 600; color: #555; text-align: left; display: block;">O escribe el Código / Lote:</label>
-                    <div class="input-group">
-                        <input type="text" name="q" id="codigo_input" class="form-control" placeholder="Ej. 750123456789" value="{{ query }}" required autofocus>
-                        <div class="input-group-append">
-                            <button class="btn btn-primary" type="submit" style="background-color: #005b96; border: none;">Buscar</button>
-                        </div>
-                    </div>
-                </form>
-
+                <div style="background: rgba(255, 255, 255, 0.4); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-radius: 12px; padding: 20px; border: 1px solid rgba(255, 255, 255, 0.8); box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.08); text-align: left;">
+                    <form method="GET" action="{% url 'buscar_kardex' %}" id="search-form" style="display: flex; flex-direction: column; gap: 12px;">
+                        <label style="font-weight: 600; color: #444; font-size: 14px; margin: 0;">Búsqueda por Pistola o Teclado:</label>
+                        
+                        <input 
+                            type="text" 
+                            name="q" 
+                            id="codigo_input"
+                            value="{{ query }}" 
+                            placeholder="🔫 Escanea código o escribe Lote..." 
+                            autofocus 
+                            autocomplete="off"
+                            required
+                            style="width: 100%; padding: 14px 15px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.1); background: rgba(255,255,255,0.9); font-size: 15px; outline: none; transition: all 0.3s ease; box-shadow: inset 0 2px 4px rgba(0,0,0,0.03);"
+                        >
+                        
+                        <button type="submit" style="padding: 14px; border-radius: 8px; border: none; background: #2563EB; color: white; font-weight: bold; font-size: 15px; cursor: pointer; transition: background 0.3s ease; box-shadow: 0 4px 6px rgba(37, 99, 235, 0.2); width: 100%;">
+                            Buscar Producto
+                        </button>
+                    </form>
+                </div>
                 {% if mensaje_error %}
-                <div class="alert alert-danger mt-3" style="border-radius: 8px; font-size: 14px;">
+                <div class="alert alert-danger mt-3" style="border-radius: 8px; font-size: 14px; text-align: left;">
                     ⚠️ {{ mensaje_error }}
                 </div>
                 {% endif %}
@@ -126,9 +137,9 @@
             </div>
             {% else %}
             <div class="kardex-panel" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; min-height: 400px; color: #ccc;">
-                <i class="fas fa-barcode" style="font-size: 80px; margin-bottom: 20px; color: #eaeaea;"></i>
+                <h1 style="font-size: 60px; margin-bottom: 15px;">📦</h1>
                 <h4 style="color: #888; font-weight: 600;">Esperando lectura...</h4>
-                <p style="color: #aaa;">Escanea un código de barras para ver el historial completo.</p>
+                <p style="color: #aaa;">Escanea un código, usa la cámara o escribe el Lote.</p>
             </div>
             {% endif %}
         </div>
@@ -151,7 +162,7 @@
             readerDiv.style.display = 'block';
             btnScan.style.display = 'none'; // Ocultar botón temporalmente
 
-            // 🔥 CAMBIO: MODO FRANCOTIRADOR (30 FPS y área rectangular)
+            // 🔥 MODO FRANCOTIRADOR (30 FPS y área rectangular)
             html5QrcodeScanner = new Html5QrcodeScanner(
                 "reader", 
                 { 
