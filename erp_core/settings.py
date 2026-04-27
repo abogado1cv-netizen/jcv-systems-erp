@@ -75,8 +75,8 @@ STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
 # ==========================================
 # GESTIÓN DE ARCHIVOS SUBIDOS
 # ==========================================
-MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+MEDIA_URL = 'http://67.205.175.17/media/'
+MEDIA_ROOT = '/var/www/media/'
 
 LOGIN_REDIRECT_URL = '/dashboard/inicio/'
 LOGOUT_REDIRECT_URL = '/admin/login/'
