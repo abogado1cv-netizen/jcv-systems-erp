@@ -18,7 +18,10 @@ class EstatusProcedimiento(models.Model):
         ('EN_PROCESO', 'En proceso'),
     ]
     estado = models.CharField(max_length=20, choices=ESTATUS_CHOICES, default='EN_PROCESO')
-
+    TIPO_PRODUCTO_CHOICES = [
+    ('SECTORIZADO', 'Sectorizado (Sector Salud)'),
+    ('COMERCIAL', 'Comercial'),
+    ]
     def __str__(self):
         return self.estado
 
@@ -464,6 +467,14 @@ class Inventario(models.Model):
     medicamento = models.ForeignKey('CatalogoMedicamento', on_delete=models.CASCADE, verbose_name="Clave / Medicamento")
     lote = models.CharField(max_length=50, verbose_name="Lote del Producto")
     fecha_caducidad = models.DateField(verbose_name="Fecha de Caducidad")
+
+    # --- AQUÍ LO PEGAMOS ---
+    tipo_producto = models.CharField(
+        max_length=20, 
+        choices=TIPO_PRODUCTO_CHOICES, 
+        default='COMERCIAL',
+        verbose_name="Tipo de Producto"
+    )
     
     # 🔥 NUEVO CAMPO: Código de barras para la pistola
     codigo_barras = models.CharField(max_length=150, blank=True, null=True, verbose_name="Código de Barras", help_text="Escanea aquí con la pistola de códigos")
@@ -698,6 +709,13 @@ class EntradaAlmacen(models.Model):
     folio_remision = models.CharField("Folio de Remisión / Factura", max_length=100, default="S/F", help_text="Anota el número de ticket o factura.")
     medicamento = models.ForeignKey('CatalogoMedicamento', on_delete=models.CASCADE, verbose_name="Clave / Medicamento")
     
+    # --- AQUÍ LO PEGAMOS ---
+    tipo_producto = models.CharField(
+        max_length=20, 
+        choices=TIPO_PRODUCTO_CHOICES, 
+        default='COMERCIAL',
+        verbose_name="Tipo de Producto"
+    )
     cantidad_recibida = models.PositiveIntegerField("Piezas Físicas Recibidas")
     lote = models.CharField("Lote Impreso", max_length=50)
     fecha_caducidad = models.DateField("Fecha de Caducidad")
@@ -740,6 +758,7 @@ class EntradaAlmacen(models.Model):
                 medicamento=self.medicamento,
                 lote=self.lote,
                 fecha_caducidad=self.fecha_caducidad,
+                tipo_producto=self.tipo_producto, # 👈 AGREGAMOS ESTA LÍNEA
                 defaults={
                     'cantidad_disponible': 0,
                     'fecha_ingreso': self.fecha_ingreso.date()
