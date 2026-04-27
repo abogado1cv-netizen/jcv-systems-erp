@@ -1366,7 +1366,7 @@ class OrdenSuministroAdmin(ImportExportModelAdmin):
 # REGISTRO DEL NUEVO MÓDULO DE INVENTARIO
 # ==========================================
 @admin.register(Inventario)
-class InventarioAdmin(admin.ModelAdmin):
+class InventarioAdmin(ImportExportModelAdmin):
     list_per_page = 50
     list_display = ('almacen', 'medicamento', 'tipo_producto', 'lote', 'fecha_caducidad', 'cantidad_disponible', 'fecha_ingreso')
     search_fields = ('medicamento__clave_sector', 'medicamento__denominacion_generica', 'lote')
