@@ -11,6 +11,11 @@ from datetime import date
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 
+TIPO_PRODUCTO_CHOICES = [
+    ('SECTORIZADO', 'Sectorizado (Sector Salud)'),
+    ('COMERCIAL', 'Comercial'),
+    ]
+
 class EstatusProcedimiento(models.Model):
     ESTATUS_CHOICES = [
         ('ADJUDICADO', 'Adjudicado'),
@@ -18,10 +23,7 @@ class EstatusProcedimiento(models.Model):
         ('EN_PROCESO', 'En proceso'),
     ]
     estado = models.CharField(max_length=20, choices=ESTATUS_CHOICES, default='EN_PROCESO')
-    TIPO_PRODUCTO_CHOICES = [
-    ('SECTORIZADO', 'Sectorizado (Sector Salud)'),
-    ('COMERCIAL', 'Comercial'),
-    ]
+
     def __str__(self):
         return self.estado
 
