@@ -360,6 +360,79 @@ def exportar_reporte_laboratorios(modeladmin, request, queryset):
     return response
 
 # ==========================================
+# --- REPORTE DE INVENTARIO "CHULO" ---
+# ==========================================
+@admin.action(description='📊 Descargar Inventario Ejecutivo (Excel Especial)')
+def exportar_inventario_personalizado(modeladmin, request, queryset):
+    response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response['Content-Disposition'] = 'attachment; filename="Inventario_Detallado_Gpharma.xlsx"'
+    
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Inventario Actual"
+
+    # Estilos (usando el mismo diseño de tus otros reportes)
+    font_cabecera = Font(bold=True, color="000000")
+    fill_cabecera = PatternFill("solid", fgColor="D9D9D9")
+    alineacion_centro = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    alineacion_izq = Alignment(horizontal="left", vertical="center", wrap_text=True)
+    borde_delgado = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+
+    # Encabezados solicitados
+    encabezados = [
+        'ALMACÉN', 'CLAVE SECTOR', 'DESCRIPCIÓN', 'SOCIO COMERCIAL', 
+        'FABRICANTE', 'TIPO', 'LOTE', 'CADUCIDAD', 'EXISTENCIA'
+    ]
+    ws.append(encabezados)
+
+    for col_num, header in enumerate(encabezados, 1):
+        celda = ws.cell(row=1, column=col_num)
+        celda.font = font_cabecera
+        celda.fill = fill_cabecera
+        celda.alignment = alineacion_centro
+        celda.border = borde_delgado
+
+    # Datos
+    for item in queryset:
+        med = item.medicamento
+        # Traemos al socio comercial desde el catálogo
+        socio = med.socio_contacto.nombre if med.socio_contacto else "SIN ASIGNAR"
+        
+        fila = [
+            item.almacen.nombre if item.almacen else "BODEGA CENTRAL",
+            med.clave_sector,
+            med.denominacion_generica,
+            socio,
+            med.fabricante,
+            item.get_tipo_producto_display(),
+            item.lote,
+            item.fecha_caducidad.strftime('%d/%m/%Y') if item.fecha_caducidad else "S/F",
+            item.cantidad_disponible
+        ]
+        ws.append(fila)
+        
+        # Aplicar bordes y formato a la fila
+        r = ws.max_row
+        for c in range(1, 10):
+            celda = ws.cell(row=r, column=c)
+            celda.border = borde_delgado
+            celda.alignment = alineacion_centro if c != 3 else alineacion_izq
+
+    # Ajustar anchos de columnas
+    ws.column_dimensions['A'].width = 20
+    ws.column_dimensions['B'].width = 18
+    ws.column_dimensions['C'].width = 45
+    ws.column_dimensions['D'].width = 25
+    ws.column_dimensions['E'].width = 25
+    ws.column_dimensions['F'].width = 15
+    ws.column_dimensions['G'].width = 15
+    ws.column_dimensions['H'].width = 15
+    ws.column_dimensions['I'].width = 12
+
+    wb.save(response)
+    return response
+
+# ==========================================
 # --- CLASES DEL ADMIN ---
 # ==========================================
 class SocioComercialWidget(ForeignKeyWidget):
@@ -1372,6 +1445,7 @@ class InventarioAdmin(ImportExportModelAdmin):
     search_fields = ('medicamento__clave_sector', 'medicamento__denominacion_generica', 'lote')
     list_filter = ('tipo_producto', 'almacen', 'fecha_caducidad',)
     autocomplete_fields = ['medicamento']
+    actions = [exportar_inventario_personalizado]
 
 # 4. PANTALLA FÍSICA: Remisiones de Almacén (Viajes)
 @admin.register(RemisionEntrega)
