@@ -725,24 +725,24 @@ class LicitacionAdmin(admin.ModelAdmin):
         context = {'title': f'Notificar Socios: {licitacion.num_procedimiento}', 'licitacion': licitacion, 'socios_data': socios_dict.values(), 'opts': self.model._meta, 'empresas_grupo': Empresa.objects.all(), 'has_view_permission': self.has_view_permission(request, licitacion)}
         return render(request, 'admin/licitaciones/licitacion/notificar_socios.html', context)
 
-    def notificar_socios_view(self, request, object_id):
+    def notificar_resultados_view(self, request, object_id):
         from django.core.mail import EmailMultiAlternatives
         from django.template.loader import render_to_string
         from django.utils.html import strip_tags
         from django.utils import timezone
         
         licitacion = self.get_object(request, object_id)
-        partidas = licitacion.partidas.all()
+        partidas = licitacion.partidas.select_related('medicamento__socio_contacto')
         socios_dict = {}
         
         for p in partidas:
-            clave_actual = p.medicamento.clave_sector
-            medicamentos_relacionados = CatalogoMedicamento.objects.filter(clave_sector=clave_actual)
-            for med in medicamentos_relacionados:
-                socio = med.socio_contacto
-                if socio:
-                    if socio.id not in socios_dict: socios_dict[socio.id] = {'socio': socio, 'partidas': []}
-                    if p not in socios_dict[socio.id]['partidas']: socios_dict[socio.id]['partidas'].append(p)
+            socio = p.medicamento.socio_contacto
+            if socio:
+                if socio.id not in socios_dict: socios_dict[socio.id] = {'socio': socio, 'asignadas': [], 'perdidas_precio': [], 'perdidas_tecnica': [], 'pendientes': []}
+                if p.resultado == 'Asignada': socios_dict[socio.id]['asignadas'].append(p)
+                elif p.resultado == 'Perdida por precio': socios_dict[socio.id]['perdidas_precio'].append(p)
+                elif p.resultado == 'Perdida técnicamente': socios_dict[socio.id]['perdidas_tecnica'].append(p)
+                else: socios_dict[socio.id]['pendientes'].append(p)
 
         if request.method == 'POST':
             socios_seleccionados = request.POST.getlist('socios')
@@ -757,7 +757,7 @@ class LicitacionAdmin(admin.ModelAdmin):
             else: correo_respuesta = "licitaciones2@gpharma.com"
 
             from django.core.mail import get_connection
-            # PARCHE 1: Puerto 2587 para saltar el bloqueo de DigitalOcean
+            # PARCHE 1: Puerto 2587
             conexion_dinamica = get_connection(host=empresa_emisora.servidor_correo, port=2587, username='resend', password=empresa_emisora.password_aplicacion, use_tls=True)
             
             correos_enviados = 0
@@ -766,61 +766,62 @@ class LicitacionAdmin(admin.ModelAdmin):
                 data = socios_dict.get(int(socio_id))
                 if not data: continue
                 socio = data['socio']
-                asunto = f"Requerimiento de Cotización - Evento {licitacion.num_procedimiento}"
-                
-                partidas_html = []
-                for p in data['partidas']:
-                    partidas_html.append({
-                        'partida': p.numero_partida,
-                        'clave': p.medicamento.clave_sector,
-                        'descripcion': p.medicamento.descripcion,
-                        'cantidad': f"{p.cantidad_maxima:,}" 
-                    })
+                asunto = f"Resultados Oficiales (Evento {licitacion.num_procedimiento}) - {empresa_emisora.nombre}"
                 
                 if "SAGO" in nombre_empresa_up: color_empresa = "#8B0000"
                 elif "GAMS" in nombre_empresa_up: color_empresa = "#005b96"
                 elif "GSM" in nombre_empresa_up: color_empresa = "#218838"
                 else: color_empresa = "#333333"
-                
+
+                def formato_item(p):
+                    return {
+                        'partida': p.numero_partida,
+                        'clave': p.medicamento.clave_sector,
+                        'descripcion': p.medicamento.descripcion,
+                        'cantidad': f"{p.cantidad_maxima:,}",
+                        'motivo': p.motivo_perdida if p.motivo_perdida else "No especificado en el sistema."
+                    }
+
                 contexto_email = {
                     'socio_nombre': socio.nombre,
                     'evento_num': licitacion.num_procedimiento,
-                    'dependencia': licitacion.dependencia,
                     'empresa_emisora': empresa_emisora.nombre,
                     'url_logo': empresa_emisora.url_logo if hasattr(empresa_emisora, 'url_logo') and empresa_emisora.url_logo else None,
                     'color_empresa': color_empresa,
                     'fecha_actual': timezone.now().strftime('%d/%m/%Y'),
-                    'items': partidas_html,
+                    'url_drive': licitacion.url_carpeta_drive if hasattr(licitacion, 'url_drive') and licitacion.url_carpeta_drive else None,
+                    'asignadas': [formato_item(p) for p in data['asignadas']],
+                    'perdidas_precio': [formato_item(p) for p in data['perdidas_precio']],
+                    'perdidas_tecnica': [formato_item(p) for p in data['perdidas_tecnica']],
                 }
                 
-                html_content = render_to_string('admin/licitaciones/licitacion/emails/cotizacion_email.html', contexto_email)
-                text_content = strip_tags(html_content) 
+                html_content = render_to_string('admin/licitaciones/licitacion/emails/resultados_email.html', contexto_email)
+                text_content = strip_tags(html_content)
 
                 destinatarios = [c.strip() for c in socio.correos.split(',') if c.strip()]
                 
                 try:
                     correo = EmailMultiAlternatives(
-                        subject=asunto,
-                        body=text_content,
-                        # PARCHE 2: Comillas dobles al rededor del nombre para evitar el error de la coma
-                        from_email=f'"{empresa_emisora.nombre}" <{empresa_emisora.correo_remitente}>',
-                        to=destinatarios,
+                        subject=asunto, 
+                        body=text_content, 
+                        # PARCHE 2: Comillas dobles
+                        from_email=f'"{empresa_emisora.nombre}" <{empresa_emisora.correo_remitente}>', 
+                        to=destinatarios, 
                         connection=conexion_dinamica,
-                        reply_to=[correo_respuesta] 
+                        reply_to=[correo_respuesta]
                     )
                     correo.attach_alternative(html_content, "text/html")
-                    for archivo in archivos_adjuntos: 
-                        correo.attach(archivo.name, archivo.read(), archivo.content_type)
+                    for archivo in archivos_adjuntos: correo.attach(archivo.name, archivo.read(), archivo.content_type)
                     correo.send(fail_silently=False)
                     correos_enviados += 1
                 except Exception as e: 
                     messages.error(request, f"Error al enviar a {socio.nombre}: {e}")
             
-            if correos_enviados > 0: messages.success(request, f"¡Se enviaron {correos_enviados} requerimientos!")
+            if correos_enviados > 0: messages.success(request, f"Resultados enviados.")
             return redirect('admin:licitaciones_licitacion_change', object_id)
 
-        context = {'title': f'Notificar Socios: {licitacion.num_procedimiento}', 'licitacion': licitacion, 'socios_data': socios_dict.values(), 'opts': self.model._meta, 'empresas_grupo': Empresa.objects.all(), 'has_view_permission': self.has_view_permission(request, licitacion)}
-        return render(request, 'admin/licitaciones/licitacion/notificar_socios.html', context)
+        context = {'title': f'Notificar Resultados: {licitacion.num_procedimiento}', 'licitacion': licitacion, 'socios_data': socios_dict.values(), 'opts': self.model._meta, 'empresas_grupo': Empresa.objects.all(), 'has_view_permission': self.has_view_permission(request, licitacion)}
+        return render(request, 'admin/licitaciones/licitacion/notificar_resultados.html', context)
 
 
 @admin.register(Empresa)
