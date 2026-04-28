@@ -151,7 +151,7 @@ class Empresa(models.Model):
     correo_remitente = models.EmailField(blank=True, null=True, verbose_name="Correo Emisor (Gmail/Outlook)")
     password_aplicacion = models.CharField(max_length=100, blank=True, null=True, verbose_name="Contraseña de Aplicación (16 letras)")
     url_logo = models.URLField(max_length=500, null=True, blank=True, verbose_name="URL del Logo (Público)", help_text="Pega aquí el link directo a la imagen del logo (debe terminar en .png o .jpg). Ej: https://tudominio.com/logo_sago.png")
-
+    correos_notificacion = models.TextField(blank=True, null=True, help_text="Escribe aquí los correos de los empleados para ESTA empresa, separados por coma.")
     class Meta:
         verbose_name = "Empresa"
         verbose_name_plural = "Empresas"

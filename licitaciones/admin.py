@@ -653,14 +653,23 @@ class LicitacionAdmin(admin.ModelAdmin):
             empresa_id = request.POST.get('empresa_emisora')
             empresa_emisora = Empresa.objects.get(id=empresa_id)
             
-            # --- LÓGICA DE RUTEO (REPLY-TO) ---
+            # --- LÓGICA DE RUTEO MÚLTIPLE (REPLY-TO) ---
             nombre_empresa_up = empresa_emisora.nombre.upper()
-            if "SAGO" in nombre_empresa_up: correo_respuesta = "sagomedical.licitaciones@gmail.com"
-            elif "GSM" in nombre_empresa_up: correo_respuesta = "gsm.licitaciones@gmail.com"
-            else: correo_respuesta = "licitaciones2@gpharma.com"
+            
+            # 1. Metemos el correo principal en una caja (lista)
+            if "SAGO" in nombre_empresa_up: 
+                lista_respuesta = ["sagomedical.licitaciones@gmail.com"]
+            elif "GSM" in nombre_empresa_up: 
+                lista_respuesta = ["gsm.licitaciones@gmail.com"]
+            else: 
+                lista_respuesta = ["licitaciones2@gpharma.com"]
+
+            # 2. Revisamos si en el panel escribiste correos de empleados
+            if empresa_emisora.correos_notificacion:
+                empleados = [c.strip() for c in empresa_emisora.correos_notificacion.split(',') if c.strip()]
+                lista_respuesta.extend(empleados)
 
             from django.core.mail import get_connection
-            # PARCHE 1: Puerto 2587 para saltar el bloqueo de DigitalOcean
             conexion_dinamica = get_connection(host=empresa_emisora.servidor_correo, port=2587, username='resend', password=empresa_emisora.password_aplicacion, use_tls=True)
             
             correos_enviados = 0
@@ -705,11 +714,10 @@ class LicitacionAdmin(admin.ModelAdmin):
                     correo = EmailMultiAlternatives(
                         subject=asunto,
                         body=text_content,
-                        # PARCHE 2: Comillas dobles al rededor del nombre para evitar el error de la coma
                         from_email=f'"{empresa_emisora.nombre}" <{empresa_emisora.correo_remitente}>',
                         to=destinatarios,
                         connection=conexion_dinamica,
-                        reply_to=[correo_respuesta] 
+                        reply_to=lista_respuesta # AQUI VA LA LISTA MAESTRA
                     )
                     correo.attach_alternative(html_content, "text/html")
                     for archivo in archivos_adjuntos: 
@@ -750,14 +758,21 @@ class LicitacionAdmin(admin.ModelAdmin):
             empresa_id = request.POST.get('empresa_emisora')
             empresa_emisora = Empresa.objects.get(id=empresa_id)
             
-            # --- LÓGICA DE RUTEO (REPLY-TO) ---
+            # --- LÓGICA DE RUTEO MÚLTIPLE (REPLY-TO) ---
             nombre_empresa_up = empresa_emisora.nombre.upper()
-            if "SAGO" in nombre_empresa_up: correo_respuesta = "sagomedical.licitaciones@gmail.com"
-            elif "GSM" in nombre_empresa_up: correo_respuesta = "gsm.licitaciones@gmail.com"
-            else: correo_respuesta = "licitaciones2@gpharma.com"
+            
+            if "SAGO" in nombre_empresa_up: 
+                lista_respuesta = ["sagomedical.licitaciones@gmail.com"]
+            elif "GSM" in nombre_empresa_up: 
+                lista_respuesta = ["gsm.licitaciones@gmail.com"]
+            else: 
+                lista_respuesta = ["licitaciones2@gpharma.com"]
+
+            if empresa_emisora.correos_notificacion:
+                empleados = [c.strip() for c in empresa_emisora.correos_notificacion.split(',') if c.strip()]
+                lista_respuesta.extend(empleados)
 
             from django.core.mail import get_connection
-            # PARCHE 1: Puerto 2587
             conexion_dinamica = get_connection(host=empresa_emisora.servidor_correo, port=2587, username='resend', password=empresa_emisora.password_aplicacion, use_tls=True)
             
             correos_enviados = 0
@@ -804,11 +819,10 @@ class LicitacionAdmin(admin.ModelAdmin):
                     correo = EmailMultiAlternatives(
                         subject=asunto, 
                         body=text_content, 
-                        # PARCHE 2: Comillas dobles
                         from_email=f'"{empresa_emisora.nombre}" <{empresa_emisora.correo_remitente}>', 
                         to=destinatarios, 
                         connection=conexion_dinamica,
-                        reply_to=[correo_respuesta]
+                        reply_to=lista_respuesta # AQUI VA LA LISTA MAESTRA
                     )
                     correo.attach_alternative(html_content, "text/html")
                     for archivo in archivos_adjuntos: correo.attach(archivo.name, archivo.read(), archivo.content_type)
@@ -822,7 +836,6 @@ class LicitacionAdmin(admin.ModelAdmin):
 
         context = {'title': f'Notificar Resultados: {licitacion.num_procedimiento}', 'licitacion': licitacion, 'socios_data': socios_dict.values(), 'opts': self.model._meta, 'empresas_grupo': Empresa.objects.all(), 'has_view_permission': self.has_view_permission(request, licitacion)}
         return render(request, 'admin/licitaciones/licitacion/notificar_resultados.html', context)
-
 
 @admin.register(Empresa)
 class EmpresaAdmin(ImportExportModelAdmin):
@@ -1657,13 +1670,20 @@ class OrdenCompraAdmin(admin.ModelAdmin):
                 return redirect(request.path)
 
             try:
-                # --- LÓGICA DE RUTEO (REPLY-TO) ---
+                # --- LÓGICA DE RUTEO MÚLTIPLE (REPLY-TO) ---
                 nombre_empresa_up = empresa.nombre.upper()
-                if "SAGO" in nombre_empresa_up: correo_respuesta = "sagomedical.licitaciones@gmail.com"
-                elif "GSM" in nombre_empresa_up: correo_respuesta = "gsm.licitaciones@gmail.com"
-                else: correo_respuesta = "licitaciones2@gpharma.com"
+                
+                if "SAGO" in nombre_empresa_up: 
+                    lista_respuesta = ["sagomedical.licitaciones@gmail.com"]
+                elif "GSM" in nombre_empresa_up: 
+                    lista_respuesta = ["gsm.licitaciones@gmail.com"]
+                else: 
+                    lista_respuesta = ["licitaciones2@gpharma.com"]
 
-                # PARCHE 1: Puerto 2587
+                if empresa.correos_notificacion:
+                    empleados = [c.strip() for c in empresa.correos_notificacion.split(',') if c.strip()]
+                    lista_respuesta.extend(empleados)
+
                 conexion = get_connection(
                     host=empresa.servidor_correo, 
                     port=2587, 
@@ -1694,11 +1714,10 @@ class OrdenCompraAdmin(admin.ModelAdmin):
                 msg = EmailMultiAlternatives(
                     subject=asunto, 
                     body=text_content, 
-                    # PARCHE 2: Comillas dobles
                     from_email=f'"{empresa.nombre}" <{empresa.correo_remitente}>', 
                     to=destinatarios, 
                     connection=conexion,
-                    reply_to=[correo_respuesta]
+                    reply_to=lista_respuesta # AQUI VA LA LISTA MAESTRA
                 )
                 msg.attach_alternative(html_content, "text/html")
                 
