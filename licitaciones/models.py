@@ -147,7 +147,7 @@ class Empresa(models.Model):
     representante = models.CharField(max_length=150, blank=True, null=True, verbose_name="Representante Legal")
     telefono = models.CharField(max_length=20, blank=True, null=True, verbose_name="Teléfono")
     PROVEEDOR_CHOICES = [('smtp.gmail.com', 'Gmail'), ('smtp.office365.com', 'Outlook / Office 365')]
-    servidor_correo = models.CharField(max_length=50, choices=PROVEEDOR_CHOICES, default='smtp.gmail.com', verbose_name="Proveedor de Correo", blank=True, null=True)
+    servidor_correo = models.CharField(max_length=100, default='smtp.resend.com', verbose_name="Servidor SMTP", help_text="Ej: smtp.resend.com", blank=True, null=True)
     correo_remitente = models.EmailField(blank=True, null=True, verbose_name="Correo Emisor (Gmail/Outlook)")
     password_aplicacion = models.CharField(max_length=100, blank=True, null=True, verbose_name="Contraseña de Aplicación (16 letras)")
     url_logo = models.URLField(max_length=500, null=True, blank=True, verbose_name="URL del Logo (Público)", help_text="Pega aquí el link directo a la imagen del logo (debe terminar en .png o .jpg). Ej: https://tudominio.com/logo_sago.png")
