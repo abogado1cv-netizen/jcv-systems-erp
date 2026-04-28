@@ -1662,7 +1662,7 @@ class OrdenCompraAdmin(admin.ModelAdmin):
 
                 conexion = get_connection(
                     host=empresa.servidor_correo, 
-                    port=587, 
+                    port=2587, 
                     username='resend', 
                     password=empresa.password_aplicacion, 
                     use_tls=True
