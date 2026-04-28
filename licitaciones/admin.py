@@ -653,8 +653,15 @@ class LicitacionAdmin(admin.ModelAdmin):
             empresa_id = request.POST.get('empresa_emisora')
             empresa_emisora = Empresa.objects.get(id=empresa_id)
             
+            # --- LÓGICA DE RUTEO (REPLY-TO) ---
+            nombre_empresa_up = empresa_emisora.nombre.upper()
+            if "SAGO" in nombre_empresa_up: correo_respuesta = "sagomedical.licitaciones@gmail.com"
+            elif "GSM" in nombre_empresa_up: correo_respuesta = "gsm.licitaciones@gmail.com"
+            else: correo_respuesta = "licitaciones2@gpharma.com"
+
             from django.core.mail import get_connection
-            conexion_dinamica = get_connection(host=empresa_emisora.servidor_correo, port=587, username=empresa_emisora.correo_remitente, password=empresa_emisora.password_aplicacion, use_tls=True)
+            # OJO: username='resend' es obligatorio para que funcione la API
+            conexion_dinamica = get_connection(host=empresa_emisora.servidor_correo, port=587, username='resend', password=empresa_emisora.password_aplicacion, use_tls=True)
             
             correos_enviados = 0
             
@@ -673,15 +680,10 @@ class LicitacionAdmin(admin.ModelAdmin):
                         'cantidad': f"{p.cantidad_maxima:,}" 
                     })
                 
-                nombre_empresa = empresa_emisora.nombre.upper()
-                if "SAGO" in nombre_empresa:
-                    color_empresa = "#8B0000"
-                elif "GAMS" in nombre_empresa:
-                    color_empresa = "#005b96"
-                elif "GSM" in nombre_empresa:
-                    color_empresa = "#218838"
-                else:
-                    color_empresa = "#333333"
+                if "SAGO" in nombre_empresa_up: color_empresa = "#8B0000"
+                elif "GAMS" in nombre_empresa_up: color_empresa = "#005b96"
+                elif "GSM" in nombre_empresa_up: color_empresa = "#218838"
+                else: color_empresa = "#333333"
                 
                 contexto_email = {
                     'socio_nombre': socio.nombre,
@@ -703,9 +705,10 @@ class LicitacionAdmin(admin.ModelAdmin):
                     correo = EmailMultiAlternatives(
                         subject=asunto,
                         body=text_content,
-                        from_email=empresa_emisora.correo_remitente,
+                        from_email=f"{empresa_emisora.nombre} <{empresa_emisora.correo_remitente}>",
                         to=destinatarios,
-                        connection=conexion_dinamica
+                        connection=conexion_dinamica,
+                        reply_to=[correo_respuesta] # MAGIA APLICADA
                     )
                     correo.attach_alternative(html_content, "text/html")
                     for archivo in archivos_adjuntos: 
@@ -746,8 +749,14 @@ class LicitacionAdmin(admin.ModelAdmin):
             empresa_id = request.POST.get('empresa_emisora')
             empresa_emisora = Empresa.objects.get(id=empresa_id)
             
+            # --- LÓGICA DE RUTEO (REPLY-TO) ---
+            nombre_empresa_up = empresa_emisora.nombre.upper()
+            if "SAGO" in nombre_empresa_up: correo_respuesta = "sagomedical.licitaciones@gmail.com"
+            elif "GSM" in nombre_empresa_up: correo_respuesta = "gsm.licitaciones@gmail.com"
+            else: correo_respuesta = "licitaciones2@gpharma.com"
+
             from django.core.mail import get_connection
-            conexion_dinamica = get_connection(host=empresa_emisora.servidor_correo, port=587, username=empresa_emisora.correo_remitente, password=empresa_emisora.password_aplicacion, use_tls=True)
+            conexion_dinamica = get_connection(host=empresa_emisora.servidor_correo, port=587, username='resend', password=empresa_emisora.password_aplicacion, use_tls=True)
             
             correos_enviados = 0
             
@@ -757,10 +766,9 @@ class LicitacionAdmin(admin.ModelAdmin):
                 socio = data['socio']
                 asunto = f"Resultados Oficiales (Evento {licitacion.num_procedimiento}) - {empresa_emisora.nombre}"
                 
-                nombre_empresa = empresa_emisora.nombre.upper()
-                if "SAGO" in nombre_empresa: color_empresa = "#8B0000"
-                elif "GAMS" in nombre_empresa: color_empresa = "#005b96"
-                elif "GSM" in nombre_empresa: color_empresa = "#218838"
+                if "SAGO" in nombre_empresa_up: color_empresa = "#8B0000"
+                elif "GAMS" in nombre_empresa_up: color_empresa = "#005b96"
+                elif "GSM" in nombre_empresa_up: color_empresa = "#218838"
                 else: color_empresa = "#333333"
 
                 def formato_item(p):
@@ -779,7 +787,7 @@ class LicitacionAdmin(admin.ModelAdmin):
                     'url_logo': empresa_emisora.url_logo if hasattr(empresa_emisora, 'url_logo') and empresa_emisora.url_logo else None,
                     'color_empresa': color_empresa,
                     'fecha_actual': timezone.now().strftime('%d/%m/%Y'),
-                    'url_drive': licitacion.url_carpeta_drive if hasattr(licitacion, 'url_carpeta_drive') and licitacion.url_carpeta_drive else None,
+                    'url_drive': licitacion.url_carpeta_drive if hasattr(licitacion, 'url_drive') and licitacion.url_carpeta_drive else None,
                     'asignadas': [formato_item(p) for p in data['asignadas']],
                     'perdidas_precio': [formato_item(p) for p in data['perdidas_precio']],
                     'perdidas_tecnica': [formato_item(p) for p in data['perdidas_tecnica']],
@@ -791,13 +799,20 @@ class LicitacionAdmin(admin.ModelAdmin):
                 destinatarios = [c.strip() for c in socio.correos.split(',') if c.strip()]
                 
                 try:
-                    correo = EmailMultiAlternatives(subject=asunto, body=text_content, from_email=empresa_emisora.correo_remitente, to=destinatarios, connection=conexion_dinamica)
+                    correo = EmailMultiAlternatives(
+                        subject=asunto, 
+                        body=text_content, 
+                        from_email=f"{empresa_emisora.nombre} <{empresa_emisora.correo_remitente}>", 
+                        to=destinatarios, 
+                        connection=conexion_dinamica,
+                        reply_to=[correo_respuesta]
+                    )
                     correo.attach_alternative(html_content, "text/html")
                     for archivo in archivos_adjuntos: correo.attach(archivo.name, archivo.read(), archivo.content_type)
                     correo.send(fail_silently=False)
                     correos_enviados += 1
                 except Exception as e: 
-                    messages.error(request, f"Error al enviar a {socio.nombre}: Verifica la contraseña.")
+                    messages.error(request, f"Error al enviar a {socio.nombre}: {e}")
             
             if correos_enviados > 0: messages.success(request, f"Resultados enviados.")
             return redirect('admin:licitaciones_licitacion_change', object_id)
@@ -1635,14 +1650,20 @@ class OrdenCompraAdmin(admin.ModelAdmin):
             empresa = oc.empresa_compradora
             
             if not empresa.servidor_correo or not empresa.correo_remitente or not empresa.password_aplicacion:
-                messages.error(request, f"❌ ERROR DE CONFIGURACIÓN: La empresa '{empresa.nombre}' no tiene llenos los campos de Correo, Servidor o Password en el módulo de Empresas.")
+                messages.error(request, f"❌ ERROR DE CONFIGURACIÓN: La empresa '{empresa.nombre}' no tiene llenos los campos.")
                 return redirect(request.path)
 
             try:
+                # --- LÓGICA DE RUTEO (REPLY-TO) ---
+                nombre_empresa_up = empresa.nombre.upper()
+                if "SAGO" in nombre_empresa_up: correo_respuesta = "sagomedical.licitaciones@gmail.com"
+                elif "GSM" in nombre_empresa_up: correo_respuesta = "gsm.licitaciones@gmail.com"
+                else: correo_respuesta = "licitaciones2@gpharma.com"
+
                 conexion = get_connection(
                     host=empresa.servidor_correo, 
                     port=587, 
-                    username=empresa.correo_remitente, 
+                    username='resend', 
                     password=empresa.password_aplicacion, 
                     use_tls=True
                 )
@@ -1650,11 +1671,10 @@ class OrdenCompraAdmin(admin.ModelAdmin):
                 asunto = f"ORDEN DE COMPRA OFICIAL: {oc.folio} - {empresa.nombre}"
                 partidas = oc.partidas_compra.all()
                 
-                nombre_empresa = empresa.nombre.upper()
                 color_empresa = "#5e35b1" 
-                if "SAGO" in nombre_empresa: color_empresa = "#8B0000"
-                elif "GAMS" in nombre_empresa: color_empresa = "#005b96"
-                elif "GSM" in nombre_empresa: color_empresa = "#218838"
+                if "SAGO" in nombre_empresa_up: color_empresa = "#8B0000"
+                elif "GAMS" in nombre_empresa_up: color_empresa = "#005b96"
+                elif "GSM" in nombre_empresa_up: color_empresa = "#218838"
 
                 contexto = {
                     'oc': oc, 'proveedor': proveedor, 'empresa': empresa,
@@ -1666,7 +1686,15 @@ class OrdenCompraAdmin(admin.ModelAdmin):
                 text_content = strip_tags(html_content)
                 
                 destinatarios = [c.strip() for c in proveedor.correos.split(',') if c.strip()]
-                msg = EmailMultiAlternatives(asunto, text_content, empresa.correo_remitente, destinatarios, connection=conexion)
+                
+                msg = EmailMultiAlternatives(
+                    subject=asunto, 
+                    body=text_content, 
+                    from_email=f"{empresa.nombre} <{empresa.correo_remitente}>", 
+                    to=destinatarios, 
+                    connection=conexion,
+                    reply_to=[correo_respuesta]
+                )
                 msg.attach_alternative(html_content, "text/html")
                 
                 html_pdf = render_to_string('admin/licitaciones/ordencompra/pdf/orden_compra_pdf.html', contexto)
@@ -1691,7 +1719,7 @@ class OrdenCompraAdmin(admin.ModelAdmin):
                 return redirect('admin:licitaciones_ordencompra_changelist')
             
             except Exception as e:
-                messages.error(request, f"❌ ERROR DE GMAIL/RED: {str(e)}")
+                messages.error(request, f"❌ ERROR DE RED/RESEND: {str(e)}")
 
         context = {
             'title': f'Enviar Orden de Compra: {oc.folio}',
