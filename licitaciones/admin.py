@@ -1712,7 +1712,7 @@ class OrdenCompraAdmin(admin.ModelAdmin):
                     body=text_content, 
                     from_email=f'"{empresa.nombre}" <{empresa.correo_remitente}>', 
                     to=destinatarios, 
-                    connection=conexion,
+                    connection=conexion_dinamica,
                     reply_to=lista_respuesta # AQUI VA LA LISTA MAESTRA
                 )
                 msg.attach_alternative(html_content, "text/html")
