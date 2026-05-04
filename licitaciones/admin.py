@@ -670,7 +670,7 @@ class LicitacionAdmin(admin.ModelAdmin):
                 lista_respuesta.extend(empleados)
 
             from django.core.mail import get_connection
-            conexion_dinamica = get_connection(host=empresa_emisora.servidor_correo, port=2587, username='resend', password=empresa_emisora.password_aplicacion, use_tls=True)
+            conexion_dinamica = get_connection()
             
             correos_enviados = 0
             
@@ -773,7 +773,7 @@ class LicitacionAdmin(admin.ModelAdmin):
                 lista_respuesta.extend(empleados)
 
             from django.core.mail import get_connection
-            conexion_dinamica = get_connection(host=empresa_emisora.servidor_correo, port=2587, username='resend', password=empresa_emisora.password_aplicacion, use_tls=True)
+            conexion_dinamica = get_connection()
             
             correos_enviados = 0
             
@@ -1665,8 +1665,8 @@ class OrdenCompraAdmin(admin.ModelAdmin):
         if request.method == 'POST':
             empresa = oc.empresa_compradora
             
-            if not empresa.servidor_correo or not empresa.correo_remitente or not empresa.password_aplicacion:
-                messages.error(request, f"❌ ERROR DE CONFIGURACIÓN: La empresa '{empresa.nombre}' no tiene llenos los campos.")
+            if not empresa.correo_remitente:
+                messages.error(request, f"❌ ERROR DE CONFIGURACIÓN: La empresa '{empresa.nombre}' necesita un correo remitente registrado.")
                 return redirect(request.path)
 
             try:
@@ -1684,13 +1684,7 @@ class OrdenCompraAdmin(admin.ModelAdmin):
                     empleados = [c.strip() for c in empresa.correos_notificacion.split(',') if c.strip()]
                     lista_respuesta.extend(empleados)
 
-                conexion = get_connection(
-                    host=empresa.servidor_correo, 
-                    port=2587, 
-                    username='resend', 
-                    password=empresa.password_aplicacion, 
-                    use_tls=True
-                )
+                conexion = get_connection()
                 
                 asunto = f"ORDEN DE COMPRA OFICIAL: {oc.folio} - {empresa.nombre}"
                 partidas = oc.partidas_compra.all()
