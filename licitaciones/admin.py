@@ -672,7 +672,7 @@ class LicitacionAdmin(admin.ModelAdmin):
                 lista_respuesta.extend(empleados)
 
             from django.core.mail import get_connection
-            # conexion_dinamica = get_connection()
+            conexion_dinamica = get_connection()
             
             correos_enviados = 0
             
@@ -775,7 +775,7 @@ class LicitacionAdmin(admin.ModelAdmin):
                 lista_respuesta.extend(empleados)
 
             from django.core.mail import get_connection
-            # conexion_dinamica = get_connection()
+            conexion_dinamica = get_connection()
             
             correos_enviados = 0
             
@@ -1686,7 +1686,7 @@ class OrdenCompraAdmin(admin.ModelAdmin):
                     empleados = [c.strip() for c in empresa.correos_notificacion.split(',') if c.strip()]
                     lista_respuesta.extend(empleados)
 
-            # conexion_dinamica = get_connection()
+                conexion_dinamica = get_connection()
                 
                 asunto = f"ORDEN DE COMPRA OFICIAL: {oc.folio} - {empresa.nombre}"
                 partidas = oc.partidas_compra.all()
