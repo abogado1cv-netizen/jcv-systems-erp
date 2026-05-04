@@ -4,7 +4,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = 'django-insecure-aakcsii+s+*f$%&7t5lm2w50m@9q(1)%4&lw3ffvm@!2vm%)@y'
-DEBUG = False
+DEBUG = True
 ALLOWED_HOSTS = ['*']
 
 INSTALLED_APPS = [
@@ -197,12 +197,12 @@ JAZZMIN_UI_TWEAKS = {
 # ==========================================
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.resend.com'
-EMAIL_PORT = 465 
+EMAIL_PORT = 465
 EMAIL_HOST_USER = 'resend' 
-EMAIL_HOST_PASSWORD = 're_AQUI_VA_LA_LLAVE_REAL'
+EMAIL_HOST_PASSWORD = 're_j49WJ9MN_2wMxfrbjcVw7gigZ3opy3j6T'
 EMAIL_USE_SSL = False 
 EMAIL_USE_TLS = True 
-DEFAULT_FROM_EMAIL = 'onboarding@resend.dev' # 👈 Agregamos esta línea
+DEFAULT_FROM_EMAIL = 'notificaciones@jcv-sistemas.lat' # 👈 Agregamos esta línea
 
 # ==========================================
 # FORMATOS DE FECHA Y HORA
@@ -221,12 +221,3 @@ DATETIME_INPUT_FORMATS = [
 # --- CONFIGURACIÓN PARA LÍMITES MASIVOS ---
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 100000
 DATA_UPLOAD_MAX_MEMORY_SIZE = 52428800
-
-# --- CONFIGURACIÓN DE CORREO (RESEND) ---
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp.resend.com'
-EMAIL_PORT = 2525  # 👈 ¡ESTA ES LA LLAVE MAESTRA!
-EMAIL_HOST_USER = 'resend'
-EMAIL_HOST_PASSWORD = 're_AQUI_VA_TU_LLAVE_SECRETA' # Tu llave larga de Resend
-EMAIL_USE_TLS = True
-DEFAULT_FROM_EMAIL = 'onboarding@resend.dev'
