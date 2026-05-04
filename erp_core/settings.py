@@ -200,8 +200,8 @@ EMAIL_HOST = 'smtp.resend.com'
 EMAIL_PORT = 465 
 EMAIL_HOST_USER = 'resend' 
 EMAIL_HOST_PASSWORD = 're_AQUI_VA_LA_LLAVE_REAL'
-EMAIL_USE_SSL = True 
-EMAIL_USE_TLS = False 
+EMAIL_USE_SSL = False 
+EMAIL_USE_TLS = True 
 DEFAULT_FROM_EMAIL = 'onboarding@resend.dev' # 👈 Agregamos esta línea
 
 # ==========================================
