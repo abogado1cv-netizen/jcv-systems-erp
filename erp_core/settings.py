@@ -202,7 +202,7 @@ EMAIL_HOST_USER = 'resend'
 EMAIL_HOST_PASSWORD = 're_AQUI_VA_LA_LLAVE_REAL'
 EMAIL_USE_SSL = False 
 EMAIL_USE_TLS = True 
-DEFAULT_FROM_EMAIL = 'onboarding@resend.dev' # 👈 Agregamos esta línea
+DEFAULT_FROM_EMAIL = 'notificaciones@jcv-sistemas.lat' # 👈 Agregamos esta línea
 
 # ==========================================
 # FORMATOS DE FECHA Y HORA
@@ -221,12 +221,3 @@ DATETIME_INPUT_FORMATS = [
 # --- CONFIGURACIÓN PARA LÍMITES MASIVOS ---
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 100000
 DATA_UPLOAD_MAX_MEMORY_SIZE = 52428800
-
-# --- CONFIGURACIÓN DE CORREO (RESEND) ---
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp.resend.com'
-EMAIL_PORT = 2525  # 👈 ¡ESTA ES LA LLAVE MAESTRA!
-EMAIL_HOST_USER = 'resend'
-EMAIL_HOST_PASSWORD = 're_AQUI_VA_TU_LLAVE_SECRETA' # Tu llave larga de Resend
-EMAIL_USE_TLS = True
-DEFAULT_FROM_EMAIL = 'onboarding@resend.dev'
