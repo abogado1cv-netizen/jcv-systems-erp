@@ -1238,7 +1238,7 @@ class PartidaOrdenInline(admin.TabularInline):
     model = PartidaOrden
     extra = 1
     autocomplete_fields = ['medicamento']
-    fields = ('clave_contrato', 'cantidad_solicitada', 'precio_unitario', 'cantidad_entregada')
+    fields = ('clave_contrato', 'medicamento', 'cantidad_solicitada', 'precio_unitario', 'cantidad_entregada')
 
 @admin.register(OrdenSuministro)
 class OrdenSuministroAdmin(admin.ModelAdmin):
@@ -1529,10 +1529,11 @@ class PartidaCompraInline(admin.TabularInline):
     readonly_fields = ('importe_visual',)
 
     def importe_visual(self, obj):
+        from django.utils.html import format_html
         if obj.cantidad and obj.precio_unitario:
             total = float(obj.cantidad) * float(obj.precio_unitario)
-            total_formateado = f"{total:,.2f}"
-            return format_html('<b>${}</b>', total_formateado)
+            # El truco: le pasamos el valor como argumento a format_html
+            return format_html('<b>${}</b>', f"{total:,.2f}")
         return "$0.00"
     importe_visual.short_description = "Importe"
 
@@ -1991,9 +1992,10 @@ class PartidaCotizacionInline(admin.TabularInline):
     readonly_fields = ('importe_visual',)
 
     def importe_visual(self, obj):
+        from django.utils.html import format_html
         if obj.cantidad and obj.precio_unitario:
             total = float(obj.cantidad) * float(obj.precio_unitario)
-            return format_html('<b>${:,.2f}</b>', total)
+            return format_html('<b>${}</b>', f"{total:,.2f}")
         return "$0.00"
     importe_visual.short_description = "Importe"
 
@@ -2052,6 +2054,7 @@ class CotizacionAdmin(admin.ModelAdmin):
         if obj.estatus in ['PERDIDA', 'CANCELADA']:
             return format_html('<span style="color: #dc3545; font-weight:bold;">🚫 Rechazada</span>')
             
+        # El cambio está aquí, pasándole obj.id como argumento formal a format_html
         return format_html(
             '<a class="button" href="{}/convertir-pedido/" style="background-color: #28a745; color:white; padding: 5px 10px; border-radius: 4px; text-decoration: none; font-weight:bold;">✨ Hacer Pedido</a>',
             obj.id
@@ -2092,15 +2095,22 @@ class CotizacionAdmin(admin.ModelAdmin):
             estatus='PENDIENTE'
         )
 
-        # 3. Clonamos el carrito de compras idéntico
+    # 3. Clonamos el carrito de compras idéntico
         claves_copiadas = 0
         for partida in cotizacion.partidas_cotizacion.all():
-            PartidaOrden.objects.create(
+            nueva_partida = PartidaOrden.objects.create(
                 orden=nueva_orden,
-                medicamento=partida.medicamento, # Usamos tu campo nuevo de Catálogo Libre
                 cantidad_solicitada=partida.cantidad,
                 precio_unitario=partida.precio_unitario
             )
+            # Intentamos asignar el medicamento, si no, guardamos la clave histórica
+            try:
+                nueva_partida.medicamento = partida.medicamento
+                nueva_partida.save()
+            except Exception:
+                 nueva_partida.clave_historica = partida.medicamento.clave_sector
+                 nueva_partida.save()
+                 
             claves_copiadas += 1
 
         # 4. Marcamos la cotización como ganada
