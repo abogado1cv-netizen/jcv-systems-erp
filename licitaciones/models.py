@@ -270,31 +270,11 @@ class ClaveContrato(models.Model):
         return f"{self.medicamento.clave_sector} - {self.contrato.numero_contrato}"
 
 class OrdenSuministro(models.Model):
-    # 🔥 AQUI EMPIEZA LO NUEVO 🔥
     TIPO_CHOICES = [
         ('SUMINISTRO', 'Orden de Suministro (Gobierno)'),
         ('PEDIDO', 'Pedido Privado (Cliente)'),
     ]
-
-    tipo_documento = models.CharField(
-        max_length=20,
-        choices=TIPO_CHOICES,
-        default='SUMINISTRO',
-        verbose_name='Tipo de Documento'
-    )
-    # 🔥 AQUI TERMINA LO NUEVO 🔥
-
-    ESTATUS_ORDEN = [
-        ('PENDIENTE', 'Pendiente'),
-        ('PARCIAL', 'Entrega Parcial'),
-        ('ENTREGADA', 'Entregada'),
-        ('DEVUELTA', 'Devuelta / Rechazada'),
-        ('NO_ATENDIDA', 'No Atendida'),
-        ('CANCELADA', 'Cancelada (Sin entrega)'),
-        ('CANCELADA_EVIDENCIA', 'Cancelada (CON EVIDENCIA DE ENTREGA)'),
-    ]
-    
-    clave_contrato = models.ForeignKey(ClaveContrato, on_delete=models.CASCADE, related_name='ordenes', verbose_name="Clave del Contrato", null=True, blank=True)
+    tipo_documento = models.CharField(max_length=20, choices=TIPO_CHOICES, default='SUMINISTRO', verbose_name='Tipo de Documento')
     
     razon_social = models.CharField(max_length=200, blank=True, null=True, verbose_name="Razón Social (Empresa)")
     DEPENDENCIAS = [
@@ -306,24 +286,8 @@ class OrdenSuministro(models.Model):
         ('SEMAR', 'SEMAR'),
         ('OTRA', 'Otra Dependencia'),
     ]
-    dependencia = models.CharField(
-        max_length=50, 
-        choices=DEPENDENCIAS, 
-        blank=True, 
-        null=True, 
-        verbose_name="Dependencia / Institución",
-        help_text="Selecciona la institución que solicitó esta orden."
-    )
-    numero_orden_suministro = models.CharField(max_length=150, verbose_name="No. Orden Suministro")
-    numero_procedimiento_extra = models.CharField(max_length=150, blank=True, null=True, verbose_name="No. Procedimiento (Histórico)")
-    
-    numero_contrato_historico = models.CharField(max_length=150, blank=True, null=True, verbose_name="No. Contrato (Excel)")
-    clave_medicamento_historico = models.CharField(max_length=50, blank=True, null=True, verbose_name="Clave (Excel)")
-    
-    descripcion_medicamento = models.TextField(blank=True, null=True, verbose_name="Descripción del Medicamento")
-    cantidad_solicitada = models.IntegerField(verbose_name="Cantidad Solicitada")
-    cantidad_entregada = models.IntegerField(default=0, verbose_name="Cantidad Entregada (Histórica)")
-    precio_unitario = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, verbose_name="Precio Unitario")
+    dependencia = models.CharField(max_length=50, choices=DEPENDENCIAS, blank=True, null=True, verbose_name="Dependencia / Institución")
+    numero_orden_suministro = models.CharField(max_length=150, verbose_name="Folio (No. Orden / Pedido)")
     
     clues_destino = models.CharField(max_length=100, blank=True, null=True, verbose_name="CLUES Destino")
     entidad_destino = models.CharField(max_length=250, blank=True, null=True, verbose_name="Entidad / Lugar de Entrega")
@@ -333,6 +297,15 @@ class OrdenSuministro(models.Model):
     fecha_limite = models.DateField(verbose_name="Fecha Límite de Entrega")
     fecha_entrega_real = models.DateField(null=True, blank=True, verbose_name='Fecha real de entrega')
 
+    ESTATUS_ORDEN = [
+        ('PENDIENTE', 'Pendiente'),
+        ('PARCIAL', 'Entrega Parcial'),
+        ('ENTREGADA', 'Entregada'),
+        ('DEVUELTA', 'Devuelta / Rechazada'),
+        ('NO_ATENDIDA', 'No Atendida'),
+        ('CANCELADA', 'Cancelada (Sin entrega)'),
+        ('CANCELADA_EVIDENCIA', 'Cancelada (CON EVIDENCIA DE ENTREGA)'),
+    ]
     estatus = models.CharField(max_length=20, choices=ESTATUS_ORDEN, default='PENDIENTE', verbose_name="Estatus Logístico")
     motivo_incidencia = models.TextField(blank=True, null=True, verbose_name="Motivo (Rechazo / No Atención)")
 
@@ -342,56 +315,58 @@ class OrdenSuministro(models.Model):
         ordering = ['fecha_limite'] 
 
     def __str__(self):
-        num_orden = getattr(self, 'numero_orden_suministro', 'Sin Folio')
-        try:
-            if self.clave_contrato and self.clave_contrato.medicamento:
-                clave = self.clave_contrato.medicamento.clave_sector
-            else:
-                clave = self.clave_medicamento_historico or "Sin Clave"
-        except Exception:
-            clave = "Error al leer clave"
-        # 🔥 AQUI TAMBIEN LO AGREGO PARA QUE DIGA "Pedido: 123" u "Orden: 123" 🔥
         tipo = dict(self.TIPO_CHOICES).get(self.tipo_documento, "Documento")
-        return f"{tipo}: {num_orden} | {clave}"
+        cliente = self.razon_social or self.dependencia or "Sin Cliente"
+        return f"{tipo}: {self.numero_orden_suministro} | {cliente}"
 
     @property
     def dias_atraso(self):
         from django.utils import timezone
-        
-        if not self.fecha_limite:
-            return 0
-            
+        if not self.fecha_limite: return 0
         if self.estatus in ['ENTREGADA', 'CANCELADA_EVIDENCIA']:
             fecha_cierre = self.fecha_entrega_real or timezone.now().date()
             dias = (fecha_cierre - self.fecha_limite).days
-            
         else:
             hoy = timezone.now().date()
             dias = (hoy - self.fecha_limite).days
-            
         return dias if dias > 0 else 0
+
+    @property
+    def valor_total(self):
+        # Suma el valor de todas las partidas adentro de esta orden
+        return sum(partida.importe for partida in self.partidas.all())
 
     @property
     def penalizacion_estimada(self):
         dias = self.dias_atraso
-        
-        if dias <= 0:
-            return 0.0
-            
-        try:
-            cantidad = float(self.cantidad_solicitada or 0)
-            precio = float(self.precio_unitario or 0)
-            importe_total = cantidad * precio
-        except (ValueError, TypeError):
-            return 0.0
-            
-        porcentaje_multa = dias * 0.02 
-        
-        if porcentaje_multa > 0.10:
-            porcentaje_multa = 0.10
-            
-        multa_final = importe_total * porcentaje_multa
-        return multa_final
+        if dias <= 0: return 0.0
+        importe_total = float(self.valor_total)
+        porcentaje_multa = min(dias * 0.02, 0.10)
+        return importe_total * porcentaje_multa
+
+
+# 🔥 EL NUEVO MODELO DE LAS CLAVES MULTIPLES 🔥
+class PartidaOrden(models.Model):
+    orden = models.ForeignKey(OrdenSuministro, on_delete=models.CASCADE, related_name='partidas')
+    clave_contrato = models.ForeignKey(ClaveContrato, on_delete=models.CASCADE, verbose_name="Clave del Medicamento", null=True, blank=True)
+    
+    cantidad_solicitada = models.IntegerField(verbose_name="Cant. Solicitada")
+    cantidad_entregada = models.IntegerField(default=0, verbose_name="Cant. Entregada")
+    precio_unitario = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, verbose_name="Precio Unitario")
+    
+    # Históricos por si importas Excels viejos
+    clave_historica = models.CharField(max_length=50, blank=True, null=True, verbose_name="Clave Histórica")
+    
+    @property
+    def importe(self):
+        return float(self.cantidad_solicitada or 0) * float(self.precio_unitario or 0)
+
+    class Meta:
+        verbose_name = "Medicamento / Clave"
+        verbose_name_plural = "Lista de Medicamentos"
+
+    def __str__(self):
+        return str(self.clave_contrato) if self.clave_contrato else "Partida Manual"
     
 class RemisionEntrega(models.Model):
     orden = models.ForeignKey(OrdenSuministro, on_delete=models.CASCADE, related_name='remisiones', verbose_name="Orden de Suministro")
