@@ -1237,6 +1237,7 @@ class OrdenSuministroResource(resources.ModelResource):
 class PartidaOrdenInline(admin.TabularInline):
     model = PartidaOrden
     extra = 1
+    autocomplete_fields = ['medicamento']
     fields = ('clave_contrato', 'cantidad_solicitada', 'precio_unitario', 'cantidad_entregada')
 
 @admin.register(OrdenSuministro)

@@ -349,7 +349,7 @@ class OrdenSuministro(models.Model):
 class PartidaOrden(models.Model):
     orden = models.ForeignKey(OrdenSuministro, on_delete=models.CASCADE, related_name='partidas')
     clave_contrato = models.ForeignKey(ClaveContrato, on_delete=models.CASCADE, verbose_name="Clave del Medicamento", null=True, blank=True)
-    
+    medicamento = models.ForeignKey(CatalogoMedicamento, on_delete=models.CASCADE, verbose_name="Catálogo Libre (Privados)", null=True, blank=True)
     cantidad_solicitada = models.IntegerField(verbose_name="Cant. Solicitada")
     cantidad_entregada = models.IntegerField(default=0, verbose_name="Cant. Entregada")
     precio_unitario = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, verbose_name="Precio Unitario")
