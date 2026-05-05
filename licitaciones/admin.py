@@ -24,7 +24,8 @@ from .models import (
     CatalogoMedicamento, EstatusProcedimiento, Empresa, SocioComercial,
     Licitacion, PartidaRequerimiento, RegistroUbicacion, Contrato, 
     FianzaContrato, ClaveContrato, OrdenSuministro, RemisionEntrega,
-    EntradaAlmacen, Almacen, TraspasoIntercompany, PartidaOrden
+    EntradaAlmacen, Almacen, TraspasoIntercompany, PartidaOrden,
+    Cotizacion, PartidaCotizacion
     
 )
 
@@ -1976,3 +1977,135 @@ class EscanerKardexAdmin(admin.ModelAdmin):
     # Esto intercepta el clic y te manda a la ruta secreta
     def changelist_view(self, request, extra_context=None):
         return HttpResponseRedirect(reverse('buscar_kardex'))
+    
+    # ==========================================
+# 🚀 MÓDULO: COTIZACIONES Y VENTAS DIRECTAS
+# ==========================================
+
+class PartidaCotizacionInline(admin.TabularInline):
+    model = PartidaCotizacion
+    extra = 1
+    autocomplete_fields = ['medicamento']  # Buscador inteligente del catálogo libre
+    fields = ('medicamento', 'cantidad', 'precio_unitario', 'importe_visual')
+    readonly_fields = ('importe_visual',)
+
+    def importe_visual(self, obj):
+        if obj.cantidad and obj.precio_unitario:
+            total = float(obj.cantidad) * float(obj.precio_unitario)
+            return format_html('<b>${:,.2f}</b>', total)
+        return "$0.00"
+    importe_visual.short_description = "Importe"
+
+@admin.register(Cotizacion)
+class CotizacionAdmin(admin.ModelAdmin):
+    list_per_page = 30
+    inlines = [PartidaCotizacionInline]
+    
+    list_display = ('folio', 'tipo_procedimiento', 'cliente_visual', 'fecha_emision', 'total_cotizado', 'estatus_badge', 'btn_convertir')
+    search_fields = ('folio', 'razon_social', 'dependencia')
+    list_filter = ('tipo_procedimiento', 'estatus', 'fecha_emision')
+    
+    fieldsets = (
+        ('📄 Datos del Evento', {
+            'fields': ('tipo_procedimiento', 'folio', 'fecha_emision', 'vigencia_dias')
+        }),
+        ('🏢 Cliente', {
+            'fields': ('razon_social', 'dependencia'),
+            'description': 'Llena Razón Social si es Privado, o elige Dependencia si es Gobierno.'
+        }),
+        ('🚦 Estatus', {
+            'fields': ('estatus',)
+        }),
+    )
+
+    def cliente_visual(self, obj):
+        return obj.razon_social if obj.tipo_procedimiento == 'COTIZACION_PRIVADA' else obj.get_dependencia_display()
+    cliente_visual.short_description = "Cliente / Dependencia"
+
+    def total_cotizado(self, obj):
+        return format_html('<b style="color: #5e35b1;">${:,.2f}</b>', float(obj.total_cotizacion))
+    total_cotizado.short_description = "Monto Total"
+
+    def estatus_badge(self, obj):
+        from django.utils.html import format_html
+        colores = {
+            'BORRADOR': '#6c757d',   
+            'ENVIADA': '#17a2b8', 
+            'GANADA': '#28a745',   
+            'PERDIDA': '#dc3545',
+            'CANCELADA': '#343a40'
+        }
+        color = colores.get(obj.estatus, '#000')
+        return format_html(
+            '<span style="background-color: {}; color: white; padding: 4px 10px; border-radius: 6px; font-weight: bold; font-size: 11px;">{}</span>',
+            color, obj.get_estatus_display()
+        )
+    estatus_badge.short_description = "Estatus"
+
+    # --- LA MAGIA DEL BOTÓN ---
+    def btn_convertir(self, obj):
+        from django.utils.html import format_html
+        if obj.estatus == 'GANADA':
+            return format_html('<span style="color: #28a745; font-weight:bold;">✔ Ya es Pedido</span>')
+        if obj.estatus in ['PERDIDA', 'CANCELADA']:
+            return format_html('<span style="color: #dc3545; font-weight:bold;">🚫 Rechazada</span>')
+            
+        return format_html(
+            '<a class="button" href="{}/convertir-pedido/" style="background-color: #28a745; color:white; padding: 5px 10px; border-radius: 4px; text-decoration: none; font-weight:bold;">✨ Hacer Pedido</a>',
+            obj.id
+        )
+    btn_convertir.short_description = "Acción"
+
+    def get_urls(self):
+        urls = super().get_urls()
+        from django.urls import path
+        custom_urls = [
+            path('<path:object_id>/convertir-pedido/', self.admin_site.admin_view(self.convertir_pedido_view), name='convertir_cotizacion_pedido'),
+        ]
+        return custom_urls + urls
+
+    def convertir_pedido_view(self, request, object_id):
+        from django.shortcuts import redirect
+        from django.contrib import messages
+        from django.utils import timezone
+        from .models import OrdenSuministro, PartidaOrden
+
+        cotizacion = self.get_object(request, object_id)
+
+        if cotizacion.estatus == 'GANADA':
+            messages.warning(request, "Esta cotización ya fue convertida a pedido anteriormente.")
+            return redirect('admin:licitaciones_cotizacion_changelist')
+
+        # 1. Definimos si se va a Gobierno o Privado
+        tipo_doc = 'PEDIDO' if cotizacion.tipo_procedimiento == 'COTIZACION_PRIVADA' else 'SUMINISTRO'
+
+        # 2. Creamos la Orden / Pedido en blanco
+        nueva_orden = OrdenSuministro.objects.create(
+            tipo_documento=tipo_doc,
+            numero_orden_suministro=f"{tipo_doc[:3]}-{cotizacion.folio}", # Ej: PED-COT001 o SUM-ADJ001
+            razon_social=cotizacion.razon_social,
+            dependencia=cotizacion.dependencia,
+            fecha_recepcion=timezone.now(),
+            fecha_limite=timezone.now() + timezone.timedelta(days=cotizacion.vigencia_dias),
+            estatus='PENDIENTE'
+        )
+
+        # 3. Clonamos el carrito de compras idéntico
+        claves_copiadas = 0
+        for partida in cotizacion.partidas_cotizacion.all():
+            PartidaOrden.objects.create(
+                orden=nueva_orden,
+                medicamento=partida.medicamento, # Usamos tu campo nuevo de Catálogo Libre
+                cantidad_solicitada=partida.cantidad,
+                precio_unitario=partida.precio_unitario
+            )
+            claves_copiadas += 1
+
+        # 4. Marcamos la cotización como ganada
+        cotizacion.estatus = 'GANADA'
+        cotizacion.save()
+
+        messages.success(request, f"¡Magia pura! ✨ Se generó la Orden {nueva_orden.numero_orden_suministro} con {claves_copiadas} claves. Ya está en Logística.")
+        
+        # Redirigimos al usuario para que vea la orden nueva creada
+        return redirect('admin:licitaciones_ordensuministro_change', nueva_orden.id)

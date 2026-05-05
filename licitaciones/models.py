@@ -802,3 +802,80 @@ class EscanerKardex(Inventario):
         proxy = True
         verbose_name = "📱 Escáner Kardex (Cámara)"
         verbose_name_plural = "📱 Escáner Kardex (Cámara)"
+
+        # ==========================================
+# 🚀 MÓDULO: COTIZACIONES Y VENTAS DIRECTAS
+# ==========================================
+class Cotizacion(models.Model):
+    TIPO_PROCEDIMIENTO = [
+        ('COTIZACION_PRIVADA', 'Cotización a Cliente Privado'),
+        ('ADJUDICACION', 'Adjudicación Directa (Gobierno)'),
+        ('INVESTIGACION', 'Investigación de Mercado (Gobierno)'),
+        ('INVITACION_3', 'Invitación a 3 Personas (Gobierno)'),
+    ]
+    
+    ESTATUS_COTIZACION = [
+        ('BORRADOR', 'Borrador (En edición)'),
+        ('ENVIADA', 'Enviada al Cliente / Dependencia'),
+        ('GANADA', 'Ganada / Aprobada (Lista para Pedido)'),
+        ('PERDIDA', 'Perdida / Rechazada'),
+        ('CANCELADA', 'Cancelada'),
+    ]
+
+    # Reutilizamos tu lista de dependencias para que todo sea compatible
+    DEPENDENCIAS = [
+        ('IMSS_BIENESTAR', 'IMSS-Bienestar'),
+        ('IMSS_ORDINARIO', 'IMSS Ordinario'),
+        ('ISSSTE', 'ISSSTE'),
+        ('SSA', 'Secretaría de Salud (SSA)'),
+        ('SEDENA', 'SEDENA'),
+        ('SEMAR', 'SEMAR'),
+        ('OTRA', 'Otra Dependencia'),
+    ]
+
+    tipo_procedimiento = models.CharField(max_length=30, choices=TIPO_PROCEDIMIENTO, default='COTIZACION_PRIVADA', verbose_name="Tipo de Venta")
+    folio = models.CharField(max_length=50, unique=True, verbose_name="Folio de Cotización / Evento")
+    
+    # Datos del Cliente (Hacemos un espejo de lo que pide la Orden de Suministro)
+    razon_social = models.CharField(max_length=200, blank=True, null=True, verbose_name="Razón Social (Cliente Privado)")
+    dependencia = models.CharField(max_length=50, choices=DEPENDENCIAS, blank=True, null=True, verbose_name="Dependencia (Gobierno)")
+    
+    fecha_emision = models.DateField(default=timezone.now, verbose_name="Fecha de Emisión")
+    vigencia_dias = models.IntegerField(default=15, verbose_name="Días de Vigencia")
+    
+    estatus = models.CharField(max_length=20, choices=ESTATUS_COTIZACION, default='BORRADOR', verbose_name="Estatus Comercial")
+
+    class Meta:
+        verbose_name = "Cotización / Venta Directa"
+        verbose_name_plural = "Cotizaciones y Ventas Directas"
+        ordering = ['-fecha_emision']
+
+    def __str__(self):
+        cliente = self.razon_social or self.dependencia or "Sin Cliente"
+        return f"{self.folio} | {cliente}"
+
+    @property
+    def total_cotizacion(self):
+        # Suma el valor de todas las partidas cotizadas
+        return sum(partida.importe for partida in self.partidas_cotizacion.all())
+
+
+class PartidaCotizacion(models.Model):
+    cotizacion = models.ForeignKey(Cotizacion, on_delete=models.CASCADE, related_name='partidas_cotizacion')
+    
+    # Aquí jalamos directamente del "Catálogo Libre" sin importar contratos
+    medicamento = models.ForeignKey(CatalogoMedicamento, on_delete=models.CASCADE, verbose_name="Medicamento (Catálogo Libre)")
+    
+    cantidad = models.IntegerField(verbose_name="Cantidad Solicitada")
+    precio_unitario = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, verbose_name="Precio Unitario Ofertado")
+
+    @property
+    def importe(self):
+        return float(self.cantidad or 0) * float(self.precio_unitario or 0)
+
+    class Meta:
+        verbose_name = "Partida Cotizada"
+        verbose_name_plural = "Medicamentos Cotizados"
+
+    def __str__(self):
+        return str(self.medicamento.clave_sector)
