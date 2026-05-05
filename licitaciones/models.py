@@ -270,6 +270,20 @@ class ClaveContrato(models.Model):
         return f"{self.medicamento.clave_sector} - {self.contrato.numero_contrato}"
 
 class OrdenSuministro(models.Model):
+    # 🔥 AQUI EMPIEZA LO NUEVO 🔥
+    TIPO_CHOICES = [
+        ('SUMINISTRO', 'Orden de Suministro (Gobierno)'),
+        ('PEDIDO', 'Pedido Privado (Cliente)'),
+    ]
+
+    tipo_documento = models.CharField(
+        max_length=20,
+        choices=TIPO_CHOICES,
+        default='SUMINISTRO',
+        verbose_name='Tipo de Documento'
+    )
+    # 🔥 AQUI TERMINA LO NUEVO 🔥
+
     ESTATUS_ORDEN = [
         ('PENDIENTE', 'Pendiente'),
         ('PARCIAL', 'Entrega Parcial'),
@@ -336,7 +350,9 @@ class OrdenSuministro(models.Model):
                 clave = self.clave_medicamento_historico or "Sin Clave"
         except Exception:
             clave = "Error al leer clave"
-        return f"Orden: {num_orden} | {clave}"
+        # 🔥 AQUI TAMBIEN LO AGREGO PARA QUE DIGA "Pedido: 123" u "Orden: 123" 🔥
+        tipo = dict(self.TIPO_CHOICES).get(self.tipo_documento, "Documento")
+        return f"{tipo}: {num_orden} | {clave}"
 
     @property
     def dias_atraso(self):
