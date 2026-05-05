@@ -24,7 +24,7 @@ from .models import (
     CatalogoMedicamento, EstatusProcedimiento, Empresa, SocioComercial,
     Licitacion, PartidaRequerimiento, RegistroUbicacion, Contrato, 
     FianzaContrato, ClaveContrato, OrdenSuministro, RemisionEntrega,
-    EntradaAlmacen, Almacen, TraspasoIntercompany
+    EntradaAlmacen, Almacen, TraspasoIntercompany, PartidaOrden
     
 )
 
@@ -1232,35 +1232,55 @@ class OrdenSuministroResource(resources.ModelResource):
 # ==========================================
 # 3. PANTALLA DE LOGÍSTICA: Órdenes de Suministro (OPMs)
 # ==========================================
+
+class PartidaOrdenInline(admin.TabularInline):
+    model = PartidaOrden
+    extra = 1
+    fields = ('clave_contrato', 'cantidad_solicitada', 'precio_unitario', 'cantidad_entregada')
+
 @admin.register(OrdenSuministro)
-class OrdenSuministroAdmin(ImportExportModelAdmin):
-    resource_class = OrdenSuministroResource
+class OrdenSuministroAdmin(admin.ModelAdmin):
+    # Desactivamos ImportExport temporalmente para Órdenes porque la estructura de Excel cambió a Carrito de Compras
+    inlines = [PartidaOrdenInline]
     
     list_per_page = 50
     list_display = (
-        'razon_social', 'numero_orden_suministro', 'mostrar_contrato', 'mostrar_clave', 'dependencia', 'nombre_unidad',
-        'cantidad_solicitada', 'piezas_entregadas', 'piezas_pendientes', 'alerta_inventario', 'fecha_limite', 
+        'razon_social', 'numero_orden_suministro', 'tipo_documento', 'dependencia', 'nombre_unidad',
+        'piezas_solicitadas', 'piezas_entregadas', 'piezas_pendientes', 'fecha_limite', 
         'estatus_logistico', 'monto_penalizacion', 'estatus', 'btn_surtir'
     )
-    search_fields = ('numero_orden_suministro', 'clave_medicamento_historico', 'numero_contrato_historico', 'nombre_unidad', 'clues_destino')
-    list_filter = ('razon_social', 'dependencia', 'estatus', 'fecha_limite')
+    search_fields = ('numero_orden_suministro', 'nombre_unidad', 'clues_destino')
+    list_filter = ('tipo_documento', 'razon_social', 'dependencia', 'estatus', 'fecha_limite')
     list_editable = ('estatus',)
 
     change_list_template = "admin/ordenes_changelist.html"
-    readonly_fields = ('alerta_inventario',)
+
+    fieldsets = (
+        ('1. Datos del Documento', {
+            'fields': ('tipo_documento', 'numero_orden_suministro', 'fecha_recepcion', 'fecha_limite')
+        }),
+        ('2. Cliente / Dependencia', {
+            'fields': ('razon_social', 'dependencia', 'entidad_destino', 'clues_destino', 'nombre_unidad')
+        }),
+        ('3. Logística y Estatus', {
+            'fields': ('estatus', 'fecha_entrega_real', 'motivo_incidencia')
+        }),
+    )
+
+    def piezas_solicitadas(self, obj):
+        return sum(p.cantidad_solicitada for p in obj.partidas.all())
+    piezas_solicitadas.short_description = "Cant. Solicitada"
 
     def piezas_entregadas(self, obj):
         from django.utils.html import format_html
-        
         enviadas = sum((r.cantidad_entregada or 0) for r in obj.remisiones.exclude(estatus_viaje='RECHAZO'))
-        
+        total_solicitado = sum(p.cantidad_solicitada for p in obj.partidas.all())
         enviadas_texto = f"{enviadas:,}"
         
-        if enviadas >= obj.cantidad_solicitada and obj.cantidad_solicitada > 0:
+        if enviadas >= total_solicitado and total_solicitado > 0:
             return format_html('<b style="color: #28a745;">{}</b>', enviadas_texto) 
         else:
             return format_html('<b style="color: #007bff;">{}</b>', enviadas_texto)
-            
     piezas_entregadas.short_description = "Cant. Entregada"
 
     def piezas_pendientes(self, obj):
@@ -1268,28 +1288,14 @@ class OrdenSuministroAdmin(ImportExportModelAdmin):
         from django.utils.safestring import mark_safe 
         
         enviadas = sum((r.cantidad_entregada or 0) for r in obj.remisiones.exclude(estatus_viaje='RECHAZO'))
-        pendientes = obj.cantidad_solicitada - enviadas
-        
-        pendientes_texto = f"{pendientes:,}"
+        total_solicitado = sum(p.cantidad_solicitada for p in obj.partidas.all())
+        pendientes = total_solicitado - enviadas
         
         if pendientes <= 0:
             return mark_safe('<b style="color: #28a745;">0</b>') 
         else:
-            return format_html('<b style="color: #dc3545;">{}</b>', pendientes_texto)
-            
+            return format_html('<b style="color: #dc3545;">{}</b>', f"{pendientes:,}")
     piezas_pendientes.short_description = "Cant. Pendiente"
-    
-    def mostrar_contrato(self, obj):
-        if obj.clave_contrato:
-            return obj.clave_contrato.contrato.numero_contrato
-        return f"{obj.numero_contrato_historico} (No cruzó DB)"
-    mostrar_contrato.short_description = "No. Contrato"
-
-    def mostrar_clave(self, obj):
-        if obj.clave_contrato:
-            return obj.clave_contrato.medicamento.clave_sector
-        return f"{obj.clave_medicamento_historico} (No cruzó DB)"
-    mostrar_clave.short_description = "Clave"
 
     def estatus_logistico(self, obj):
         from django.utils.html import format_html
@@ -1305,7 +1311,6 @@ class OrdenSuministroAdmin(ImportExportModelAdmin):
 
         if obj.estatus in ['CANCELADA', 'CANCELADA_EVIDENCIA']:
             piezas_entregadas = sum((r.cantidad_entregada or 0) for r in obj.remisiones.exclude(estatus_viaje='RECHAZO'))
-            
             if piezas_entregadas > 0:
                 return format_html(
                     '<div style="text-align: center; line-height: 1.2;">'
@@ -1332,41 +1337,9 @@ class OrdenSuministroAdmin(ImportExportModelAdmin):
             monto_formateado = f"${penalizacion:,.2f}"
             return format_html('<span style="color: #dc3545; font-weight: bold;">- {}</span>', monto_formateado)
             
+        from django.utils.safestring import mark_safe
         return mark_safe('<span style="color: #ccc;">$0.00</span>')
     monto_penalizacion.short_description = "Penalización Acumulada"
-
-    def alerta_inventario(self, obj):
-        from django.utils.html import format_html
-        from django.utils.safestring import mark_safe
-        from django.db.models import Sum
-        from .models import Inventario
-
-        if obj.estatus == 'ENTREGADA':
-            return mark_safe('<span style="color: #28a745; font-weight: bold;">✔ STOCK ENTREGADO</span>')
-
-        clave_buscar = None
-        if obj.clave_contrato and obj.clave_contrato.medicamento:
-            clave_buscar = obj.clave_contrato.medicamento.clave_sector
-        elif obj.clave_medicamento_historico:
-            clave_buscar = obj.clave_medicamento_historico
-            
-        if not clave_buscar: 
-            return mark_safe('<span style="color: #ccc;">Sin Clave</span>')
-            
-        stock = Inventario.objects.filter(
-            medicamento__clave_sector=clave_buscar, 
-            cantidad_disponible__gt=0
-        ).aggregate(total=Sum('cantidad_disponible'))['total'] or 0
-
-        if stock == 0:
-            return mark_safe('<b style="color: #dc3545;">❌ 0 en Stock (Agotado)</b>') 
-        elif stock >= obj.cantidad_solicitada:
-            return format_html('<b style="color: #28a745;">✅ {} en Stock</b>', f"{stock:,}")
-        else:
-            faltan = obj.cantidad_solicitada - stock
-            return format_html('<b style="color: #ffc107;">⚠️ {} en Stock<br><small>(Faltan {})</small></b>', f"{stock:,}", f"{faltan:,}")
-            
-    alerta_inventario.short_description = "Validación de Almacén"
     
     def btn_surtir(self, obj):
         from django.utils.html import format_html
@@ -1396,10 +1369,13 @@ class OrdenSuministroAdmin(ImportExportModelAdmin):
         
         orden = self.get_object(request, object_id)
         
-        clave_buscar = orden.clave_contrato.medicamento.clave_sector if (orden.clave_contrato and orden.clave_contrato.medicamento) else orden.clave_medicamento_historico
-        lotes_disponibles = Inventario.objects.filter(medicamento__clave_sector=clave_buscar, cantidad_disponible__gt=0).order_by('fecha_caducidad')
+        # Extraer todas las claves que están dentro de esta orden (carrito)
+        claves_buscar = [p.clave_contrato.medicamento.clave_sector for p in orden.partidas.all() if p.clave_contrato and p.clave_contrato.medicamento]
+        lotes_disponibles = Inventario.objects.filter(medicamento__clave_sector__in=claves_buscar, cantidad_disponible__gt=0).order_by('fecha_caducidad')
+        
+        total_solicitado = sum(p.cantidad_solicitada for p in orden.partidas.all())
         ya_enviado = sum(r.cantidad_entregada for r in orden.remisiones.all())
-        falta_enviar = orden.cantidad_solicitada - ya_enviado
+        falta_enviar = total_solicitado - ya_enviado
 
         if request.method == 'POST':
             lote_id = request.POST.get('lote_id')
@@ -1468,7 +1444,6 @@ class OrdenSuministroAdmin(ImportExportModelAdmin):
                 del actions['marcar_como_canceladas']
                 
         return actions
-
 
 # ==========================================
 # REGISTRO DEL NUEVO MÓDULO DE INVENTARIO
