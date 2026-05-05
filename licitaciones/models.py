@@ -209,7 +209,8 @@ class Contrato(models.Model):
     def porcentaje_avance(self):
         maximo = self.monto_total_contrato
         if maximo == 0: return 0.0
-        res = OrdenSuministro.objects.filter(clave_contrato__contrato=self).aggregate(
+        # 🔥 CAMBIO: Ahora busca adentro del Carrito de Compras (PartidaOrden)
+        res = PartidaOrden.objects.filter(clave_contrato__contrato=self).aggregate(
             consumido=Sum(F('cantidad_solicitada') * F('clave_contrato__precio_neto'))
         )
         consumido = res['consumido'] or Decimal('0.00')
@@ -217,10 +218,13 @@ class Contrato(models.Model):
 
     @property
     def porcentaje_abasto(self):
-        res_solicitado = OrdenSuministro.objects.filter(clave_contrato__contrato=self).aggregate(total=Sum('cantidad_solicitada'))
+        # 🔥 CAMBIO: Ahora busca adentro del Carrito de Compras (PartidaOrden)
+        res_solicitado = PartidaOrden.objects.filter(clave_contrato__contrato=self).aggregate(total=Sum('cantidad_solicitada'))
         solicitado = res_solicitado['total'] or 0
         if solicitado == 0: return 0.0
-        res_entregado = RemisionEntrega.objects.filter(orden__clave_contrato__contrato=self).aggregate(total=Sum('cantidad_entregada'))
+        
+        # Filtramos las remisiones que tengan órdenes conectadas a este contrato
+        res_entregado = RemisionEntrega.objects.filter(orden__partidas__clave_contrato__contrato=self).distinct().aggregate(total=Sum('cantidad_entregada'))
         entregado = res_entregado['total'] or 0
         return round((entregado / float(solicitado)) * 100, 2)
 
@@ -406,6 +410,7 @@ class RemisionEntrega(models.Model):
 
         orden = self.orden
         piezas_comprobadas = sum(r.cantidad_entregada for r in orden.remisiones.all() if r.estatus_viaje == 'ENTREGADA')
+        total_solicitado_orden = sum(p.cantidad_solicitada for p in orden.partidas.all())
         
         if self.estatus_viaje == 'ENTREGADA':
             if piezas_comprobadas >= orden.cantidad_solicitada:
