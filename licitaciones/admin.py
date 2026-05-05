@@ -2051,14 +2051,17 @@ class CotizacionAdmin(admin.ModelAdmin):
         )
     estatus_badge.short_description = "Estatus"
 
-    # --- LA MAGIA DEL BOTÓN ---
+# --- LA MAGIA DEL BOTÓN ---
     def btn_convertir(self, obj):
         from django.utils.html import format_html
+        from django.utils.safestring import mark_safe
+        
         if obj.estatus == 'GANADA':
-            return format_html('<span style="color: #28a745; font-weight:bold;">✔ Ya es Pedido</span>')
+            return mark_safe('<span style="color: #28a745; font-weight:bold;">✔ Ya es Pedido</span>')
         if obj.estatus in ['PERDIDA', 'CANCELADA']:
-            return format_html('<span style="color: #dc3545; font-weight:bold;">🚫 Rechazada</span>')
+            return mark_safe('<span style="color: #dc3545; font-weight:bold;">🚫 Rechazada</span>')
             
+        # Aquí sí usamos format_html porque le estamos inyectando el obj.id a la URL
         return format_html(
             '<a class="button" href="{}/convertir-pedido/" style="background-color: #28a745; color:white; padding: 5px 10px; border-radius: 4px; text-decoration: none; font-weight:bold;">✨ Hacer Pedido</a>',
             obj.id
