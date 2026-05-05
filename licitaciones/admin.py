@@ -1145,7 +1145,8 @@ class ContratoAdmin(ImportExportModelAdmin):
         return render(request, 'admin/licitaciones/licitacion/seleccionar_claves_contrato.html', context)
 
     def monto_penalizado(self, obj):
-        ordenes = OrdenSuministro.objects.filter(clave_contrato__contrato=obj)
+        # 👇 El cambio está en el filter de esta línea 👇
+        ordenes = OrdenSuministro.objects.filter(partidas__clave_contrato__contrato=obj).distinct()
         try:
             total_multas = sum(float(orden.penalizacion_estimada) for orden in ordenes)
         except (ValueError, TypeError):
@@ -1155,8 +1156,8 @@ class ContratoAdmin(ImportExportModelAdmin):
             monto_formateado = f"${total_multas:,.2f}"
             return format_html('<span style="color: #dc3545; font-weight: bold;">- {}</span>', monto_formateado)
             
+        from django.utils.safestring import mark_safe
         return mark_safe('<span style="color: #28a745; font-weight: bold;">$0.00</span>')
-        
     monto_penalizado.short_description = "Penalizaciones (Est.)"
 
 # ==========================================
