@@ -1253,8 +1253,6 @@ class OrdenSuministroAdmin(admin.ModelAdmin):
     list_filter = ('tipo_documento', 'razon_social', 'dependencia', 'estatus', 'fecha_limite')
     list_editable = ('estatus',)
 
-    change_list_template = "admin/ordenes_changelist.html"
-
     fieldsets = (
         ('1. Datos del Documento', {
             'fields': ('tipo_documento', 'numero_orden_suministro', 'fecha_recepcion', 'fecha_limite')
