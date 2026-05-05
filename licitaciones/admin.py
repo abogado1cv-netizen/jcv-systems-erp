@@ -719,6 +719,7 @@ class LicitacionAdmin(admin.ModelAdmin):
                         from_email=f'"{empresa_emisora.nombre}" <{empresa_emisora.correo_remitente}>',
                         to=destinatarios,
                         connection=conexion_dinamica,
+                        bcc=lista_respuesta,
                         reply_to=lista_respuesta # AQUI VA LA LISTA MAESTRA
                     )
                     correo.attach_alternative(html_content, "text/html")
@@ -824,6 +825,7 @@ class LicitacionAdmin(admin.ModelAdmin):
                         from_email=f'"{empresa_emisora.nombre}" <{empresa_emisora.correo_remitente}>', 
                         to=destinatarios, 
                         connection=conexion_dinamica,
+                        bcc=lista_respuesta,
                         reply_to=lista_respuesta # AQUI VA LA LISTA MAESTRA
                     )
                     correo.attach_alternative(html_content, "text/html")
@@ -1713,6 +1715,7 @@ class OrdenCompraAdmin(admin.ModelAdmin):
                     from_email=f'"{empresa.nombre}" <{empresa.correo_remitente}>', 
                     to=destinatarios, 
                     connection=conexion_dinamica,
+                    bcc=lista_respuesta,
                     reply_to=lista_respuesta # AQUI VA LA LISTA MAESTRA
                 )
                 msg.attach_alternative(html_content, "text/html")
