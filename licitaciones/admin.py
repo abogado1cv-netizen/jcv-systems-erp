@@ -1529,7 +1529,7 @@ class PartidaCompraInline(admin.TabularInline):
 
     def importe_visual(self, obj):
         if obj.cantidad and obj.precio_unitario:
-            total = obj.cantidad * obj.precio_unitario
+            total = float(obj.cantidad) * float(obj.precio_unitario)
             total_formateado = f"{total:,.2f}"
             return format_html('<b>${}</b>', total_formateado)
         return "$0.00"
@@ -2023,7 +2023,8 @@ class CotizacionAdmin(admin.ModelAdmin):
     cliente_visual.short_description = "Cliente / Dependencia"
 
     def total_cotizado(self, obj):
-        return format_html('<b style="color: #5e35b1;">${:,.2f}</b>', float(obj.total_cotizacion))
+        total_formateado = f"{float(obj.total_cotizacion):,.2f}"
+        return format_html('<b style="color: #5e35b1;">${}</b>', total_formateado)
     total_cotizado.short_description = "Monto Total"
 
     def estatus_badge(self, obj):
