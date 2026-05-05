@@ -1983,7 +1983,6 @@ class EscanerKardexAdmin(admin.ModelAdmin):
     # ==========================================
 # 🚀 MÓDULO: COTIZACIONES Y VENTAS DIRECTAS
 # ==========================================
-
 class PartidaCotizacionInline(admin.TabularInline):
     model = PartidaCotizacion
     extra = 1
@@ -1995,7 +1994,10 @@ class PartidaCotizacionInline(admin.TabularInline):
         from django.utils.html import format_html
         if obj.cantidad and obj.precio_unitario:
             total = float(obj.cantidad) * float(obj.precio_unitario)
-            return format_html('<b>${}</b>', f"{total:,.2f}")
+            # Damos formato primero
+            total_str = "{:,.2f}".format(total)
+            # Pasamos la cadena limpia
+            return format_html('<b>${}</b>', total_str)
         return "$0.00"
     importe_visual.short_description = "Importe"
 
@@ -2026,8 +2028,11 @@ class CotizacionAdmin(admin.ModelAdmin):
     cliente_visual.short_description = "Cliente / Dependencia"
 
     def total_cotizado(self, obj):
-        total_formateado = f"{float(obj.total_cotizacion):,.2f}"
-        return format_html('<b style="color: #5e35b1;">${}</b>', total_formateado)
+        from django.utils.html import format_html
+        # Damos formato primero
+        total_str = "{:,.2f}".format(float(obj.total_cotizacion))
+        # Pasamos la cadena limpia
+        return format_html('<b style="color: #5e35b1;">${}</b>', total_str)
     total_cotizado.short_description = "Monto Total"
 
     def estatus_badge(self, obj):
@@ -2054,7 +2059,6 @@ class CotizacionAdmin(admin.ModelAdmin):
         if obj.estatus in ['PERDIDA', 'CANCELADA']:
             return format_html('<span style="color: #dc3545; font-weight:bold;">🚫 Rechazada</span>')
             
-        # El cambio está aquí, pasándole obj.id como argumento formal a format_html
         return format_html(
             '<a class="button" href="{}/convertir-pedido/" style="background-color: #28a745; color:white; padding: 5px 10px; border-radius: 4px; text-decoration: none; font-weight:bold;">✨ Hacer Pedido</a>',
             obj.id
