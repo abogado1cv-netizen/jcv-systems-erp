@@ -25,7 +25,7 @@ from .models import (
     Licitacion, PartidaRequerimiento, RegistroUbicacion, Contrato, 
     FianzaContrato, ClaveContrato, OrdenSuministro, RemisionEntrega,
     EntradaAlmacen, Almacen, TraspasoIntercompany, PartidaOrden,
-    Cotizacion, PartidaCotizacion
+    Cotizacion, PartidaCotizacion, PedidoDirecto
     
 )
 
@@ -1268,6 +1268,10 @@ class OrdenSuministroAdmin(admin.ModelAdmin):
         }),
     )
 
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        return qs.filter(tipo_documento='SUMINISTRO')
+
     def piezas_solicitadas(self, obj):
         return sum(p.cantidad_solicitada for p in obj.partidas.all())
     piezas_solicitadas.short_description = "Cant. Solicitada"
@@ -1445,6 +1449,15 @@ class OrdenSuministroAdmin(admin.ModelAdmin):
                 del actions['marcar_como_canceladas']
                 
         return actions
+    
+
+@admin.register(PedidoDirecto)
+class PedidoDirectoAdmin(OrdenSuministroAdmin):
+    # Hereda TODO de OrdenSuministro (pantallas, botones, inlines)
+    # Pero le decimos que solo nos muestre los Pedidos Directos
+    def get_queryset(self, request):
+        qs = super(admin.ModelAdmin, self).get_queryset(request)
+        return qs.filter(tipo_documento='PEDIDO')
 
 # ==========================================
 # REGISTRO DEL NUEVO MÓDULO DE INVENTARIO
@@ -2077,11 +2090,11 @@ class CotizacionAdmin(admin.ModelAdmin):
         ]
         return custom_urls + urls
 
-    def convertir_pedido_view(self, request, object_id):
+def convertir_pedido_view(self, request, object_id):
         from django.shortcuts import redirect
         from django.contrib import messages
         from django.utils import timezone
-        from .models import OrdenSuministro, PartidaOrden
+        from .models import PartidaOrden, PedidoDirecto
 
         cotizacion = self.get_object(request, object_id)
 
@@ -2089,21 +2102,17 @@ class CotizacionAdmin(admin.ModelAdmin):
             messages.warning(request, "Esta cotización ya fue convertida a pedido anteriormente.")
             return redirect('admin:licitaciones_cotizacion_changelist')
 
-        # 1. Definimos si se va a Gobierno o Privado
-        tipo_doc = 'PEDIDO' if cotizacion.tipo_procedimiento == 'COTIZACION_PRIVADA' else 'SUMINISTRO'
-
-        # 2. Creamos la Orden / Pedido en blanco
-        nueva_orden = OrdenSuministro.objects.create(
-            tipo_documento=tipo_doc,
-            numero_orden_suministro=f"{tipo_doc[:3]}-{cotizacion.folio}", # Ej: PED-COT001 o SUM-ADJ001
+        # 1. Todo lo que pasa por aquí se convierte en Pedido Directo
+        nueva_orden = PedidoDirecto.objects.create(
+            numero_orden_suministro=f"PED-{cotizacion.folio}", 
             razon_social=cotizacion.razon_social,
             dependencia=cotizacion.dependencia,
-            fecha_recepcion=timezone.now(),
-            fecha_limite=timezone.now() + timezone.timedelta(days=cotizacion.vigencia_dias),
+            fecha_recepcion=timezone.now().date(),
             estatus='PENDIENTE'
+            # No enviamos fecha_limite porque el "save" del PedidoDirecto forzará los 10 días
         )
 
-    # 3. Clonamos el carrito de compras idéntico
+        # 2. Clonamos el carrito de compras
         claves_copiadas = 0
         for partida in cotizacion.partidas_cotizacion.all():
             nueva_partida = PartidaOrden.objects.create(
@@ -2111,7 +2120,6 @@ class CotizacionAdmin(admin.ModelAdmin):
                 cantidad_solicitada=partida.cantidad,
                 precio_unitario=partida.precio_unitario
             )
-            # Intentamos asignar el medicamento, si no, guardamos la clave histórica
             try:
                 nueva_partida.medicamento = partida.medicamento
                 nueva_partida.save()
@@ -2121,11 +2129,11 @@ class CotizacionAdmin(admin.ModelAdmin):
                  
             claves_copiadas += 1
 
-        # 4. Marcamos la cotización como ganada
+        # 3. Marcamos la cotización como ganada
         cotizacion.estatus = 'GANADA'
         cotizacion.save()
 
-        messages.success(request, f"¡Magia pura! ✨ Se generó la Orden {nueva_orden.numero_orden_suministro} con {claves_copiadas} claves. Ya está en Logística.")
+        messages.success(request, f"¡Magia pura! ✨ Se generó el Pedido Directo {nueva_orden.numero_orden_suministro} con {claves_copiadas} claves. Tiene 10 días límite.")
         
-        # Redirigimos al usuario para que vea la orden nueva creada
-        return redirect('admin:licitaciones_ordensuministro_change', nueva_orden.id)
+        # Redirigimos al usuario a la PANTALLA NUEVA de Pedidos Directos
+        return redirect('admin:licitaciones_pedidodirecto_change', nueva_orden.id)
