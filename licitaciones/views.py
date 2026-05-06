@@ -9,13 +9,12 @@ from django.utils import timezone
 from django.contrib.admin.views.decorators import staff_member_required
 from .models import Inventario
 from .services import DashboardService
-from django.db.models import Q
 
-# Traemos todos los modelos (¡Asegurándonos de traer PartidaOrden y Cotizacion!)
+# Traemos todos los modelos (¡Incluidos PartidaOrden y Cotizacion!)
 from .models import (
     Contrato, Licitacion, PartidaRequerimiento, Empresa, 
     OrdenSuministro, RemisionEntrega, ClaveContrato, CatalogoMedicamento,
-    PartidaOrden, Cotizacion, PartidaCotizacion
+    PartidaOrden, Cotizacion, PartidaCotizacion, PedidoDirecto
 )
 
 # ==========================================
@@ -64,10 +63,10 @@ def dashboard_contratos(request):
     piezas_maximas = agregados.get('pzas_max') or 0
 
     # =========================================================
-    # 4. CALCULAMOS EL AVANCE COMERCIAL Y LOGÍSTICO (Piezas y Montos)
+    # 4. CALCULAMOS EL AVANCE COMERCIAL Y LOGÍSTICO (CARRITO NUEVO)
     # =========================================================
     
-    # 4.1 Piezas y Monto Solicitado (Leemos desde el Carrito: PartidaOrden)
+    # 4.1 Piezas y Monto Solicitado (Leemos desde PartidaOrden)
     agg_solicitadas = PartidaOrden.objects.filter(clave_contrato__contrato__in=contratos).aggregate(
         tot_pzas=Sum('cantidad_solicitada'),
         tot_dinero=Sum(F('cantidad_solicitada') * F('clave_contrato__precio_neto'))
@@ -75,7 +74,7 @@ def dashboard_contratos(request):
     piezas_solicitadas = agg_solicitadas.get('tot_pzas') or 0
     monto_solicitado = agg_solicitadas.get('tot_dinero') or 0
 
-    # 4.2 Piezas y Monto Entregado (Leemos desde el Carrito: PartidaOrden)
+    # 4.2 Piezas y Monto Entregado (Leemos desde PartidaOrden)
     agg_entregadas = PartidaOrden.objects.filter(clave_contrato__contrato__in=contratos).aggregate(
         tot_pzas=Sum('cantidad_entregada'),
         tot_dinero=Sum(F('cantidad_entregada') * F('clave_contrato__precio_neto'))
@@ -115,15 +114,12 @@ def dashboard_contratos(request):
     
     detalle_claves = []
     for clave in detalle_claves_qs:
-        # 6.1 Sumamos las piezas ya entregadas (Leemos desde PartidaOrden)
         entregas_dict = PartidaOrden.objects.filter(clave_contrato=clave).aggregate(tot=Sum('cantidad_entregada'))
         clave.pzas_entregadas = entregas_dict.get('tot') or 0
 
-        # 6.2 Sumamos las piezas solicitadas (Leemos desde PartidaOrden)
         solicitadas_dict = PartidaOrden.objects.filter(clave_contrato=clave).aggregate(tot=Sum('cantidad_solicitada'))
         clave.pzas_solicitadas = solicitadas_dict.get('tot') or 0
         
-        # 6.3 CALCULAMOS LAS PIEZAS FALTANTES
         faltantes = clave.pzas_solicitadas - clave.pzas_entregadas
         clave.pzas_faltantes = faltantes if faltantes > 0 else 0
 
@@ -142,7 +138,6 @@ def dashboard_contratos(request):
     contratos_list = contratos_qs.values_list('numero_contrato', flat=True).distinct()
 
     context = {
-        # KPIs Financieros Principales
         'monto_minimo_str': f"${monto_minimo:,.2f}",
         'monto_maximo_str': f"${monto_maximo:,.2f}",
         'monto_solicitado_str': f"${monto_solicitado:,.2f}",
@@ -150,24 +145,15 @@ def dashboard_contratos(request):
         'piezas_minimas_str': f"{piezas_minimas:,}",
         'piezas_maximas_str': f"{piezas_maximas:,}",
         'total_penalizado_str': f"-${total_penalizado:,.2f}",
-        
-        # Nuevas variables para las Donas y Tarjetas
         'piezas_solicitadas': piezas_solicitadas,
         'piezas_pendientes_solicitar': piezas_pendientes_solicitar,
         'piezas_entregadas': piezas_entregadas,
         'piezas_pendientes_entregar': piezas_pendientes_entregar,
-        
         'avance_min_pct': f"{avance_min_pct:,.1f}%",
         'avance_max_pct': f"{avance_max_pct:,.1f}%",
-        
-        # Gráficas
         'nombres_top_json': json.dumps(nombres_top),
         'montos_top_json': json.dumps(montos_top),
-        
-        # Tablas
         'detalle_claves': detalle_claves,
-        
-        # Filtros y Búsqueda
         'dependencias_disponibles': deps_list,
         'empresas_disponibles': empresas_qs,
         'contratos_disponibles': contratos_list,
@@ -176,46 +162,52 @@ def dashboard_contratos(request):
         'filtro_contrato': filtro_contrato,
         'busqueda': busqueda, 
     }
-    
     return render(request, 'dashboard_contratos.html', context)
 
 
 # ==========================================
-# 2. DASHBOARD DE LICITACIONES
+# 🔥 2. DASHBOARD OMNI-CANAL (LICITACIONES + COTIZACIONES)
 # ==========================================
 @staff_member_required
 def dashboard_licitaciones(request):
-    # 1. Atrapamos lo que el usuario escribió o seleccionó
     q = request.GET.get('q', '').strip()
     filtro_empresa = request.GET.get('empresa', '')
 
-    # 2. Traemos todo de la base de datos
+    # 1. TRAEMOS AMBOS MUNDOS
     licitaciones = Licitacion.objects.all()
-    partidas = PartidaRequerimiento.objects.all()
+    partidas_lic = PartidaRequerimiento.objects.select_related('licitacion', 'medicamento')
 
-    # 3. FILTRO POR EMPRESA (El nuevo menú desplegable)
+    cotizaciones = Cotizacion.objects.all()
+    partidas_cot = PartidaCotizacion.objects.select_related('cotizacion', 'medicamento')
+
+    # 2. FILTRO POR EMPRESA
     if filtro_empresa:
         licitaciones = licitaciones.filter(empresa_id=filtro_empresa)
-        partidas = partidas.filter(licitacion__empresa_id=filtro_empresa)
+        partidas_lic = partidas_lic.filter(licitacion__empresa_id=filtro_empresa)
+        # Cotización no tiene empresa atada por ahora, por lo que es global.
 
-    # 4. SI HAY BÚSQUEDA DE TEXTO, FILTRAMOS
+    # 3. BÚSQUEDA GLOBAL SIMULTÁNEA EN AMBAS TABLAS
     if q:
-        licitaciones = licitaciones.filter(
-            Q(num_procedimiento__icontains=q) | 
-            Q(dependencia__icontains=q)
-        )
-        partidas = partidas.filter(
+        licitaciones = licitaciones.filter(Q(num_procedimiento__icontains=q) | Q(dependencia__icontains=q))
+        partidas_lic = partidas_lic.filter(
             Q(licitacion__num_procedimiento__icontains=q) |
             Q(medicamento__clave_sector__icontains=q) |
             Q(medicamento__fabricante__icontains=q) |
             Q(resultado__icontains=q)
         )
 
-    # 5. Ahora sí, calculamos con la info filtrada
-    total_licitaciones = licitaciones.count()
-    en_proceso = licitaciones.filter(estatus__estado='EN_PROCESO').count()
-    adjudicadas = licitaciones.filter(estatus__estado='ADJUDICADO').count()
-    perdidas = licitaciones.filter(estatus__estado='PERDIDO').count()
+        cotizaciones = cotizaciones.filter(Q(folio__icontains=q) | Q(razon_social__icontains=q) | Q(dependencia__icontains=q))
+        partidas_cot = partidas_cot.filter(
+            Q(cotizacion__folio__icontains=q) |
+            Q(medicamento__clave_sector__icontains=q) |
+            Q(medicamento__fabricante__icontains=q)
+        )
+
+    # 4. SUMAMOS TOTALES Y ESTATUS
+    total_licitaciones = licitaciones.count() + cotizaciones.count()
+    en_proceso = licitaciones.filter(estatus__estado='EN_PROCESO').count() + cotizaciones.filter(estatus__in=['BORRADOR', 'ENVIADA']).count()
+    adjudicadas = licitaciones.filter(estatus__estado='ADJUDICADO').count() + cotizaciones.filter(estatus='GANADA').count()
+    perdidas = licitaciones.filter(estatus__estado='PERDIDO').count() + cotizaciones.filter(estatus__in=['PERDIDA', 'CANCELADA']).count()
 
     monto_total = 0
     monto_ganado = 0
@@ -223,8 +215,9 @@ def dashboard_licitaciones(request):
     claves_participadas = set()
     claves_ganadas = set()
     
-    for p in partidas:
-        importe = (p.cantidad_maxima or 0) * (p.precio or 0)
+    # Procesamos Licitaciones
+    for p in partidas_lic:
+        importe = float(p.cantidad_maxima or 0) * float(p.precio or 0)
         monto_total += importe
         if p.medicamento_id: claves_participadas.add(p.medicamento_id)
         
@@ -234,33 +227,97 @@ def dashboard_licitaciones(request):
         elif p.resultado in ['Perdida por precio', 'Perdida técnicamente']:
             monto_perdido += importe
 
+    # Procesamos Ventas Directas
+    for p in partidas_cot:
+        importe = float(p.cantidad or 0) * float(p.precio_unitario or 0)
+        monto_total += importe
+        if p.medicamento_id: claves_participadas.add(p.medicamento_id)
+        
+        if p.cotizacion.estatus == 'GANADA':
+            monto_ganado += importe
+            if p.medicamento_id: claves_ganadas.add(p.medicamento_id)
+        elif p.cotizacion.estatus in ['PERDIDA', 'CANCELADA']:
+            monto_perdido += importe
+
     monto_en_proceso = monto_total - monto_ganado - monto_perdido
     if monto_en_proceso < 0: monto_en_proceso = 0
 
-    top_claves = partidas.filter(resultado='Asignada').annotate(
-        importe_total=F('cantidad_maxima') * F('precio')
-    ).values('medicamento__clave_sector', 'medicamento__fabricante').annotate(
-        total_importe=Sum('importe_total')
-    ).order_by('-total_importe')[:5]
+    # 5. TOP 5 CLAVES (Fusionadas)
+    claves_dict = {}
+    for p in partidas_lic.filter(resultado='Asignada'):
+        k = (p.medicamento.clave_sector, p.medicamento.fabricante)
+        claves_dict[k] = claves_dict.get(k, 0) + (float(p.cantidad_maxima or 0) * float(p.precio or 0))
+
+    for p in partidas_cot.filter(cotizacion__estatus='GANADA'):
+        k = (p.medicamento.clave_sector, p.medicamento.fabricante)
+        claves_dict[k] = claves_dict.get(k, 0) + (float(p.cantidad or 0) * float(p.precio_unitario or 0))
+
+    top_claves_sorted = sorted(claves_dict.items(), key=lambda x: x[1], reverse=True)[:5]
+    top_claves = []
+    nombres_top = []
+    montos_top = []
+
+    for (clave, fab), importe in top_claves_sorted:
+        top_claves.append({
+            'medicamento__clave_sector': clave,
+            'medicamento__fabricante': fab,
+            'total_importe': importe
+        })
+        nombres_top.append(clave)
+        montos_top.append(importe)
+
+    # 6. TABLAS INFERIORES DE DETALLE (Objeto Simulado para no romper el HTML)
+    class DummyObj: pass
+    detalle_ganadas = []
+    detalle_perdidas = []
+
+    for p in partidas_lic.filter(resultado__in=['Asignada', 'Perdida por precio', 'Perdida técnicamente']):
+        item = DummyObj()
+        item.licitacion = DummyObj()
+        item.licitacion.num_procedimiento = p.licitacion.num_procedimiento
+        item.licitacion.fecha_fallo = p.licitacion.fecha_fallo
+        item.medicamento = DummyObj()
+        item.medicamento.clave_sector = p.medicamento.clave_sector
+        item.medicamento.fabricante = p.medicamento.fabricante
+        item.resultado = p.resultado
+        item.importe = float(p.cantidad_maxima or 0) * float(p.precio or 0)
+        item.importe_ganado = item.importe
+
+        if p.resultado == 'Asignada':
+            detalle_ganadas.append(item)
+        else:
+            detalle_perdidas.append(item)
+
+    for p in partidas_cot.filter(cotizacion__estatus__in=['GANADA', 'PERDIDA', 'CANCELADA']):
+        item = DummyObj()
+        item.licitacion = DummyObj()
+        item.licitacion.num_procedimiento = p.cotizacion.folio
+        item.licitacion.fecha_fallo = p.cotizacion.fecha_emision
+        item.medicamento = DummyObj()
+        item.medicamento.clave_sector = p.medicamento.clave_sector
+        item.medicamento.fabricante = p.medicamento.fabricante
+        item.resultado = p.cotizacion.get_estatus_display()
+        item.importe = float(p.cantidad or 0) * float(p.precio_unitario or 0)
+        item.importe_ganado = item.importe
+
+        if p.cotizacion.estatus == 'GANADA':
+            detalle_ganadas.append(item)
+        else:
+            detalle_perdidas.append(item)
+
+    detalle_ganadas.sort(key=lambda x: x.importe, reverse=True)
+    detalle_ganadas = detalle_ganadas[:50]
+    detalle_perdidas.sort(key=lambda x: x.importe, reverse=True)
+    detalle_perdidas = detalle_perdidas[:50]
 
     proximos_fallos = licitaciones.filter(
         estatus__estado='EN_PROCESO', fecha_fallo__gte=timezone.now()
     ).order_by('fecha_fallo')[:5]
 
-    detalle_ganadas = partidas.filter(resultado='Asignada').select_related('licitacion', 'medicamento').annotate(
-        importe_ganado=F('cantidad_maxima') * F('precio')
-    ).order_by('-licitacion__fecha_fallo')[:50]
-
-    detalle_perdidas = partidas.filter(resultado__in=['Perdida por precio', 'Perdida técnicamente']).select_related('licitacion', 'medicamento').order_by('-licitacion__fecha_fallo')[:50]
-
-    nombres_top = [c['medicamento__clave_sector'] for c in top_claves]
-    montos_top = [float(c['total_importe']) for c in top_claves]
-
-    # Traemos las empresas para pintar el menú desplegable en el HTML
     empresas_disponibles = Empresa.objects.all()
 
     context = {
-        'title': 'Panel Ejecutivo Compacto',
+        'title': 'Panel Ejecutivo Omnicanal',
         'q': q, 
         'filtro_empresa': int(filtro_empresa) if filtro_empresa.isdigit() else '',
         'empresas_disponibles': empresas_disponibles,
@@ -365,7 +422,6 @@ def dashboard_ordenes(request):
 
     context = {
         'busqueda': busqueda,
-        # KPIs Originales
         'total_ordenes': total_ordenes,
         'entregadas': entregadas,
         'pendientes': pendientes,
@@ -375,8 +431,6 @@ def dashboard_ordenes(request):
         'nombres_unidades_json': json.dumps(nombres_unidades),
         'cantidades_unidades_json': json.dumps(cantidades_unidades),
         'ordenes_criticas': ordenes_criticas,
-        
-        # 🔥 Nuevas variables inyectadas al HTML
         'piezas_solicitadas': total_piezas_solicitadas,
         'piezas_entregadas': total_piezas_entregadas,
         'piezas_pendientes': total_piezas_pendientes,
