@@ -11,10 +11,11 @@ from .models import Inventario
 from .services import DashboardService
 from django.db.models import Q
 
-# Traemos todos los modelos
+# Traemos todos los modelos (¡Asegurándonos de traer PartidaOrden y Cotizacion!)
 from .models import (
     Contrato, Licitacion, PartidaRequerimiento, Empresa, 
-    OrdenSuministro, RemisionEntrega, ClaveContrato, CatalogoMedicamento
+    OrdenSuministro, RemisionEntrega, ClaveContrato, CatalogoMedicamento,
+    PartidaOrden, Cotizacion, PartidaCotizacion
 )
 
 # ==========================================
@@ -66,16 +67,16 @@ def dashboard_contratos(request):
     # 4. CALCULAMOS EL AVANCE COMERCIAL Y LOGÍSTICO (Piezas y Montos)
     # =========================================================
     
-    # 4.1 Piezas y Monto Solicitado (OPMs)
-    agg_solicitadas = OrdenSuministro.objects.filter(clave_contrato__contrato__in=contratos).aggregate(
+    # 4.1 Piezas y Monto Solicitado (Leemos desde el Carrito: PartidaOrden)
+    agg_solicitadas = PartidaOrden.objects.filter(clave_contrato__contrato__in=contratos).aggregate(
         tot_pzas=Sum('cantidad_solicitada'),
         tot_dinero=Sum(F('cantidad_solicitada') * F('clave_contrato__precio_neto'))
     )
     piezas_solicitadas = agg_solicitadas.get('tot_pzas') or 0
     monto_solicitado = agg_solicitadas.get('tot_dinero') or 0
 
-    # 4.2 Piezas y Monto Entregado (Leemos directo de las OPMs)
-    agg_entregadas = OrdenSuministro.objects.filter(clave_contrato__contrato__in=contratos).aggregate(
+    # 4.2 Piezas y Monto Entregado (Leemos desde el Carrito: PartidaOrden)
+    agg_entregadas = PartidaOrden.objects.filter(clave_contrato__contrato__in=contratos).aggregate(
         tot_pzas=Sum('cantidad_entregada'),
         tot_dinero=Sum(F('cantidad_entregada') * F('clave_contrato__precio_neto'))
     )
@@ -93,7 +94,7 @@ def dashboard_contratos(request):
     avance_max_pct = (piezas_solicitadas / piezas_maximas * 100) if piezas_maximas > 0 else 0
 
     # 4.3 CALCULAMOS PENALIZACIONES
-    ordenes_vinculadas = OrdenSuministro.objects.filter(clave_contrato__contrato__in=contratos)
+    ordenes_vinculadas = OrdenSuministro.objects.filter(partidas__clave_contrato__contrato__in=contratos).distinct()
     total_penalizado = sum(float(o.penalizacion_estimada) for o in ordenes_vinculadas)
 
 
@@ -114,18 +115,17 @@ def dashboard_contratos(request):
     
     detalle_claves = []
     for clave in detalle_claves_qs:
-        # 6.1 Sumamos las piezas ya entregadas (Leemos de las OPMs directamente)
-        entregas_dict = OrdenSuministro.objects.filter(clave_contrato=clave).aggregate(tot=Sum('cantidad_entregada'))
+        # 6.1 Sumamos las piezas ya entregadas (Leemos desde PartidaOrden)
+        entregas_dict = PartidaOrden.objects.filter(clave_contrato=clave).aggregate(tot=Sum('cantidad_entregada'))
         clave.pzas_entregadas = entregas_dict.get('tot') or 0
 
-        # 6.2 Sumamos las piezas solicitadas (OPMs)
-        solicitadas_dict = OrdenSuministro.objects.filter(clave_contrato=clave).aggregate(tot=Sum('cantidad_solicitada'))
+        # 6.2 Sumamos las piezas solicitadas (Leemos desde PartidaOrden)
+        solicitadas_dict = PartidaOrden.objects.filter(clave_contrato=clave).aggregate(tot=Sum('cantidad_solicitada'))
         clave.pzas_solicitadas = solicitadas_dict.get('tot') or 0
         
-        # 6.3 --- NUEVO: CALCULAMOS LAS PIEZAS FALTANTES ---
+        # 6.3 CALCULAMOS LAS PIEZAS FALTANTES
         faltantes = clave.pzas_solicitadas - clave.pzas_entregadas
         clave.pzas_faltantes = faltantes if faltantes > 0 else 0
-        # --------------------------------------------------
 
         detalle_claves.append(clave)
 
@@ -293,9 +293,6 @@ def dashboard_licitaciones(request):
 # ==========================================
 # 3. DASHBOARD DE ÓRDENES DE SUMINISTRO (LOGÍSTICA)
 # ==========================================
-from django.db.models import Sum, Count, Q
-from django.utils import timezone
-import json
 
 @staff_member_required
 def dashboard_ordenes(request):
@@ -307,7 +304,8 @@ def dashboard_ordenes(request):
         ordenes = ordenes.filter(
             Q(numero_orden_suministro__icontains=busqueda) |
             Q(nombre_unidad__icontains=busqueda) |
-            Q(clave_contrato__medicamento__clave_sector__icontains=busqueda) |
+            Q(partidas__clave_contrato__medicamento__clave_sector__icontains=busqueda) |
+            Q(partidas__medicamento__clave_sector__icontains=busqueda) |
             Q(razon_social__icontains=busqueda)
         ).distinct()
 
@@ -321,35 +319,36 @@ def dashboard_ordenes(request):
     atrasadas = ordenes.filter(estatus__in=['PENDIENTE', 'PARCIAL'], fecha_limite__lt=hoy).count()
 
     # Cálculos Financieros (Iteramos porque son @properties)
-    monto_total_solicitado = sum((float(o.cantidad_solicitada or 0) * float(o.precio_unitario or 0)) for o in ordenes)
+    monto_total_solicitado = sum(float(o.valor_total) for o in ordenes)
     penalizaciones_totales = sum(float(o.penalizacion_estimada) for o in ordenes)
 
     # ==========================================
-    # 🔥 NUEVOS CÁLCULOS: INTELIGENCIA DE PIEZAS
+    # 🔥 NUEVOS CÁLCULOS: INTELIGENCIA DE PIEZAS (Desde PartidaOrden)
     # ==========================================
+    partidas_qs = PartidaOrden.objects.filter(orden__in=ordenes)
+
     # 1. Total de Piezas Solicitadas
-    total_piezas_solicitadas = ordenes.aggregate(total=Sum('cantidad_solicitada'))['total'] or 0
+    total_piezas_solicitadas = partidas_qs.aggregate(total=Sum('cantidad_solicitada'))['total'] or 0
     
     # 2. Total de Piezas Entregadas
-    total_piezas_entregadas = ordenes.aggregate(total=Sum('cantidad_entregada'))['total'] or 0
+    total_piezas_entregadas = partidas_qs.aggregate(total=Sum('cantidad_entregada'))['total'] or 0
     
     # 3. Total de Piezas Pendientes (Calculado)
     total_piezas_pendientes = total_piezas_solicitadas - total_piezas_entregadas
     if total_piezas_pendientes < 0:
         total_piezas_pendientes = 0 # Protección por si hay entregas de más
         
-    # 4. Total de Piezas Canceladas (Asumiendo que tienes un estatus CANCELADA)
-    total_piezas_canceladas = ordenes.filter(estatus='CANCELADA').aggregate(total=Sum('cantidad_solicitada'))['total'] or 0
+    # 4. Total de Piezas Canceladas 
+    total_piezas_canceladas = PartidaOrden.objects.filter(orden__estatus='CANCELADA', orden__in=ordenes).aggregate(total=Sum('cantidad_solicitada'))['total'] or 0
 
     # ==========================================
     # 🔥 NUEVO TOP: CLAVES MÁS ENTREGADAS
     # ==========================================
-    # Agrupamos por la clave del medicamento y sumamos sus cantidades entregadas
-    top_claves_entregadas = ordenes.filter(cantidad_entregada__gt=0).values(
+    top_claves_entregadas = partidas_qs.filter(cantidad_entregada__gt=0).values(
         'clave_contrato__medicamento__clave_sector'
     ).annotate(
         total_entregado=Sum('cantidad_entregada')
-    ).order_by('-total_entregado')[:10] # Top 10
+    ).order_by('-total_entregado')[:10]
 
     # Top 5 Unidades/Hospitales con más pedidos (Para la gráfica)
     top_unidades = ordenes.values('nombre_unidad').annotate(
@@ -386,11 +385,6 @@ def dashboard_ordenes(request):
     }
     
     return render(request, 'dashboard_ordenes.html', context)
-
-from django.shortcuts import render
-from django.db.models import Sum, F, FloatField
-from django.utils import timezone
-from .models import OrdenCompra, PartidaCompra, SocioComercial
 
 def dashboard_compras(request):
     # 1. FILTROS
