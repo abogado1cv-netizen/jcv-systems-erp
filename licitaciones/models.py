@@ -884,3 +884,27 @@ class PartidaCotizacion(models.Model):
 
     def __str__(self):
         return str(self.medicamento.clave_sector)
+    
+    # ==========================================
+# 🚀 3.1 MÓDULO: PEDIDOS DIRECTOS (PROXY)
+# ==========================================
+from datetime import timedelta
+
+class PedidoDirecto(OrdenSuministro):
+    class Meta:
+        proxy = True # ¡El truco de magia! No crea tabla nueva, usa OrdenSuministro
+        verbose_name = "Pedido Directo (10 días)"
+        verbose_name_plural = "3.1 Pedidos Directos"
+
+    def save(self, *args, **kwargs):
+        # 1. Forzamos a que sea un Pedido
+        self.tipo_documento = 'PEDIDO'
+        
+        # 2. LA REGLA DE ORO: 10 días naturales a partir de la recepción
+        if not self.fecha_recepcion:
+            self.fecha_recepcion = timezone.now().date()
+            
+        if not self.fecha_limite:
+            self.fecha_limite = self.fecha_recepcion + timedelta(days=10)
+            
+        super().save(*args, **kwargs)
