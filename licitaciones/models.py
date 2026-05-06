@@ -49,6 +49,10 @@ DEPENDENCIAS_MAESTRAS = [
         ('PEMEX', 'PEMEX'),
         ('SEMAR', 'Secretaría de Marina'),
         ('SEDENA', 'Secretaría de la Defensa Nacional'),
+        ('CONASAMA', 'Comisión Nacional de Salud Mental y Adicciones'),  # 👈 Nueva
+        ('CENAPRECE', 'Centro Nacional de Programas Preventivos y Control de Enfermedades'), # 👈 Nueva
+        ('CENSIDA', 'Centro Nacional para la Prevención y el Control del VIH y el SIDA'), # 👈 Nueva
+        ('BIRMEX', 'Laboratorios de Biológicos y Reactivos de México'), # 👈 Nueva
     )),
     ('HRAE_REGIONALES', (
         ('HRAE_BAJIO', 'HRAE del Bajío'),
