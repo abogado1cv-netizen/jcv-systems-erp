@@ -7,14 +7,59 @@ from django.contrib.auth.models import User
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from django.utils import timezone
-from datetime import date
+from datetime import date, timedelta
 from django.core.exceptions import ValidationError
-from django.utils import timezone
 
 TIPO_PRODUCTO_CHOICES = [
     ('SECTORIZADO', 'Sectorizado (Sector Salud)'),
     ('COMERCIAL', 'Comercial'),
-    ]
+]
+
+# ==========================================
+# 🏛️ CATÁLOGO MAESTRO DE DEPENDENCIAS
+# ==========================================
+DEPENDENCIAS_MAESTRAS = [
+    ('HOSPITALES_GENERALES', (
+        ('HGM', 'Hospital General de México "Dr. Eduardo Liceaga"'),
+        ('HGEA', 'Hospital General Dr. Manuel Gea González'),
+        ('HJUAREZ', 'Hospital Juárez de México'),
+        ('HJUAREZ_CENTRO', 'Hospital Juárez del Centro'),
+        ('HMUJER', 'Hospital de la Mujer'),
+        ('HHOMEOPATICO', 'Hospital Homeopático'),
+    )),
+    ('INSTITUTOS_NACIONALES', (
+        ('INCAN', 'Instituto Nacional de Cancerología'),
+        ('INCARDIO', 'Instituto Nacional de Cardiología Ignacio Chávez'),
+        ('INCMNSZ', 'Instituto Nacional de Ciencias Médicas y Nutrición Salvador Zubirán'),
+        ('INER', 'Instituto Nacional de Enfermedades Respiratorias'),
+        ('INGER', 'Instituto Nacional de Geriatría'),
+        ('INMEGEN', 'Instituto Nacional de Medicina Genómica'),
+        ('INNN', 'Instituto Nacional de Neurología y Neurocirugía'),
+        ('INP', 'Instituto Nacional de Pediatría'),
+        ('INPER', 'Instituto Nacional de Perinatología'),
+        ('INP_RAMON', 'Instituto Nacional de Psiquiatría Ramón de la Fuente'),
+        ('INR', 'Instituto Nacional de Rehabilitación'),
+        ('INSP', 'Instituto Nacional de Salud Pública'),
+        ('HIMFG', 'Hospital Infantil de México Federico Gómez'),
+    )),
+    ('INSTITUCIONES_FEDERALES', (
+        ('IMSS_BIENESTAR', 'IMSS-Bienestar'),
+        ('IMSS_ORDINARIO', 'Instituto Mexicano del Seguro Social (IMSS)'),
+        ('ISSSTE', 'ISSSTE'),
+        ('PEMEX', 'PEMEX'),
+        ('SEMAR', 'Secretaría de Marina'),
+        ('SEDENA', 'Secretaría de la Defensa Nacional'),
+    )),
+    ('HRAE_REGIONALES', (
+        ('HRAE_BAJIO', 'HRAE del Bajío'),
+        ('HRAE_IXTAPALUCA', 'HRAE Ixtapaluca'),
+        ('HRAE_VICTORIA', 'HRAE de Cd. Victoria'),
+        ('HRAE_OAXACA', 'HRAE de Oaxaca'),
+        ('HRAE_YUCATAN', 'HRAE de la Península de Yucatán'),
+    )),
+    ('OTRA', 'Otra Dependencia'),
+]
+
 
 class EstatusProcedimiento(models.Model):
     ESTATUS_CHOICES = [
@@ -34,7 +79,10 @@ class Licitacion(models.Model):
     fecha_apertura = models.DateTimeField(verbose_name="Fecha y hora de apertura", null=True, blank=True)
     fecha_junta = models.DateTimeField(verbose_name="Fecha y hora de junta de aclaraciones", null=True, blank=True)
     fecha_fallo = models.DateTimeField(verbose_name="Fecha y hora del acto del Fallo", null=True, blank=True)
-    dependencia = models.CharField(max_length=150, verbose_name="Dependencia")
+    
+    # 👇 Usamos la lista maestra
+    dependencia = models.CharField(max_length=100, choices=DEPENDENCIAS_MAESTRAS, verbose_name="Dependencia")
+    
     estatus = models.ForeignKey(EstatusProcedimiento, on_delete=models.SET_NULL, null=True)
     url_carpeta_drive = models.URLField(max_length=500, blank=True, null=True, verbose_name="URL Carpeta Drive")
 
@@ -43,7 +91,7 @@ class Licitacion(models.Model):
         verbose_name_plural = "Licitaciones"
 
     def __str__(self):
-        return f"{self.num_procedimiento} - {self.dependencia}"
+        return f"{self.num_procedimiento} - {self.get_dependencia_display()}"
 
     def save(self, *args, **kwargs):
         es_nuevo = self.pk is None 
@@ -81,7 +129,6 @@ class CatalogoMedicamento(models.Model):
     fecha_vigencia = models.DateField(null=True, blank=True)
 
     class Meta:
-        # AQUI CAMBIAMOS DE "PRODUCTOS" A "CLAVES"
         verbose_name = "Clave"
         verbose_name_plural = "Claves"
 
@@ -105,19 +152,8 @@ class PartidaRequerimiento(models.Model):
         ('Perdida por precio', 'Perdida por precio'),
         ('Perdida técnicamente', 'Perdida técnicamente'),
     ]
-    resultado = models.CharField(
-        max_length=30, 
-        choices=RESULTADOS_OPCIONES, 
-        default='Pendiente', 
-        verbose_name="Resultado"
-    )
-    motivo_perdida = models.CharField(
-        max_length=255, 
-        blank=True, 
-        null=True, 
-        verbose_name="Motivo Técnico",
-        help_text="Escribe por qué se perdió (solo si fue pérdida técnica)."
-    )
+    resultado = models.CharField(max_length=30, choices=RESULTADOS_OPCIONES, default='Pendiente', verbose_name="Resultado")
+    motivo_perdida = models.CharField(max_length=255, blank=True, null=True, verbose_name="Motivo Técnico", help_text="Escribe por qué se perdió (solo si fue pérdida técnica).")
     
     @property
     def valor_minimo_costo(self): return (self.costo * self.cantidad_minima) if self.costo and self.cantidad_minima else 0
@@ -171,6 +207,7 @@ class SocioComercial(models.Model):
     def __str__(self):
         return self.nombre
 
+
 # ==========================================
 # FASE 2: MÓDULO DE CONTRATOS Y ABASTO LOGÍSTICO
 # ==========================================
@@ -178,10 +215,18 @@ class SocioComercial(models.Model):
 class Contrato(models.Model):
     empresa = models.ForeignKey('Empresa', on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Empresa GPHARMA")
     numero_contrato = models.CharField(max_length=100, unique=True, verbose_name="Número de Contrato")
-    dependencia = models.CharField(max_length=200, verbose_name="Dependencia / Cliente")
+    
+    # 👇 Usamos la lista maestra
+    dependencia = models.CharField(max_length=100, choices=DEPENDENCIAS_MAESTRAS, verbose_name="Dependencia / Cliente")
+    
     fecha_inicio = models.DateField(verbose_name="Inicio de Vigencia", null=True, blank=True)
     fecha_fin = models.DateField(verbose_name="Fin de Vigencia", null=True, blank=True)
     licitacion_origen = models.ForeignKey('Licitacion', on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Viene de la Licitación")
+    
+    # 👇 NUEVO: Para los convenios modificatorios
+    tiene_convenio_modificatorio = models.BooleanField(default=False, verbose_name="¿Tiene Convenio Modificatorio?")
+    porcentaje_ampliacion = models.DecimalField(max_digits=5, decimal_places=2, default=0.00, help_text="Ej: 20.00 si se amplió el 20%")
+
     ruta_carpeta_servidor = models.CharField(max_length=500, blank=True, null=True, verbose_name="Ruta en Servidor Local (Ej: V:\\REPORTES...)")
     porcentaje_penalizacion_diaria = models.DecimalField("Penalización Diaria (%)", max_digits=5, decimal_places=2, default=2.5, help_text="Ej. 2.5% por día de atraso")
     tope_penalizacion = models.DecimalField("Tope de Penalización (%)", max_digits=5, decimal_places=2, default=10.0, help_text="Límite de la penalización (Ej. 10%)")
@@ -193,12 +238,11 @@ class Contrato(models.Model):
         super().save(*args, **kwargs)
 
     class Meta:
-        # AQUI CAMBIAMOS DE "CONTRATOS MAESTROS" A "CONTRATOS"
         verbose_name = "Contrato"
         verbose_name_plural = "1. Contratos"
         
     def __str__(self):
-        return f"{self.numero_contrato} - {self.dependencia}"
+        return f"{self.numero_contrato} - {self.get_dependencia_display()}"
 
     @property
     def monto_total_contrato(self):
@@ -209,7 +253,6 @@ class Contrato(models.Model):
     def porcentaje_avance(self):
         maximo = self.monto_total_contrato
         if maximo == 0: return 0.0
-        # 🔥 CAMBIO: Ahora busca adentro del Carrito de Compras (PartidaOrden)
         res = PartidaOrden.objects.filter(clave_contrato__contrato=self).aggregate(
             consumido=Sum(F('cantidad_solicitada') * F('clave_contrato__precio_neto'))
         )
@@ -218,12 +261,10 @@ class Contrato(models.Model):
 
     @property
     def porcentaje_abasto(self):
-        # 🔥 CAMBIO: Ahora busca adentro del Carrito de Compras (PartidaOrden)
         res_solicitado = PartidaOrden.objects.filter(clave_contrato__contrato=self).aggregate(total=Sum('cantidad_solicitada'))
         solicitado = res_solicitado['total'] or 0
         if solicitado == 0: return 0.0
         
-        # Filtramos las remisiones que tengan órdenes conectadas a este contrato
         res_entregado = RemisionEntrega.objects.filter(orden__partidas__clave_contrato__contrato=self).distinct().aggregate(total=Sum('cantidad_entregada'))
         entregado = res_entregado['total'] or 0
         return round((entregado / float(solicitado)) * 100, 2)
@@ -281,16 +322,10 @@ class OrdenSuministro(models.Model):
     tipo_documento = models.CharField(max_length=20, choices=TIPO_CHOICES, default='SUMINISTRO', verbose_name='Tipo de Documento')
     
     razon_social = models.CharField(max_length=200, blank=True, null=True, verbose_name="Razón Social (Empresa)")
-    DEPENDENCIAS = [
-        ('IMSS_BIENESTAR', 'IMSS-Bienestar'),
-        ('IMSS_ORDINARIO', 'IMSS Ordinario'),
-        ('ISSSTE', 'ISSSTE'),
-        ('SSA', 'Secretaría de Salud (SSA)'),
-        ('SEDENA', 'SEDENA'),
-        ('SEMAR', 'SEMAR'),
-        ('OTRA', 'Otra Dependencia'),
-    ]
-    dependencia = models.CharField(max_length=50, choices=DEPENDENCIAS, blank=True, null=True, verbose_name="Dependencia / Institución")
+    
+    # 👇 Usamos la lista maestra
+    dependencia = models.CharField(max_length=100, choices=DEPENDENCIAS_MAESTRAS, blank=True, null=True, verbose_name="Dependencia / Institución")
+    
     numero_orden_suministro = models.CharField(max_length=150, verbose_name="Folio (No. Orden / Pedido)")
     
     clues_destino = models.CharField(max_length=100, blank=True, null=True, verbose_name="CLUES Destino")
@@ -320,7 +355,7 @@ class OrdenSuministro(models.Model):
 
     def __str__(self):
         tipo = dict(self.TIPO_CHOICES).get(self.tipo_documento, "Documento")
-        cliente = self.razon_social or self.dependencia or "Sin Cliente"
+        cliente = self.razon_social or self.get_dependencia_display() or "Sin Cliente"
         return f"{tipo}: {self.numero_orden_suministro} | {cliente}"
 
     @property
@@ -337,7 +372,6 @@ class OrdenSuministro(models.Model):
 
     @property
     def valor_total(self):
-        # Suma el valor de todas las partidas adentro de esta orden
         return sum(partida.importe for partida in self.partidas.all())
 
     @property
@@ -413,7 +447,7 @@ class RemisionEntrega(models.Model):
         total_solicitado_orden = sum(p.cantidad_solicitada for p in orden.partidas.all())
         
         if self.estatus_viaje == 'ENTREGADA':
-            if piezas_comprobadas >= orden.cantidad_solicitada:
+            if piezas_comprobadas >= total_solicitado_orden:
                 orden.estatus = 'ENTREGADA'
             else:
                 orden.estatus = 'PARCIAL'
@@ -428,15 +462,12 @@ class RemisionEntrega(models.Model):
         # 🔥 LA MAGIA: KARDEX Y DESCUENTO DE INVENTARIO PARA SALIDAS
         if es_nuevo:
             from .models import MovimientoKardex, Inventario
-            # Buscamos el producto en el almacén basándonos en el Lote
             stock = Inventario.objects.filter(lote__iexact=self.lote).first()
 
             if stock:
-                # 1. Descontamos las piezas del almacén
                 stock.cantidad_disponible -= self.cantidad_entregada
                 stock.save()
 
-                # 2. Escribimos en el diario del Kardex
                 destino_final = orden.nombre_unidad or orden.entidad_destino or "Instituto"
                 MovimientoKardex.objects.create(
                     almacen=stock.almacen,
@@ -465,18 +496,8 @@ class Inventario(models.Model):
     medicamento = models.ForeignKey('CatalogoMedicamento', on_delete=models.CASCADE, verbose_name="Clave / Medicamento")
     lote = models.CharField(max_length=50, verbose_name="Lote del Producto")
     fecha_caducidad = models.DateField(verbose_name="Fecha de Caducidad")
-
-    # --- AQUÍ LO PEGAMOS ---
-    tipo_producto = models.CharField(
-        max_length=20, 
-        choices=TIPO_PRODUCTO_CHOICES, 
-        default='COMERCIAL',
-        verbose_name="Tipo de Producto"
-    )
-    
-    # 🔥 NUEVO CAMPO: Código de barras para la pistola
+    tipo_producto = models.CharField(max_length=20, choices=TIPO_PRODUCTO_CHOICES, default='COMERCIAL', verbose_name="Tipo de Producto")
     codigo_barras = models.CharField(max_length=150, blank=True, null=True, verbose_name="Código de Barras", help_text="Escanea aquí con la pistola de códigos")
-    
     cantidad_disponible = models.IntegerField(default=0, verbose_name="Piezas Físicas Disponibles")
     fecha_ingreso = models.DateTimeField(auto_now_add=True, verbose_name="Fecha de Ingreso al Sistema")
 
@@ -500,9 +521,6 @@ class Inventario(models.Model):
                     'lote': f"🚨 ALERTA DE TRAZABILIDAD: El lote '{self.lote}' ya pertenece al fabricante '{lab_original}'."
                 })
 
-# ==========================================
-# 🔥 EL CORAZÓN DEL ALMACÉN: EL KARDEX
-# ==========================================
 class MovimientoKardex(models.Model):
     TIPO_MOVIMIENTO = [
         ('ENTRADA_COMPRA', '📥 Entrada por Compra'),
@@ -528,7 +546,7 @@ class MovimientoKardex(models.Model):
     class Meta:
         verbose_name = "Movimiento de Kardex"
         verbose_name_plural = "📊 Kardex (Historial Exacto)"
-        ordering = ['-fecha'] # Siempre muestra el más reciente primero
+        ordering = ['-fecha'] 
 
     def __str__(self):
         signo = "+" if "ENTRADA" in self.tipo or "IN" in self.tipo else "-"
@@ -706,14 +724,7 @@ class EntradaAlmacen(models.Model):
     almacen_destino = models.ForeignKey('Almacen', on_delete=models.PROTECT, verbose_name="Almacén Destino", null=True, blank=True)
     folio_remision = models.CharField("Folio de Remisión / Factura", max_length=100, default="S/F", help_text="Anota el número de ticket o factura.")
     medicamento = models.ForeignKey('CatalogoMedicamento', on_delete=models.CASCADE, verbose_name="Clave / Medicamento")
-    
-    # --- AQUÍ LO PEGAMOS ---
-    tipo_producto = models.CharField(
-        max_length=20, 
-        choices=TIPO_PRODUCTO_CHOICES, 
-        default='COMERCIAL',
-        verbose_name="Tipo de Producto"
-    )
+    tipo_producto = models.CharField(max_length=20, choices=TIPO_PRODUCTO_CHOICES, default='COMERCIAL', verbose_name="Tipo de Producto")
     cantidad_recibida = models.PositiveIntegerField("Piezas Físicas Recibidas")
     lote = models.CharField("Lote Impreso", max_length=50)
     fecha_caducidad = models.DateField("Fecha de Caducidad")
@@ -756,7 +767,7 @@ class EntradaAlmacen(models.Model):
                 medicamento=self.medicamento,
                 lote=self.lote,
                 fecha_caducidad=self.fecha_caducidad,
-                tipo_producto=self.tipo_producto, # 👈 AGREGAMOS ESTA LÍNEA
+                tipo_producto=self.tipo_producto,
                 defaults={
                     'cantidad_disponible': 0,
                     'fecha_ingreso': self.fecha_ingreso.date()
@@ -769,7 +780,6 @@ class EntradaAlmacen(models.Model):
                 self.orden.estatus = 'PARCIAL' 
                 self.orden.save()
 
-            # 🔥 LA MAGIA: KARDEX PARA ENTRADAS DE COMPRA
             from .models import MovimientoKardex
             MovimientoKardex.objects.create(
                 almacen=self.almacen_destino,
@@ -799,16 +809,13 @@ class ConfiguracionEmail(models.Model):
     def __str__(self):
         return f"Correo para {self.empresa}"
     
-    # ==========================================
-# 📱 BOTÓN FANTASMA PARA EL MENÚ DEL ESCÁNER
-# ==========================================
 class EscanerKardex(Inventario):
     class Meta:
         proxy = True
         verbose_name = "📱 Escáner Kardex (Cámara)"
         verbose_name_plural = "📱 Escáner Kardex (Cámara)"
 
-        # ==========================================
+# ==========================================
 # 🚀 MÓDULO: COTIZACIONES Y VENTAS DIRECTAS
 # ==========================================
 class Cotizacion(models.Model):
@@ -827,23 +834,14 @@ class Cotizacion(models.Model):
         ('CANCELADA', 'Cancelada'),
     ]
 
-    # Reutilizamos tu lista de dependencias para que todo sea compatible
-    DEPENDENCIAS = [
-        ('IMSS_BIENESTAR', 'IMSS-Bienestar'),
-        ('IMSS_ORDINARIO', 'IMSS Ordinario'),
-        ('ISSSTE', 'ISSSTE'),
-        ('SSA', 'Secretaría de Salud (SSA)'),
-        ('SEDENA', 'SEDENA'),
-        ('SEMAR', 'SEMAR'),
-        ('OTRA', 'Otra Dependencia'),
-    ]
-
     tipo_procedimiento = models.CharField(max_length=30, choices=TIPO_PROCEDIMIENTO, default='COTIZACION_PRIVADA', verbose_name="Tipo de Venta")
     folio = models.CharField(max_length=50, unique=True, verbose_name="Folio de Cotización / Evento")
     
-    # Datos del Cliente (Hacemos un espejo de lo que pide la Orden de Suministro)
+    # Datos del Cliente
     razon_social = models.CharField(max_length=200, blank=True, null=True, verbose_name="Razón Social (Cliente Privado)")
-    dependencia = models.CharField(max_length=50, choices=DEPENDENCIAS, blank=True, null=True, verbose_name="Dependencia (Gobierno)")
+    
+    # 👇 Usamos la lista maestra para que todo cruce perfecto
+    dependencia = models.CharField(max_length=100, choices=DEPENDENCIAS_MAESTRAS, blank=True, null=True, verbose_name="Dependencia (Gobierno)")
     
     fecha_emision = models.DateField(default=timezone.now, verbose_name="Fecha de Emisión")
     vigencia_dias = models.IntegerField(default=15, verbose_name="Días de Vigencia")
@@ -856,21 +854,16 @@ class Cotizacion(models.Model):
         ordering = ['-fecha_emision']
 
     def __str__(self):
-        cliente = self.razon_social or self.dependencia or "Sin Cliente"
+        cliente = self.razon_social or self.get_dependencia_display() or "Sin Cliente"
         return f"{self.folio} | {cliente}"
 
     @property
     def total_cotizacion(self):
-        # Suma el valor de todas las partidas cotizadas
         return sum(partida.importe for partida in self.partidas_cotizacion.all())
-
 
 class PartidaCotizacion(models.Model):
     cotizacion = models.ForeignKey(Cotizacion, on_delete=models.CASCADE, related_name='partidas_cotizacion')
-    
-    # Aquí jalamos directamente del "Catálogo Libre" sin importar contratos
     medicamento = models.ForeignKey(CatalogoMedicamento, on_delete=models.CASCADE, verbose_name="Medicamento (Catálogo Libre)")
-    
     cantidad = models.IntegerField(verbose_name="Cantidad Solicitada")
     precio_unitario = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, verbose_name="Precio Unitario Ofertado")
 
@@ -885,25 +878,19 @@ class PartidaCotizacion(models.Model):
     def __str__(self):
         return str(self.medicamento.clave_sector)
     
-    # ==========================================
+# ==========================================
 # 🚀 3.1 MÓDULO: PEDIDOS DIRECTOS (PROXY)
 # ==========================================
-from datetime import timedelta
-
 class PedidoDirecto(OrdenSuministro):
     class Meta:
-        proxy = True # ¡El truco de magia! No crea tabla nueva, usa OrdenSuministro
+        proxy = True
         verbose_name = "Pedido Directo (10 días)"
         verbose_name_plural = "3.1 Pedidos Directos"
 
     def save(self, *args, **kwargs):
-        # 1. Forzamos a que sea un Pedido
         self.tipo_documento = 'PEDIDO'
-        
-        # 2. LA REGLA DE ORO: 10 días naturales a partir de la recepción
         if not self.fecha_recepcion:
             self.fecha_recepcion = timezone.now().date()
-            
         if not self.fecha_limite:
             self.fecha_limite = self.fecha_recepcion + timedelta(days=10)
             
