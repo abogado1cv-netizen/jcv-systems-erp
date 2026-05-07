@@ -259,21 +259,36 @@ class Contrato(models.Model):
     def porcentaje_avance(self):
         maximo = self.monto_total_contrato
         if maximo == 0: return 0.0
-        res = PartidaOrden.objects.filter(clave_contrato__contrato=self).aggregate(
+        
+        # 1. Sumamos lo NUEVO (OPMs creadas en el sistema)
+        res_nuevo = PartidaOrden.objects.filter(clave_contrato__contrato=self).aggregate(
             consumido=Sum(F('cantidad_solicitada') * F('clave_contrato__precio_neto'))
         )
-        consumido = res['consumido'] or Decimal('0.00')
-        return round((float(consumido) / float(maximo)) * 100, 2)
+        consumido_nuevo = res_nuevo['consumido'] or Decimal('0.00')
+        
+        # 2. Sumamos lo HISTÓRICO (Del Excel)
+        res_hist = self.claves.aggregate(
+            consumido_hist=Sum(F('piezas_historicas_solicitadas') * F('precio_neto'))
+        )
+        consumido_hist = res_hist['consumido_hist'] or Decimal('0.00')
+        
+        return round((float(consumido_nuevo + consumido_hist) / float(maximo)) * 100, 2)
 
     @property
     def porcentaje_abasto(self):
-        res_solicitado = PartidaOrden.objects.filter(clave_contrato__contrato=self).aggregate(total=Sum('cantidad_solicitada'))
-        solicitado = res_solicitado['total'] or 0
-        if solicitado == 0: return 0.0
+        # Total Solicitado (Nuevo + Histórico)
+        res_sol_nuevo = PartidaOrden.objects.filter(clave_contrato__contrato=self).aggregate(tot=Sum('cantidad_solicitada'))
+        res_sol_hist = self.claves.aggregate(tot=Sum('piezas_historicas_solicitadas'))
+        sol_total = (res_sol_nuevo['tot'] or 0) + (res_sol_hist['tot'] or 0)
         
-        res_entregado = RemisionEntrega.objects.filter(orden__partidas__clave_contrato__contrato=self).distinct().aggregate(total=Sum('cantidad_entregada'))
-        entregado = res_entregado['total'] or 0
-        return round((entregado / float(solicitado)) * 100, 2)
+        if sol_total == 0: return 0.0
+        
+        # Total Entregado (Nuevo + Histórico)
+        res_ent_nuevo = RemisionEntrega.objects.filter(orden__partidas__clave_contrato__contrato=self).distinct().aggregate(tot=Sum('cantidad_entregada'))
+        res_ent_hist = self.claves.aggregate(tot=Sum('piezas_historicas_entregadas'))
+        ent_total = (res_ent_nuevo['tot'] or 0) + (res_ent_hist['tot'] or 0)
+        
+        return round((ent_total / float(sol_total)) * 100, 2)
 
     @property
     def piezas_totales_maximas(self):

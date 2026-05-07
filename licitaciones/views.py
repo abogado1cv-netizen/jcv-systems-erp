@@ -25,13 +25,11 @@ from .models import (
 def dashboard_contratos(request):
     contratos = Contrato.objects.all()
     
-    # 1. LEEMOS LA BÚSQUEDA Y LOS FILTROS
     busqueda = request.GET.get('q', '').strip() 
     filtro_dependencia = request.GET.get('dependencia', '')
     filtro_empresa_id = request.GET.get('empresa', '')
     filtro_contrato = request.GET.get('contrato', '')
 
-    # 1.5 APLICAMOS LA BÚSQUEDA GLOBAL
     if busqueda:
         contratos = contratos.filter(
             Q(numero_contrato__icontains=busqueda) |
@@ -39,7 +37,6 @@ def dashboard_contratos(request):
             Q(licitacion_origen__num_procedimiento__icontains=busqueda)
         ).distinct()
 
-    # APLICAMOS LOS FILTROS DESPLEGABLES
     if filtro_dependencia:
         contratos = contratos.filter(dependencia=filtro_dependencia)
     if filtro_empresa_id.isdigit():
@@ -47,10 +44,8 @@ def dashboard_contratos(request):
     if filtro_contrato:
         contratos = contratos.filter(numero_contrato=filtro_contrato)
 
-    # 2. OBTENEMOS TODAS LAS CLAVES DE ESOS CONTRATOS FILTRADOS
     claves_qs = ClaveContrato.objects.filter(contrato__in=contratos)
 
-    # 3. CALCULAMOS MONTOS Y PIEZAS MÁXIMAS DEL CONTRATO
     agregados = claves_qs.aggregate(
         min_tot=Sum(F('cantidad_minima') * F('precio_neto')),
         max_tot=Sum(F('cantidad_maxima') * F('precio_neto')),
@@ -64,26 +59,30 @@ def dashboard_contratos(request):
     piezas_maximas = agregados.get('pzas_max') or 0
 
     # =========================================================
-    # 4. CALCULAMOS EL AVANCE COMERCIAL Y LOGÍSTICO (CARRITO NUEVO)
+    # 🔥 CÁLCULO MÁGICO: SUMAMOS HISTÓRICO DEL EXCEL + NUEVO
     # =========================================================
     
-    # 4.1 Piezas y Monto Solicitado (Leemos desde PartidaOrden)
-    agg_solicitadas = PartidaOrden.objects.filter(clave_contrato__contrato__in=contratos).aggregate(
-        tot_pzas=Sum('cantidad_solicitada'),
-        tot_dinero=Sum(F('cantidad_solicitada') * F('clave_contrato__precio_neto'))
+    # 1. Solicitado (Nuevo + Histórico)
+    agg_sol_nuevo = PartidaOrden.objects.filter(clave_contrato__contrato__in=contratos).aggregate(
+        pzas=Sum('cantidad_solicitada'), din=Sum(F('cantidad_solicitada') * F('clave_contrato__precio_neto'))
     )
-    piezas_solicitadas = agg_solicitadas.get('tot_pzas') or 0
-    monto_solicitado = agg_solicitadas.get('tot_dinero') or 0
-
-    # 4.2 Piezas y Monto Entregado (Leemos desde PartidaOrden)
-    agg_entregadas = PartidaOrden.objects.filter(clave_contrato__contrato__in=contratos).aggregate(
-        tot_pzas=Sum('cantidad_entregada'),
-        tot_dinero=Sum(F('cantidad_entregada') * F('clave_contrato__precio_neto'))
+    agg_sol_hist = ClaveContrato.objects.filter(contrato__in=contratos).aggregate(
+        pzas=Sum('piezas_historicas_solicitadas'), din=Sum(F('piezas_historicas_solicitadas') * F('precio_neto'))
     )
-    piezas_entregadas = agg_entregadas.get('tot_pzas') or 0
-    monto_entregado = agg_entregadas.get('tot_dinero') or 0
+    piezas_solicitadas = (agg_sol_nuevo['pzas'] or 0) + (agg_sol_hist['pzas'] or 0)
+    monto_solicitado = (agg_sol_nuevo['din'] or 0) + (agg_sol_hist['din'] or 0)
 
-    # Cálculos para gráficas y porcentajes
+    # 2. Entregado (Nuevo + Histórico)
+    agg_ent_nuevo = PartidaOrden.objects.filter(clave_contrato__contrato__in=contratos).aggregate(
+        pzas=Sum('cantidad_entregada'), din=Sum(F('cantidad_entregada') * F('clave_contrato__precio_neto'))
+    )
+    agg_ent_hist = ClaveContrato.objects.filter(contrato__in=contratos).aggregate(
+        pzas=Sum('piezas_historicas_entregadas'), din=Sum(F('piezas_historicas_entregadas') * F('precio_neto'))
+    )
+    piezas_entregadas = (agg_ent_nuevo['pzas'] or 0) + (agg_ent_hist['pzas'] or 0)
+    monto_entregado = (agg_ent_nuevo['din'] or 0) + (agg_ent_hist['din'] or 0)
+
+    # Cálculos para gráficas
     piezas_pendientes_solicitar = piezas_maximas - piezas_solicitadas
     if piezas_pendientes_solicitar < 0: piezas_pendientes_solicitar = 0
 
@@ -93,12 +92,9 @@ def dashboard_contratos(request):
     avance_min_pct = (piezas_solicitadas / piezas_minimas * 100) if piezas_minimas > 0 else 0
     avance_max_pct = (piezas_solicitadas / piezas_maximas * 100) if piezas_maximas > 0 else 0
 
-    # 4.3 CALCULAMOS PENALIZACIONES
     ordenes_vinculadas = OrdenSuministro.objects.filter(partidas__clave_contrato__contrato__in=contratos).distinct()
     total_penalizado = sum(float(o.penalizacion_estimada) for o in ordenes_vinculadas)
 
-
-    # 5. TOP 5 CLAVES CON MAYOR ASIGNACIÓN
     top_claves = claves_qs.annotate(
         importe_max=F('cantidad_maxima') * F('precio_neto')
     ).values('medicamento__clave_sector').annotate(
@@ -108,43 +104,37 @@ def dashboard_contratos(request):
     nombres_top = [c['medicamento__clave_sector'] for c in top_claves]
     montos_top = [float(c['total_asignado']) for c in top_claves]
 
-    # 6. DETALLE DE CLAVES PARA LA TABLA INFERIOR
     detalle_claves_qs = claves_qs.select_related('medicamento', 'contrato').annotate(
         importe_max=F('cantidad_maxima') * F('precio_neto')
     ).order_by('-importe_max')[:100]
     
     detalle_claves = []
     for clave in detalle_claves_qs:
-        entregas_dict = PartidaOrden.objects.filter(clave_contrato=clave).aggregate(tot=Sum('cantidad_entregada'))
-        clave.pzas_entregadas = entregas_dict.get('tot') or 0
+        # 🔥 SUMA INDIVIDUAL PARA LA TABLA 🔥
+        ent_nuevo = PartidaOrden.objects.filter(clave_contrato=clave).aggregate(tot=Sum('cantidad_entregada'))['tot'] or 0
+        clave.pzas_entregadas = ent_nuevo + clave.piezas_historicas_entregadas
 
-        solicitadas_dict = PartidaOrden.objects.filter(clave_contrato=clave).aggregate(tot=Sum('cantidad_solicitada'))
-        clave.pzas_solicitadas = solicitadas_dict.get('tot') or 0
+        sol_nuevo = PartidaOrden.objects.filter(clave_contrato=clave).aggregate(tot=Sum('cantidad_solicitada'))['tot'] or 0
+        clave.pzas_solicitadas = sol_nuevo + clave.piezas_historicas_solicitadas
         
         faltantes = clave.pzas_solicitadas - clave.pzas_entregadas
         clave.pzas_faltantes = faltantes if faltantes > 0 else 0
 
         detalle_claves.append(clave)
 
-# 7. FILTROS EN CASCADA (CORREGIDO PARA GRUPOS HTML)
+    # 7. FILTROS EN CASCADA
     codigos_presentes = Contrato.objects.values_list('dependencia', flat=True).distinct()
     
-    # Armamos una estructura compatible con el <optgroup> del HTML
     dependencias_agrupadas = []
-    
     for categoria, items in DEPENDENCIAS_MAESTRAS:
         if isinstance(items, (list, tuple)):
-            # Si es un grupo de hospitales, metemos los que existan en los contratos
             hospitales_del_grupo = []
             for cod, nombre in items:
                 if cod in codigos_presentes:
                     hospitales_del_grupo.append((cod, nombre))
-            
-            # Solo agregamos el grupo si tiene al menos un hospital
             if hospitales_del_grupo:
                 dependencias_agrupadas.append((categoria, hospitales_del_grupo))
         else:
-            # Si es una opción suelta como 'OTRA', la metemos en un grupo genérico
             if categoria in codigos_presentes:
                 dependencias_agrupadas.append(('OTROS', [(categoria, items)]))
 
@@ -174,10 +164,7 @@ def dashboard_contratos(request):
         'nombres_top_json': json.dumps(nombres_top),
         'montos_top_json': json.dumps(montos_top),
         'detalle_claves': detalle_claves,
-        
-        # 👇 Ahora mandamos la lista estructurada perfectamente para el HTML
         'dependencias_disponibles': dependencias_agrupadas,
-        
         'empresas_disponibles': empresas_qs,
         'contratos_disponibles': contratos_list,
         'filtro_dependencia': filtro_dependencia,
