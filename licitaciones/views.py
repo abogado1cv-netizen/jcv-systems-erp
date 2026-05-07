@@ -126,7 +126,28 @@ def dashboard_contratos(request):
 
         detalle_claves.append(clave)
 
-# 7. FILTROS EN CASCADA
+# 7. FILTROS EN CASCADA (CORREGIDO PARA GRUPOS HTML)
+    codigos_presentes = Contrato.objects.values_list('dependencia', flat=True).distinct()
+    
+    # Armamos una estructura compatible con el <optgroup> del HTML
+    dependencias_agrupadas = []
+    
+    for categoria, items in DEPENDENCIAS_MAESTRAS:
+        if isinstance(items, (list, tuple)):
+            # Si es un grupo de hospitales, metemos los que existan en los contratos
+            hospitales_del_grupo = []
+            for cod, nombre in items:
+                if cod in codigos_presentes:
+                    hospitales_del_grupo.append((cod, nombre))
+            
+            # Solo agregamos el grupo si tiene al menos un hospital
+            if hospitales_del_grupo:
+                dependencias_agrupadas.append((categoria, hospitales_del_grupo))
+        else:
+            # Si es una opción suelta como 'OTRA', la metemos en un grupo genérico
+            if categoria in codigos_presentes:
+                dependencias_agrupadas.append(('OTROS', [(categoria, items)]))
+
     empresas_qs = Empresa.objects.filter(contrato__isnull=False).distinct()
     if filtro_dependencia:
         empresas_qs = empresas_qs.filter(contrato__dependencia=filtro_dependencia)
@@ -154,8 +175,8 @@ def dashboard_contratos(request):
         'montos_top_json': json.dumps(montos_top),
         'detalle_claves': detalle_claves,
         
-        # 👇 AQUÍ ESTÁ LA MAGIA: Le pasamos la lista maestra original
-        'dependencias_disponibles': DEPENDENCIAS_MAESTRAS,
+        # 👇 Ahora mandamos la lista estructurada perfectamente para el HTML
+        'dependencias_disponibles': dependencias_agrupadas,
         
         'empresas_disponibles': empresas_qs,
         'contratos_disponibles': contratos_list,
@@ -165,7 +186,6 @@ def dashboard_contratos(request):
         'busqueda': busqueda, 
     }
     return render(request, 'dashboard_contratos.html', context)
-
 
 # ==========================================
 # 🔥 2. DASHBOARD OMNI-CANAL (LICITACIONES + COTIZACIONES)
