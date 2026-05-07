@@ -41,13 +41,18 @@
             <input type="hidden" name="q" value="{{ busqueda }}">
             {% endif %}
 
-            <select name="dependencia" class="form-control form-control-sm mr-2" onchange="this.form.submit()" style="border-radius: 20px; background: #fff;">
-                <option value="" {% if not filtro_dependencia %}selected{% endif %}>🏫 Todas las Dependencias</option>
-                {% for dep in dependencias_disponibles %}
-                    {% if dep %} <option value="{{ dep }}" {% if filtro_dependencia == dep %}selected{% endif %}>{{ dep }}</option>
-                    {% endif %}
-                {% endfor %}
-            </select>
+            <select name="dependencia" class="form-control" onchange="this.form.submit()">
+                <option value="">🏥 Todas las Dependencias</option>
+                {% for categoria, dependencias in dependencias_disponibles %}
+                    <optgroup label="{{ categoria }}">
+                        {% for codigo, nombre in dependencias %}
+                           <option value="{{ codigo }}" {% if filtro_dependencia == codigo %}selected{% endif %}></option>
+                               {{ nombre }}
+                           </option>
+                       {% endfor %}
+                   </optgroup>
+               {% endfor %}
+           </select>
             
             <select name="empresa" class="form-control form-control-sm mr-2" onchange="this.form.submit()" style="border-radius: 20px; background: #fff;">
                 <option value="">🏢 Todas las Empresas</option>
