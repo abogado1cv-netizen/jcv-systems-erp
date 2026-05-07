@@ -992,6 +992,7 @@ class CargaMaestraContratoResource(resources.ModelResource):
         num_contrato = None
         clave_sec = None
         cant_min, cant_max, precio = 0, 0, 0.0
+        hist_sol, hist_ent = 0, 0
         
         for key, val in row.items():
             k_lower = str(key).strip().lower()
@@ -1006,7 +1007,12 @@ class CargaMaestraContratoResource(resources.ModelResource):
             elif k_lower == 'precio_neto':
                 try: precio = float(val or 0.0)
                 except: precio = 0.0
-
+            elif k_lower == 'piezas_historicas_solicitadas':
+                try: hist_sol = int(float(val or 0))
+                except: hist_sol = 0
+            elif k_lower == 'piezas_historicas_entregadas':
+                try: hist_ent = int(float(val or 0))
+                except: hist_ent = 0
         if num_contrato and clave_sec:
             contrato_obj = Contrato.objects.filter(numero_contrato=num_contrato).first()
             med_obj = CatalogoMedicamento.objects.filter(clave_sector=clave_sec).first()
@@ -1018,7 +1024,9 @@ class CargaMaestraContratoResource(resources.ModelResource):
                     defaults={
                         'cantidad_minima': cant_min,
                         'cantidad_maxima': cant_max,
-                        'precio_neto': precio
+                        'precio_neto': precio,
+                        'piezas_historicas_solicitadas': hist_sol,
+                        'piezas_historicas_entregadas': hist_ent
                     }
                 )
 

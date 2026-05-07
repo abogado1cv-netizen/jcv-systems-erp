@@ -312,7 +312,8 @@ class ClaveContrato(models.Model):
     cantidad_minima = models.IntegerField(default=0, verbose_name="Cant. Mínima")
     cantidad_maxima = models.IntegerField(default=0, verbose_name="Cant. Máxima")
     precio_neto = models.DecimalField(max_digits=10, decimal_places=2, default=0.00, verbose_name="Precio Neto")
-
+    piezas_historicas_solicitadas = models.IntegerField(default=0, verbose_name="Histórico Solicitado")
+    piezas_historicas_entregadas = models.IntegerField(default=0, verbose_name="Histórico Entregado")
     class Meta:
         verbose_name = "Clave Asignada"
         verbose_name_plural = "Claves del Contrato"
