@@ -46,14 +46,13 @@
                 {% for categoria, dependencias in dependencias_disponibles %}
                     <optgroup label="{{ categoria }}">
                         {% for codigo, nombre in dependencias %}
-                           <option value="{{ codigo }}" {% if filtro_dependencia == codigo %}selected{% endif %}></option>
-                               {{ nombre }}
-                           </option>
-                       {% endfor %}
-                   </optgroup>
-               {% endfor %}
-           </select>
-            
+                            <option value="{{ codigo }}" {% if filtro_dependencia == codigo %}selected{% endif %}>
+                                {{ nombre }}
+                            </option>
+                        {% endfor %}
+                    </optgroup>
+                {% endfor %}
+            </select>
             <select name="empresa" class="form-control form-control-sm mr-2" onchange="this.form.submit()" style="border-radius: 20px; background: #fff;">
                 <option value="">🏢 Todas las Empresas</option>
                 {% for emp in empresas_disponibles %}
