@@ -60,6 +60,8 @@ DEPENDENCIAS_MAESTRAS = [
         ('HRAE_VICTORIA', 'HRAE de Cd. Victoria'),
         ('HRAE_OAXACA', 'HRAE de Oaxaca'),
         ('HRAE_YUCATAN', 'HRAE de la Península de Yucatán'),
+        ('HEP_CHIAPAS', 'Hospital de Especialidades Pediátricas Chiapas'),
+        ('HRAE_CIUDAD_SALUD', 'Hospital Regional de Alta Especialidad Ciudad Salud')
     )),
     ('OTRA', 'Otra Dependencia'),
 ]

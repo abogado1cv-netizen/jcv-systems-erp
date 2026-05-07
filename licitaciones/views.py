@@ -10,11 +10,12 @@ from django.contrib.admin.views.decorators import staff_member_required
 from .models import Inventario
 from .services import DashboardService
 
-# Traemos todos los modelos (¡Incluidos PartidaOrden y Cotizacion!)
+# Traemos todos los modelos (¡Incluidos PartidaOrden, Cotizacion y DEPENDENCIAS_MAESTRAS!)
 from .models import (
     Contrato, Licitacion, PartidaRequerimiento, Empresa, 
     OrdenSuministro, RemisionEntrega, ClaveContrato, CatalogoMedicamento,
-    PartidaOrden, Cotizacion, PartidaCotizacion, PedidoDirecto
+    PartidaOrden, Cotizacion, PartidaCotizacion, PedidoDirecto,
+    DEPENDENCIAS_MAESTRAS
 )
 
 # ==========================================
@@ -125,8 +126,26 @@ def dashboard_contratos(request):
 
         detalle_claves.append(clave)
 
-    # 7. FILTROS EN CASCADA CORREGIDOS
-    deps_list = Contrato.objects.values_list('dependencia', flat=True).distinct()
+    # 7. FILTROS EN CASCADA (MOSTRANDO NOMBRES REALES)
+    codigos_presentes = Contrato.objects.values_list('dependencia', flat=True).distinct()
+    
+    # Aplanamos la lista de dependencias para buscar los nombres bonitos
+    deps_flat = {}
+    for cat, items in DEPENDENCIAS_MAESTRAS:
+        if isinstance(items, (list, tuple)):
+            for code, name in items:
+                deps_flat[code] = name
+        else:
+            deps_flat[cat] = items
+
+    # Creamos la lista para el dropdown del HTML
+    dependencias_formateadas = []
+    for cod in codigos_presentes:
+        if cod:  # Ignorar vacíos
+            dependencias_formateadas.append({
+                'id': cod,
+                'nombre': deps_flat.get(cod, cod) # Si no halla el código, deja el código
+            })
     
     empresas_qs = Empresa.objects.filter(contrato__isnull=False).distinct()
     if filtro_dependencia:
@@ -154,7 +173,10 @@ def dashboard_contratos(request):
         'nombres_top_json': json.dumps(nombres_top),
         'montos_top_json': json.dumps(montos_top),
         'detalle_claves': detalle_claves,
-        'dependencias_disponibles': deps_list,
+        
+        # Filtro de dependencias inteligente inyectado aquí 👇
+        'dependencias_disponibles': dependencias_formateadas,
+        
         'empresas_disponibles': empresas_qs,
         'contratos_disponibles': contratos_list,
         'filtro_dependencia': filtro_dependencia,
