@@ -126,27 +126,7 @@ def dashboard_contratos(request):
 
         detalle_claves.append(clave)
 
-    # 7. FILTROS EN CASCADA (MOSTRANDO NOMBRES REALES)
-    codigos_presentes = Contrato.objects.values_list('dependencia', flat=True).distinct()
-    
-    # Aplanamos la lista de dependencias para buscar los nombres bonitos
-    deps_flat = {}
-    for cat, items in DEPENDENCIAS_MAESTRAS:
-        if isinstance(items, (list, tuple)):
-            for code, name in items:
-                deps_flat[code] = name
-        else:
-            deps_flat[cat] = items
-
-    # Creamos la lista para el dropdown del HTML
-    dependencias_formateadas = []
-    for cod in codigos_presentes:
-        if cod:  # Ignorar vacíos
-            dependencias_formateadas.append({
-                'id': cod,
-                'nombre': deps_flat.get(cod, cod) # Si no halla el código, deja el código
-            })
-    
+# 7. FILTROS EN CASCADA
     empresas_qs = Empresa.objects.filter(contrato__isnull=False).distinct()
     if filtro_dependencia:
         empresas_qs = empresas_qs.filter(contrato__dependencia=filtro_dependencia)
@@ -174,8 +154,8 @@ def dashboard_contratos(request):
         'montos_top_json': json.dumps(montos_top),
         'detalle_claves': detalle_claves,
         
-        # Filtro de dependencias inteligente inyectado aquí 👇
-        'dependencias_disponibles': dependencias_formateadas,
+        # 👇 AQUÍ ESTÁ LA MAGIA: Le pasamos la lista maestra original
+        'dependencias_disponibles': DEPENDENCIAS_MAESTRAS,
         
         'empresas_disponibles': empresas_qs,
         'contratos_disponibles': contratos_list,
