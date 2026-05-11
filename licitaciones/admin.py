@@ -903,7 +903,7 @@ class ClaveContratoInline(admin.TabularInline):
     model = ClaveContrato
     extra = 0
     autocomplete_fields = ['medicamento']
-    fields = ('medicamento', 'cantidad_minima', 'cantidad_maxima', 'precio_neto', 'importe_maximo')
+    fields = ('medicamento', 'cantidad_minima', 'cantidad_maxima', 'precio_neto', 'piezas_historicas_solicitadas', 'piezas_historicas_entregadas', 'importe_maximo')
     readonly_fields = ('importe_maximo',)
 
     def importe_maximo(self, obj):
@@ -1013,6 +1013,7 @@ class CargaMaestraContratoResource(resources.ModelResource):
             elif k_lower == 'piezas_historicas_entregadas':
                 try: hist_ent = int(float(val or 0))
                 except: hist_ent = 0
+                
         if num_contrato and clave_sec:
             contrato_obj = Contrato.objects.filter(numero_contrato=num_contrato).first()
             med_obj = CatalogoMedicamento.objects.filter(clave_sector=clave_sec).first()
@@ -1153,7 +1154,6 @@ class ContratoAdmin(ImportExportModelAdmin):
         return render(request, 'admin/licitaciones/licitacion/seleccionar_claves_contrato.html', context)
 
     def monto_penalizado(self, obj):
-        # 👇 El cambio está en el filter de esta línea 👇
         ordenes = OrdenSuministro.objects.filter(partidas__clave_contrato__contrato=obj).distinct()
         try:
             total_multas = sum(float(orden.penalizacion_estimada) for orden in ordenes)
@@ -1251,17 +1251,19 @@ class PartidaOrdenInline(admin.TabularInline):
 
 @admin.register(OrdenSuministro)
 class OrdenSuministroAdmin(admin.ModelAdmin):
-    # Desactivamos ImportExport temporalmente para Órdenes porque la estructura de Excel cambió a Carrito de Compras
     inlines = [PartidaOrdenInline]
     
     list_per_page = 50
     list_display = (
-        'razon_social', 'numero_orden_suministro', 'tipo_documento', 'dependencia', 'nombre_unidad',
-        'piezas_solicitadas', 'piezas_entregadas', 'piezas_pendientes', 'fecha_limite', 
+        'razon_social', 'numero_orden_suministro', 'dependencia', 'nombre_unidad',
+        'piezas_solicitadas', 'piezas_entregadas', 'piezas_pendientes', 
         'estatus_logistico', 'monto_penalizacion', 'estatus', 'btn_surtir'
     )
-    search_fields = ('numero_orden_suministro', 'nombre_unidad', 'clues_destino')
-    list_filter = ('tipo_documento', 'razon_social', 'dependencia', 'estatus', 'fecha_limite')
+    
+    # 👇 AQUI ESTÁN TUS NUEVOS FILTROS LIMPIOS 👇
+    search_fields = ('numero_orden_suministro', 'dependencia', 'razon_social', 'nombre_unidad')
+    list_filter = ('razon_social', 'dependencia', 'estatus')
+    
     list_editable = ('estatus',)
 
     fieldsets = (
@@ -1382,7 +1384,6 @@ class OrdenSuministroAdmin(admin.ModelAdmin):
         
         orden = self.get_object(request, object_id)
         
-        # Extraer todas las claves que están dentro de esta orden (carrito)
         claves_buscar = [p.clave_contrato.medicamento.clave_sector for p in orden.partidas.all() if p.clave_contrato and p.clave_contrato.medicamento]
         lotes_disponibles = Inventario.objects.filter(medicamento__clave_sector__in=claves_buscar, cantidad_disponible__gt=0).order_by('fecha_caducidad')
         
@@ -1461,8 +1462,6 @@ class OrdenSuministroAdmin(admin.ModelAdmin):
 
 @admin.register(PedidoDirecto)
 class PedidoDirectoAdmin(OrdenSuministroAdmin):
-    # Hereda TODO de OrdenSuministro (pantallas, botones, inlines)
-    # Pero le decimos que solo nos muestre los Pedidos Directos
     def get_queryset(self, request):
         qs = super(admin.ModelAdmin, self).get_queryset(request)
         return qs.filter(tipo_documento='PEDIDO')
@@ -1471,7 +1470,6 @@ class PedidoDirectoAdmin(OrdenSuministroAdmin):
 # REGISTRO DEL NUEVO MÓDULO DE INVENTARIO
 # ==========================================
 
-# 1. Creamos el "Mapa" (Resource) para que el botón de Excel sepa de dónde jalar los datos extra
 class InventarioResource(resources.ModelResource):
     clave_sector = fields.Field(attribute='medicamento__clave_sector', column_name='CLAVE SECTOR')
     descripcion = fields.Field(attribute='medicamento__denominacion_generica', column_name='DESCRIPCIÓN')
@@ -1480,14 +1478,12 @@ class InventarioResource(resources.ModelResource):
 
     class Meta:
         model = Inventario
-        # 2. Le dictamos el orden exacto de las columnas que queremos en el Excel
         fields = ('almacen__nombre', 'clave_sector', 'descripcion', 'socio_comercial', 'fabricante', 'tipo_producto', 'lote', 'fecha_caducidad', 'cantidad_disponible')
         export_order = fields
 
-# 3. Le inyectamos el "Mapa" al panel de administración
 @admin.register(Inventario)
 class InventarioAdmin(ImportExportModelAdmin):
-    resource_class = InventarioResource # <--- ESTA ES LA LÍNEA MÁGICA QUE FALTABA
+    resource_class = InventarioResource
     list_per_page = 50
     list_display = ('almacen', 'medicamento', 'tipo_producto', 'lote', 'fecha_caducidad', 'cantidad_disponible', 'fecha_ingreso')
     search_fields = ('medicamento__clave_sector', 'medicamento__denominacion_generica', 'lote')
@@ -1554,7 +1550,6 @@ class PartidaCompraInline(admin.TabularInline):
         from django.utils.html import format_html
         if obj.cantidad and obj.precio_unitario:
             total = float(obj.cantidad) * float(obj.precio_unitario)
-            # El truco: le pasamos el valor como argumento a format_html
             return format_html('<b>${}</b>', f"{total:,.2f}")
         return "$0.00"
     importe_visual.short_description = "Importe"
@@ -1988,27 +1983,22 @@ class TraspasoIntercompanyAdmin(admin.ModelAdmin):
         
     mostrar_importe.short_description = "Valor Fiscal Total"
 
-# @admin.register(ConfiguracionEmail) # <-- Oculto porque la configuración se hace en el modelo Empresa
-# class ConfiguracionEmailAdmin(admin.ModelAdmin):
-#     list_display = ('empresa', 'email_host_user')
-
 from django.http import HttpResponseRedirect
 from django.urls import reverse
-from .models import EscanerKardex # Asegúrate de importar el modelo que acabamos de crear
+from .models import EscanerKardex 
 
 @admin.register(EscanerKardex)
 class EscanerKardexAdmin(admin.ModelAdmin):
-    # Esto intercepta el clic y te manda a la ruta secreta
     def changelist_view(self, request, extra_context=None):
         return HttpResponseRedirect(reverse('buscar_kardex'))
     
-    # ==========================================
+# ==========================================
 # 🚀 MÓDULO: COTIZACIONES Y VENTAS DIRECTAS
 # ==========================================
 class PartidaCotizacionInline(admin.TabularInline):
     model = PartidaCotizacion
     extra = 1
-    autocomplete_fields = ['medicamento']  # Buscador inteligente del catálogo libre
+    autocomplete_fields = ['medicamento']  
     fields = ('medicamento', 'cantidad', 'precio_unitario', 'importe_visual')
     readonly_fields = ('importe_visual',)
 
@@ -2016,9 +2006,7 @@ class PartidaCotizacionInline(admin.TabularInline):
         from django.utils.html import format_html
         if obj.cantidad and obj.precio_unitario:
             total = float(obj.cantidad) * float(obj.precio_unitario)
-            # Damos formato primero
             total_str = "{:,.2f}".format(total)
-            # Pasamos la cadena limpia
             return format_html('<b>${}</b>', total_str)
         return "$0.00"
     importe_visual.short_description = "Importe"
@@ -2071,7 +2059,6 @@ class CotizacionAdmin(admin.ModelAdmin):
         )
     estatus_badge.short_description = "Estatus"
 
-    # --- LA MAGIA DEL BOTÓN ---
     def btn_convertir(self, obj):
         from django.utils.html import format_html
         from django.utils.safestring import mark_safe
@@ -2107,17 +2094,14 @@ class CotizacionAdmin(admin.ModelAdmin):
             messages.warning(request, "Esta cotización ya fue convertida a pedido anteriormente.")
             return redirect('admin:licitaciones_cotizacion_changelist')
 
-        # 1. Todo lo que pasa por aquí se convierte en Pedido Directo
         nueva_orden = PedidoDirecto.objects.create(
             numero_orden_suministro=f"PED-{cotizacion.folio}", 
             razon_social=cotizacion.razon_social,
             dependencia=cotizacion.dependencia,
             fecha_recepcion=timezone.now().date(),
             estatus='PENDIENTE'
-            # No enviamos fecha_limite porque el "save" del PedidoDirecto forzará los 10 días
         )
 
-        # 2. Clonamos el carrito de compras
         claves_copiadas = 0
         for partida in cotizacion.partidas_cotizacion.all():
             nueva_partida = PartidaOrden.objects.create(
@@ -2134,11 +2118,8 @@ class CotizacionAdmin(admin.ModelAdmin):
                  
             claves_copiadas += 1
 
-        # 3. Marcamos la cotización como ganada
         cotizacion.estatus = 'GANADA'
         cotizacion.save()
 
         messages.success(request, f"¡Magia pura! ✨ Se generó el Pedido Directo {nueva_orden.numero_orden_suministro} con {claves_copiadas} claves. Tiene 10 días límite.")
-        
-        # Redirigimos al usuario a la PANTALLA NUEVA de Pedidos Directos
         return redirect('admin:licitaciones_pedidodirecto_change', nueva_orden.id)
