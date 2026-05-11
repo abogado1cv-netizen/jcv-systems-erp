@@ -443,6 +443,11 @@ class RemisionEntrega(models.Model):
         
     def save(self, *args, **kwargs):
         es_nuevo = self.pk is None
+        
+        # 👇 1. Capturamos el estatus anterior para saber si apenas lo acaban de rechazar
+        estatus_anterior = None
+        if not es_nuevo:
+            estatus_anterior = RemisionEntrega.objects.get(pk=self.pk).estatus_viaje
 
         if self.archivo_evidencia and self.estatus_viaje == 'EN_RUTA':
             self.estatus_viaje = 'ENTREGADA'
@@ -463,11 +468,15 @@ class RemisionEntrega(models.Model):
         elif self.estatus_viaje == 'RECHAZO':
             if piezas_comprobadas == 0:
                 orden.estatus = 'DEVUELTA'
+            elif piezas_comprobadas < total_solicitado_orden:
+                orden.estatus = 'PARCIAL' # Si rechazaron una parte pero otra sí pasó
             
         orden.save()
 
+        from .models import MovimientoKardex, Inventario
+
+        # 🔥 LÓGICA DE SALIDA (Cuando el camión sale de almacén hacia el hospital)
         if es_nuevo:
-            from .models import MovimientoKardex, Inventario
             stock = Inventario.objects.filter(lote__iexact=self.lote).first()
 
             if stock:
@@ -484,6 +493,27 @@ class RemisionEntrega(models.Model):
                     saldo_restante=stock.cantidad_disponible,
                     folio_documento=self.folio_remision_factura,
                     observaciones=f"Enviado con Orden {orden.numero_orden_suministro} a {destino_final}"
+                )
+                
+        # 🔥 LÓGICA DE DEVOLUCIÓN (Cuando el hospital rechaza y la mercancía regresa al inventario)
+        if not es_nuevo and self.estatus_viaje == 'RECHAZO' and estatus_anterior != 'RECHAZO':
+            stock = Inventario.objects.filter(lote__iexact=self.lote).first()
+            
+            if stock:
+                # Regresamos las piezas a la bodega
+                stock.cantidad_disponible += self.cantidad_entregada
+                stock.save()
+                
+                # Dejamos la huella legal en el Kardex
+                MovimientoKardex.objects.create(
+                    almacen=stock.almacen,
+                    medicamento=stock.medicamento,
+                    lote=self.lote,
+                    tipo='ENTRADA_DEVOLUCION',
+                    cantidad=self.cantidad_entregada,
+                    saldo_restante=stock.cantidad_disponible,
+                    folio_documento=self.folio_remision_factura,
+                    observaciones=f"Devolución por Rechazo (Orden {orden.numero_orden_suministro}). Motivo: {self.motivo_rechazo}"
                 )
 
 class Almacen(models.Model):
@@ -531,6 +561,7 @@ class MovimientoKardex(models.Model):
     TIPO_MOVIMIENTO = [
         ('ENTRADA_COMPRA', '📥 Entrada por Compra'),
         ('SALIDA_OPM', '📤 Salida por OPM'),
+        ('ENTRADA_DEVOLUCION', '↩️ Entrada por Devolución (Rechazo)'),
         ('TRASPASO_IN', '🔄 Entrada por Traspaso'),
         ('TRASPASO_OUT', '🔄 Salida por Traspaso'),
         ('MERMA', '❌ Merma / Caducidad'),
