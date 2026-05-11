@@ -49,10 +49,10 @@ DEPENDENCIAS_MAESTRAS = [
         ('PEMEX', 'PEMEX'),
         ('SEMAR', 'Secretaría de Marina'),
         ('SEDENA', 'Secretaría de la Defensa Nacional'),
-        ('CONASAMA', 'Comisión Nacional de Salud Mental y Adicciones'),  # 👈 Nueva
-        ('CENAPRECE', 'Centro Nacional de Programas Preventivos y Control de Enfermedades'), # 👈 Nueva
-        ('CENSIDA', 'Centro Nacional para la Prevención y el Control del VIH y el SIDA'), # 👈 Nueva
-        ('BIRMEX', 'Laboratorios de Biológicos y Reactivos de México'), # 👈 Nueva
+        ('CONASAMA', 'Comisión Nacional de Salud Mental y Adicciones'),
+        ('CENAPRECE', 'Centro Nacional de Programas Preventivos y Control de Enfermedades'),
+        ('CENSIDA', 'Centro Nacional para la Prevención y el Control del VIH y el SIDA'),
+        ('BIRMEX', 'Laboratorios de Biológicos y Reactivos de México'),
     )),
     ('HRAE_REGIONALES', (
         ('HRAE_BAJIO', 'HRAE del Bajío'),
@@ -85,10 +85,7 @@ class Licitacion(models.Model):
     fecha_apertura = models.DateTimeField(verbose_name="Fecha y hora de apertura", null=True, blank=True)
     fecha_junta = models.DateTimeField(verbose_name="Fecha y hora de junta de aclaraciones", null=True, blank=True)
     fecha_fallo = models.DateTimeField(verbose_name="Fecha y hora del acto del Fallo", null=True, blank=True)
-    
-    # 👇 Usamos la lista maestra
     dependencia = models.CharField(max_length=100, choices=DEPENDENCIAS_MAESTRAS, verbose_name="Dependencia")
-    
     estatus = models.ForeignKey(EstatusProcedimiento, on_delete=models.SET_NULL, null=True)
     url_carpeta_drive = models.URLField(max_length=500, blank=True, null=True, verbose_name="URL Carpeta Drive")
 
@@ -194,6 +191,7 @@ class Empresa(models.Model):
     password_aplicacion = models.CharField(max_length=100, blank=True, null=True, verbose_name="Contraseña de Aplicación (16 letras)")
     url_logo = models.URLField(max_length=500, null=True, blank=True, verbose_name="URL del Logo (Público)", help_text="Pega aquí el link directo a la imagen del logo (debe terminar en .png o .jpg). Ej: https://tudominio.com/logo_sago.png")
     correos_notificacion = models.TextField(blank=True, null=True, help_text="Escribe aquí los correos de los empleados para ESTA empresa, separados por coma.")
+    
     class Meta:
         verbose_name = "Empresa"
         verbose_name_plural = "Empresas"
@@ -221,15 +219,11 @@ class SocioComercial(models.Model):
 class Contrato(models.Model):
     empresa = models.ForeignKey('Empresa', on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Empresa GPHARMA")
     numero_contrato = models.CharField(max_length=100, unique=True, verbose_name="Número de Contrato")
-    
-    # 👇 Usamos la lista maestra
     dependencia = models.CharField(max_length=100, choices=DEPENDENCIAS_MAESTRAS, verbose_name="Dependencia / Cliente")
-    
     fecha_inicio = models.DateField(verbose_name="Inicio de Vigencia", null=True, blank=True)
     fecha_fin = models.DateField(verbose_name="Fin de Vigencia", null=True, blank=True)
     licitacion_origen = models.ForeignKey('Licitacion', on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Viene de la Licitación")
     
-    # 👇 NUEVO: Para los convenios modificatorios
     tiene_convenio_modificatorio = models.BooleanField(default=False, verbose_name="¿Tiene Convenio Modificatorio?")
     porcentaje_ampliacion = models.DecimalField(max_digits=5, decimal_places=2, default=0.00, help_text="Ej: 20.00 si se amplió el 20%")
 
@@ -245,7 +239,7 @@ class Contrato(models.Model):
 
     class Meta:
         verbose_name = "Contrato"
-        verbose_name_plural = "1. Contratos"
+        verbose_name_plural = "Contratos"
         
     def __str__(self):
         return f"{self.numero_contrato} - {self.get_dependencia_display()}"
@@ -260,13 +254,11 @@ class Contrato(models.Model):
         maximo = self.monto_total_contrato
         if maximo == 0: return 0.0
         
-        # 1. Sumamos lo NUEVO (OPMs creadas en el sistema)
         res_nuevo = PartidaOrden.objects.filter(clave_contrato__contrato=self).aggregate(
             consumido=Sum(F('cantidad_solicitada') * F('clave_contrato__precio_neto'))
         )
         consumido_nuevo = res_nuevo['consumido'] or Decimal('0.00')
         
-        # 2. Sumamos lo HISTÓRICO (Del Excel)
         res_hist = self.claves.aggregate(
             consumido_hist=Sum(F('piezas_historicas_solicitadas') * F('precio_neto'))
         )
@@ -276,14 +268,12 @@ class Contrato(models.Model):
 
     @property
     def porcentaje_abasto(self):
-        # Total Solicitado (Nuevo + Histórico)
         res_sol_nuevo = PartidaOrden.objects.filter(clave_contrato__contrato=self).aggregate(tot=Sum('cantidad_solicitada'))
         res_sol_hist = self.claves.aggregate(tot=Sum('piezas_historicas_solicitadas'))
         sol_total = (res_sol_nuevo['tot'] or 0) + (res_sol_hist['tot'] or 0)
         
         if sol_total == 0: return 0.0
         
-        # Total Entregado (Nuevo + Histórico)
         res_ent_nuevo = RemisionEntrega.objects.filter(orden__partidas__clave_contrato__contrato=self).distinct().aggregate(tot=Sum('cantidad_entregada'))
         res_ent_hist = self.claves.aggregate(tot=Sum('piezas_historicas_entregadas'))
         ent_total = (res_ent_nuevo['tot'] or 0) + (res_ent_hist['tot'] or 0)
@@ -329,6 +319,7 @@ class ClaveContrato(models.Model):
     precio_neto = models.DecimalField(max_digits=10, decimal_places=2, default=0.00, verbose_name="Precio Neto")
     piezas_historicas_solicitadas = models.IntegerField(default=0, verbose_name="Histórico Solicitado")
     piezas_historicas_entregadas = models.IntegerField(default=0, verbose_name="Histórico Entregado")
+    
     class Meta:
         verbose_name = "Clave Asignada"
         verbose_name_plural = "Claves del Contrato"
@@ -342,12 +333,8 @@ class OrdenSuministro(models.Model):
         ('PEDIDO', 'Pedido Privado (Cliente)'),
     ]
     tipo_documento = models.CharField(max_length=20, choices=TIPO_CHOICES, default='SUMINISTRO', verbose_name='Tipo de Documento')
-    
     razon_social = models.CharField(max_length=200, blank=True, null=True, verbose_name="Razón Social (Empresa)")
-    
-    # 👇 Usamos la lista maestra
     dependencia = models.CharField(max_length=100, choices=DEPENDENCIAS_MAESTRAS, blank=True, null=True, verbose_name="Dependencia / Institución")
-    
     numero_orden_suministro = models.CharField(max_length=150, verbose_name="Folio (No. Orden / Pedido)")
     
     clues_destino = models.CharField(max_length=100, blank=True, null=True, verbose_name="CLUES Destino")
@@ -372,7 +359,7 @@ class OrdenSuministro(models.Model):
 
     class Meta:
         verbose_name = "Orden de Suministro"
-        verbose_name_plural = "3. Órdenes de Suministro"
+        verbose_name_plural = "Órdenes de Suministro"
         ordering = ['fecha_limite'] 
 
     def __str__(self):
@@ -405,7 +392,6 @@ class OrdenSuministro(models.Model):
         return importe_total * porcentaje_multa
 
 
-# 🔥 EL NUEVO MODELO DE LAS CLAVES MULTIPLES 🔥
 class PartidaOrden(models.Model):
     orden = models.ForeignKey(OrdenSuministro, on_delete=models.CASCADE, related_name='partidas')
     clave_contrato = models.ForeignKey(ClaveContrato, on_delete=models.CASCADE, verbose_name="Clave del Medicamento", null=True, blank=True)
@@ -414,7 +400,6 @@ class PartidaOrden(models.Model):
     cantidad_entregada = models.IntegerField(default=0, verbose_name="Cant. Entregada")
     precio_unitario = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, verbose_name="Precio Unitario")
     
-    # Históricos por si importas Excels viejos
     clave_historica = models.CharField(max_length=50, blank=True, null=True, verbose_name="Clave Histórica")
     
     @property
@@ -451,13 +436,13 @@ class RemisionEntrega(models.Model):
 
     class Meta:
         verbose_name = "Remisión Física"
-        verbose_name_plural = "4. Remisiones de Almacén"
+        verbose_name_plural = "Remisiones de Almacén"
 
     def __str__(self):
         return f"Remisión {self.folio_remision_factura} - Orden: {self.orden.numero_orden_suministro}"
         
     def save(self, *args, **kwargs):
-        es_nuevo = self.pk is None # Detectar si apenas se está creando el viaje
+        es_nuevo = self.pk is None
 
         if self.archivo_evidencia and self.estatus_viaje == 'EN_RUTA':
             self.estatus_viaje = 'ENTREGADA'
@@ -481,7 +466,6 @@ class RemisionEntrega(models.Model):
             
         orden.save()
 
-        # 🔥 LA MAGIA: KARDEX Y DESCUENTO DE INVENTARIO PARA SALIDAS
         if es_nuevo:
             from .models import MovimientoKardex, Inventario
             stock = Inventario.objects.filter(lote__iexact=self.lote).first()
@@ -508,7 +492,7 @@ class Almacen(models.Model):
 
     class Meta:
         verbose_name = "Almacén"
-        verbose_name_plural = "🏢 Almacenes Físicos"
+        verbose_name_plural = "Almacenes Físicos"
 
     def __str__(self):
         return self.nombre
@@ -525,7 +509,7 @@ class Inventario(models.Model):
 
     class Meta:
         verbose_name = "Inventario Físico"
-        verbose_name_plural = "5. Inventarios (Stock)"
+        verbose_name_plural = "Inventarios"
         ordering = ['fecha_caducidad']
         unique_together = ('almacen', 'medicamento', 'lote', 'fecha_caducidad')
 
@@ -567,7 +551,7 @@ class MovimientoKardex(models.Model):
 
     class Meta:
         verbose_name = "Movimiento de Kardex"
-        verbose_name_plural = "📊 Kardex (Historial Exacto)"
+        verbose_name_plural = "Kardex (Historial Exacto)"
         ordering = ['-fecha'] 
 
     def __str__(self):
@@ -595,7 +579,7 @@ class TraspasoIntercompany(models.Model):
 
     class Meta:
         verbose_name = "Traspaso Interno"
-        verbose_name_plural = "🔄 Traspasos Inter-Compañías"
+        verbose_name_plural = "Traspasos Inter-Compañías"
 
     def __str__(self):
         return f"Traspaso {self.folio_factura}: {self.almacen_origen.nombre} ➔ {self.almacen_destino.nombre}"
@@ -642,7 +626,7 @@ class Proveedor(models.Model):
 
     class Meta:
         verbose_name = "Proveedor"
-        verbose_name_plural = "1. Catálogo de Proveedores"
+        verbose_name_plural = "Proveedores"
 
     def __str__(self):
         return self.nombre
@@ -670,7 +654,7 @@ class OrdenCompra(models.Model):
 
     class Meta:
         verbose_name = "Orden de Compra"
-        verbose_name_plural = "2. Órdenes de Compra (OC)"
+        verbose_name_plural = "Órdenes de Compra (OC)"
 
     def __str__(self):
         return f"{self.folio} - {self.proveedor.nombre}"
@@ -760,7 +744,7 @@ class EntradaAlmacen(models.Model):
 
     class Meta:
         verbose_name = "Entrada de Almacén"
-        verbose_name_plural = "📥 Recepciones de Almacén"
+        verbose_name_plural = "Recepciones de Almacén"
 
     def __str__(self):
         return f"Remisión: {self.folio_remision} | OC-{self.orden.folio} | {self.cantidad_recibida} pzas"
@@ -835,7 +819,7 @@ class EscanerKardex(Inventario):
     class Meta:
         proxy = True
         verbose_name = "📱 Escáner Kardex (Cámara)"
-        verbose_name_plural = "📱 Escáner Kardex (Cámara)"
+        verbose_name_plural = "Escáner Kardex"
 
 # ==========================================
 # 🚀 MÓDULO: COTIZACIONES Y VENTAS DIRECTAS
@@ -859,10 +843,7 @@ class Cotizacion(models.Model):
     tipo_procedimiento = models.CharField(max_length=30, choices=TIPO_PROCEDIMIENTO, default='COTIZACION_PRIVADA', verbose_name="Tipo de Venta")
     folio = models.CharField(max_length=50, unique=True, verbose_name="Folio de Cotización / Evento")
     
-    # Datos del Cliente
     razon_social = models.CharField(max_length=200, blank=True, null=True, verbose_name="Razón Social (Cliente Privado)")
-    
-    # 👇 Usamos la lista maestra para que todo cruce perfecto
     dependencia = models.CharField(max_length=100, choices=DEPENDENCIAS_MAESTRAS, blank=True, null=True, verbose_name="Dependencia (Gobierno)")
     
     fecha_emision = models.DateField(default=timezone.now, verbose_name="Fecha de Emisión")
@@ -907,7 +888,7 @@ class PedidoDirecto(OrdenSuministro):
     class Meta:
         proxy = True
         verbose_name = "Pedido Directo (10 días)"
-        verbose_name_plural = "3.1 Pedidos Directos"
+        verbose_name_plural = "Pedidos Directos"
 
     def save(self, *args, **kwargs):
         self.tipo_documento = 'PEDIDO'
