@@ -1464,7 +1464,8 @@ class OrdenSuministroAdmin(ImportExportModelAdmin):
 @admin.register(PedidoDirecto)
 class PedidoDirectoAdmin(OrdenSuministroAdmin):
     def get_queryset(self, request):
-        qs = super(admin.ModelAdmin, self).get_queryset(request)
+        # FIX: Usar super() de forma correcta para que no choque con ImportExportModelAdmin
+        qs = super().get_queryset(request)
         return qs.filter(tipo_documento='PEDIDO')
 
 # ==========================================
@@ -1544,7 +1545,7 @@ class PartidaCompraInline(admin.TabularInline):
     model = PartidaCompra
     extra = 1
     autocomplete_fields = ['medicamento']
-    fields = ('medicamento', 'cantidad', 'precio_unitario', 'importe_visual', 'cantidad_recibida')
+    fields = ('medicamento', 'cantidad', 'precio_referencia', 'precio_unitario', 'importe_visual', 'cantidad_recibida', 'piezas_rechazadas')
     readonly_fields = ('importe_visual',)
 
     def importe_visual(self, obj):

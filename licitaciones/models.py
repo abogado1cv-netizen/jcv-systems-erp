@@ -678,6 +678,11 @@ class OrdenCompra(models.Model):
     
     fecha_emision = models.DateField(default=timezone.now)
     fecha_entrega_esperada = models.DateField()
+    # 👇 NUEVOS CAMPOS PARA KPIs DE COMPRAS 👇
+    fecha_necesidad = models.DateField("Fecha de Solicitud (Necesidad)", default=timezone.now, help_text="¿Cuándo se originó la necesidad interna?")
+    fecha_recepcion_real = models.DateField("Fecha de Recepción Real", null=True, blank=True)
+    es_compra_no_planeada = models.BooleanField("Gasto Maverick (Fuera de Contrato)", default=False, help_text="Marcar si es urgencia fuera de acuerdos/catálogos preaprobados.")
+    costo_administrativo = models.DecimalField("Costo Administrativo de OC", max_digits=8, decimal_places=2, default=500.00, help_text="Costo interno de procesamiento ($)")
     
     estatus = models.CharField(max_length=20, choices=ESTATUS_COMPRA, default='BORRADOR')
     destino = models.CharField("Destino de Entrega", max_length=255, default="ALMACÉN GENERAL GPHARMA", help_text="Dirección o unidad donde se recibirá el medicamento")
@@ -732,6 +737,8 @@ class PartidaCompra(models.Model):
     medicamento = models.ForeignKey('CatalogoMedicamento', on_delete=models.PROTECT)
     cantidad = models.PositiveIntegerField("Cantidad (Piezas)")
     precio_unitario = models.DecimalField("Costo Unitario", max_digits=12, decimal_places=2)
+    precio_referencia = models.DecimalField("Precio Presupuestado/Histórico", max_digits=12, decimal_places=2, default=0.00, help_text="Para medir el ahorro (PPV).")
+    piezas_rechazadas = models.PositiveIntegerField("Pzas Rechazadas (Calidad)", default=0, help_text="Piezas devueltas por defecto del proveedor.")
     
     cantidad_recibida = models.PositiveIntegerField("Pzas Recibidas", default=0, help_text="Se llena al llegar al almacén")
 
