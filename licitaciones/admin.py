@@ -1250,7 +1250,8 @@ class PartidaOrdenInline(admin.TabularInline):
     fields = ('clave_contrato', 'medicamento', 'cantidad_solicitada', 'precio_unitario', 'cantidad_entregada')
 
 @admin.register(OrdenSuministro)
-class OrdenSuministroAdmin(admin.ModelAdmin):
+class OrdenSuministroAdmin(ImportExportModelAdmin):
+    resource_class = OrdenSuministroResource
     inlines = [PartidaOrdenInline]
     
     list_per_page = 50
