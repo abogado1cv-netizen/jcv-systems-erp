@@ -1,13 +1,14 @@
 import json
 import csv
 from datetime import timedelta
+import datetime
 from django.http import HttpResponse
 from django.shortcuts import render
 from django.db.models import Sum, F, Q, Count, Avg
 from django.db.models.functions import TruncMonth, Coalesce
 from django.utils import timezone
 from django.contrib.admin.views.decorators import staff_member_required
-from .models import Inventario
+from .models import Inventario, MovimientoKardex
 from .services import DashboardService
 
 # Traemos todos los modelos necesarios
@@ -15,8 +16,8 @@ from .models import (
     Contrato, Licitacion, PartidaRequerimiento, Empresa, 
     OrdenSuministro, RemisionEntrega, ClaveContrato, CatalogoMedicamento,
     PartidaOrden, Cotizacion, PartidaCotizacion, PedidoDirecto,
-    OrdenCompra, PartidaCompra, SocioComercial, # 👈 Agregados para el dashboard de compras
-    DEPENDENCIAS_MAESTRAS
+    OrdenCompra, PartidaCompra, SocioComercial, EntradaAlmacen,
+    TraspasoIntercompany, DEPENDENCIAS_MAESTRAS
 )
 
 # ==========================================
@@ -59,10 +60,6 @@ def dashboard_contratos(request):
     piezas_minimas = agregados.get('pzas_min') or 0
     piezas_maximas = agregados.get('pzas_max') or 0
 
-    # =========================================================
-    # 🔥 CÁLCULO MÁGICO: SUMAMOS HISTÓRICO DEL EXCEL + NUEVO
-    # =========================================================
-    
     # 1. Solicitado (Nuevo + Histórico)
     agg_sol_nuevo = PartidaOrden.objects.filter(clave_contrato__contrato__in=contratos).aggregate(
         pzas=Sum('cantidad_solicitada'), din=Sum(F('cantidad_solicitada') * F('clave_contrato__precio_neto'))
@@ -83,7 +80,6 @@ def dashboard_contratos(request):
     piezas_entregadas = (agg_ent_nuevo['pzas'] or 0) + (agg_ent_hist['pzas'] or 0)
     monto_entregado = (agg_ent_nuevo['din'] or 0) + (agg_ent_hist['din'] or 0)
 
-    # Cálculos para gráficas
     piezas_pendientes_solicitar = piezas_maximas - piezas_solicitadas
     if piezas_pendientes_solicitar < 0: piezas_pendientes_solicitar = 0
 
@@ -111,7 +107,6 @@ def dashboard_contratos(request):
     
     detalle_claves = []
     for clave in detalle_claves_qs:
-        # 🔥 SUMA INDIVIDUAL PARA LA TABLA 🔥
         ent_nuevo = PartidaOrden.objects.filter(clave_contrato=clave).aggregate(tot=Sum('cantidad_entregada'))['tot'] or 0
         clave.pzas_entregadas = ent_nuevo + clave.piezas_historicas_entregadas
 
@@ -123,9 +118,8 @@ def dashboard_contratos(request):
 
         detalle_claves.append(clave)
 
-    # 7. FILTROS EN CASCADA
+    # Filtros
     codigos_presentes = Contrato.objects.values_list('dependencia', flat=True).distinct()
-    
     dependencias_agrupadas = []
     for categoria, items in DEPENDENCIAS_MAESTRAS:
         if isinstance(items, (list, tuple)):
@@ -175,28 +169,25 @@ def dashboard_contratos(request):
     }
     return render(request, 'dashboard_contratos.html', context)
 
+
 # ==========================================
-# 🔥 2. DASHBOARD OMNI-CANAL (LICITACIONES + COTIZACIONES)
+# 2. DASHBOARD OMNI-CANAL (LICITACIONES + COTIZACIONES)
 # ==========================================
 @staff_member_required
 def dashboard_licitaciones(request):
     q = request.GET.get('q', '').strip()
     filtro_empresa = request.GET.get('empresa', '')
 
-    # 1. TRAEMOS AMBOS MUNDOS
     licitaciones = Licitacion.objects.all()
     partidas_lic = PartidaRequerimiento.objects.select_related('licitacion', 'medicamento')
 
     cotizaciones = Cotizacion.objects.all()
     partidas_cot = PartidaCotizacion.objects.select_related('cotizacion', 'medicamento')
 
-    # 2. FILTRO POR EMPRESA
     if filtro_empresa:
         licitaciones = licitaciones.filter(empresa_id=filtro_empresa)
         partidas_lic = partidas_lic.filter(licitacion__empresa_id=filtro_empresa)
-        # Cotización no tiene empresa atada por ahora, por lo que es global.
 
-    # 3. BÚSQUEDA GLOBAL SIMULTÁNEA EN AMBAS TABLAS
     if q:
         licitaciones = licitaciones.filter(Q(num_procedimiento__icontains=q) | Q(dependencia__icontains=q))
         partidas_lic = partidas_lic.filter(
@@ -213,7 +204,6 @@ def dashboard_licitaciones(request):
             Q(medicamento__fabricante__icontains=q)
         )
 
-    # 4. SUMAMOS TOTALES Y ESTATUS
     total_licitaciones = licitaciones.count() + cotizaciones.count()
     en_proceso = licitaciones.filter(estatus__estado='EN_PROCESO').count() + cotizaciones.filter(estatus__in=['BORRADOR', 'ENVIADA']).count()
     adjudicadas = licitaciones.filter(estatus__estado='ADJUDICADO').count() + cotizaciones.filter(estatus='GANADA').count()
@@ -225,7 +215,6 @@ def dashboard_licitaciones(request):
     claves_participadas = set()
     claves_ganadas = set()
     
-    # Procesamos Licitaciones
     for p in partidas_lic:
         importe = float(p.cantidad_maxima or 0) * float(p.precio or 0)
         monto_total += importe
@@ -237,7 +226,6 @@ def dashboard_licitaciones(request):
         elif p.resultado in ['Perdida por precio', 'Perdida técnicamente']:
             monto_perdido += importe
 
-    # Procesamos Ventas Directas
     for p in partidas_cot:
         importe = float(p.cantidad or 0) * float(p.precio_unitario or 0)
         monto_total += importe
@@ -252,7 +240,6 @@ def dashboard_licitaciones(request):
     monto_en_proceso = monto_total - monto_ganado - monto_perdido
     if monto_en_proceso < 0: monto_en_proceso = 0
 
-    # 5. TOP 5 CLAVES (Fusionadas)
     claves_dict = {}
     for p in partidas_lic.filter(resultado='Asignada'):
         k = (p.medicamento.clave_sector, p.medicamento.fabricante)
@@ -276,7 +263,6 @@ def dashboard_licitaciones(request):
         nombres_top.append(clave)
         montos_top.append(importe)
 
-    # 6. TABLAS INFERIORES DE DETALLE (Objeto Simulado para no romper el HTML)
     class DummyObj: pass
     detalle_ganadas = []
     detalle_perdidas = []
@@ -331,18 +317,15 @@ def dashboard_licitaciones(request):
         'q': q, 
         'filtro_empresa': int(filtro_empresa) if filtro_empresa.isdigit() else '',
         'empresas_disponibles': empresas_disponibles,
-        
         'monto_total_str': f"${monto_total:,.2f}",
         'monto_ganado_str': f"${monto_ganado:,.2f}",
         'monto_perdido_str': f"${monto_perdido:,.2f}",
         'monto_en_proceso_str': f"${monto_en_proceso:,.2f}",
-        
         'monto_ganado_raw': monto_ganado,
         'monto_perdido_raw': monto_perdido,
         'monto_en_proceso_raw': monto_en_proceso,
         'nombres_top_json': json.dumps(nombres_top),
         'montos_top_json': json.dumps(montos_top),
-        
         'total_licitaciones': total_licitaciones,
         'adjudicadas': adjudicadas,
         'perdidas': perdidas,
@@ -362,13 +345,83 @@ def dashboard_licitaciones(request):
 # ==========================================
 
 @staff_member_required
-def dashboard_compras(request):
-    import datetime
-    from django.utils import timezone
-    from django.db.models import Sum
-    from .models import OrdenSuministro, Inventario, TraspasoIntercompany, MovimientoKardex, EntradaAlmacen
+def dashboard_ordenes(request):
+    busqueda = request.GET.get('q', '').strip()
+    
+    ordenes = OrdenSuministro.objects.all()
+    
+    if busqueda:
+        ordenes = ordenes.filter(
+            Q(numero_orden_suministro__icontains=busqueda) |
+            Q(nombre_unidad__icontains=busqueda) |
+            Q(partidas__clave_contrato__medicamento__clave_sector__icontains=busqueda) |
+            Q(partidas__medicamento__clave_sector__icontains=busqueda) |
+            Q(razon_social__icontains=busqueda)
+        ).distinct()
 
-    # 1. FILTROS
+    total_ordenes = ordenes.count()
+    entregadas = ordenes.filter(estatus='ENTREGADA').count()
+    pendientes = ordenes.filter(estatus__in=['PENDIENTE', 'PARCIAL']).count()
+    
+    hoy = timezone.now().date()
+    atrasadas = ordenes.filter(estatus__in=['PENDIENTE', 'PARCIAL'], fecha_limite__lt=hoy).count()
+
+    monto_total_solicitado = sum(float(o.valor_total) for o in ordenes)
+    penalizaciones_totales = sum(float(o.penalizacion_estimada) for o in ordenes)
+
+    partidas_qs = PartidaOrden.objects.filter(orden__in=ordenes)
+
+    total_piezas_solicitadas = partidas_qs.aggregate(total=Sum('cantidad_solicitada'))['total'] or 0
+    total_piezas_entregadas = partidas_qs.aggregate(total=Sum('cantidad_entregada'))['total'] or 0
+    
+    total_piezas_pendientes = total_piezas_solicitadas - total_piezas_entregadas
+    if total_piezas_pendientes < 0: total_piezas_pendientes = 0 
+        
+    total_piezas_canceladas = PartidaOrden.objects.filter(orden__estatus='CANCELADA', orden__in=ordenes).aggregate(total=Sum('cantidad_solicitada'))['total'] or 0
+
+    top_claves_entregadas = partidas_qs.filter(cantidad_entregada__gt=0).values(
+        'clave_contrato__medicamento__clave_sector'
+    ).annotate(
+        total_entregado=Sum('cantidad_entregada')
+    ).order_by('-total_entregado')[:10]
+
+    top_unidades = ordenes.values('nombre_unidad').annotate(
+        total=Count('id')
+    ).order_by('-total')[:5]
+
+    nombres_unidades = [u['nombre_unidad'] or 'Sin Asignar' for u in top_unidades]
+    cantidades_unidades = [u['total'] for u in top_unidades]
+
+    ordenes_criticas = [o for o in ordenes if o.dias_atraso > 0 and o.estatus in ['PENDIENTE', 'PARCIAL']]
+    ordenes_criticas.sort(key=lambda x: x.penalizacion_estimada, reverse=True)
+    ordenes_criticas = ordenes_criticas[:50] 
+
+    context = {
+        'busqueda': busqueda,
+        'total_ordenes': total_ordenes,
+        'entregadas': entregadas,
+        'pendientes': pendientes,
+        'atrasadas': atrasadas,
+        'monto_total_str': f"${monto_total_solicitado:,.2f}",
+        'penalizaciones_str': f"${penalizaciones_totales:,.2f}",
+        'nombres_unidades_json': json.dumps(nombres_unidades),
+        'cantidades_unidades_json': json.dumps(cantidades_unidades),
+        'ordenes_criticas': ordenes_criticas,
+        'piezas_solicitadas': total_piezas_solicitadas,
+        'piezas_entregadas': total_piezas_entregadas,
+        'piezas_pendientes': total_piezas_pendientes,
+        'piezas_canceladas': total_piezas_canceladas,
+        'top_claves_entregadas': top_claves_entregadas,
+    }
+    
+    return render(request, 'dashboard_ordenes.html', context)
+
+
+# ==========================================
+# 🔥 4. DASHBOARD DE COMPRAS E INTELIGENCIA (NUEVO RADAR 360)
+# ==========================================
+@staff_member_required
+def dashboard_compras(request):
     fecha_inicio = request.GET.get('fecha_inicio', '')
     fecha_fin = request.GET.get('fecha_fin', '')
     proveedor_id = request.GET.get('proveedor', '')
@@ -382,7 +435,6 @@ def dashboard_compras(request):
     if proveedor_id:
         ordenes = ordenes.filter(proveedor_id=proveedor_id)
 
-    # Variables para KPIs
     total_gasto = 0
     ahorro_ppv = 0
     maverick_spend = 0
@@ -400,11 +452,9 @@ def dashboard_compras(request):
         if hasattr(oc, 'costo_administrativo'):
             costo_admin_total += float(oc.costo_administrativo)
         
-        # Gasto fuera de contrato (Maverick)
         if hasattr(oc, 'es_compra_no_planeada') and oc.es_compra_no_planeada:
             maverick_spend += total_oc
 
-        # Lógica para órdenes cerradas/recibidas
         if oc.estatus == 'RECIBIDA' and hasattr(oc, 'fecha_recepcion_real') and oc.fecha_recepcion_real:
             ordenes_recibidas += 1
             
@@ -424,7 +474,6 @@ def dashboard_compras(request):
             if a_tiempo and completa and sin_rechazos:
                 otif_count += 1
 
-        # Análisis de partidas
         for p in oc.partidas_compra.all():
             piezas_totales_recibidas += (p.cantidad_recibida or 0)
             
@@ -435,9 +484,6 @@ def dashboard_compras(request):
                 ahorro = float(p.precio_referencia - p.precio_unitario) * p.cantidad
                 ahorro_ppv += ahorro
 
-    # ===============================================
-    # 🏆 CÁLCULO FINAL DE PORCENTAJES
-    # ===============================================
     pct_maverick = (maverick_spend / total_gasto * 100) if total_gasto > 0 else 0
     avg_tiempo_ciclo = (tiempo_ciclo_dias / ordenes_recibidas) if ordenes_recibidas > 0 else 0
     
@@ -447,22 +493,20 @@ def dashboard_compras(request):
 
     pct_otif = (otif_count / ordenes_recibidas * 100) if ordenes_recibidas > 0 else 0
 
-    # ===============================================
     # 🚨 RADAR DE ALERTAS INTER-MÓDULOS 🚨
-    # ===============================================
     alertas_criticas = []
     hoy = timezone.now().date()
 
-    # ALERTA 0: OCs Atrasadas del proveedor (Original)
+    # ALERTA 0: OCs Atrasadas
     oc_atrasadas = ordenes.filter(estatus__in=['BORRADOR', 'AUTORIZADA', 'TRANSITO'], fecha_entrega_esperada__lt=hoy)
     for oc in oc_atrasadas:
         dias_retraso = (hoy - oc.fecha_entrega_esperada).days
         alertas_criticas.append({
-            'tipo': 'compras', 'color': '#e74c3c', # Rojo
+            'tipo': 'compras', 'color': '#e74c3c',
             'mensaje': f"PROVEEDOR ATRASADO: La OC-{oc.folio} presenta un atraso de {dias_retraso} días."
         })
 
-    # ALERTA 1: Órdenes de Suministro/Pedidos sin atender por Falta de Inventario
+    # ALERTA 1: Órdenes sin atender por Falta de Inventario
     pedidos_pendientes = OrdenSuministro.objects.filter(estatus__in=['PENDIENTE', 'PARCIAL'])
     alertas_stockout = 0
     for ped in pedidos_pendientes:
@@ -472,14 +516,14 @@ def dashboard_compras(request):
                 stock_real = Inventario.objects.filter(medicamento=p.medicamento).aggregate(tot=Sum('cantidad_disponible'))['tot'] or 0
                 if stock_real < pendientes:
                     alertas_stockout += 1
-                    break # Con que una partida no tenga stock, alertamos la orden
+                    break
     if alertas_stockout > 0:
         alertas_criticas.append({
-            'tipo': 'stockout', 'color': '#e67e22', # Naranja
+            'tipo': 'stockout', 'color': '#e67e22',
             'mensaje': f"FALTA DE STOCK: Hay {alertas_stockout} órdenes/pedidos detenidos porque no hay suficiente inventario para surtirlos."
         })
 
-    # ALERTA 2: Discrepancias entre lo Comprado vs lo Recibido en Almacén
+    # ALERTA 2: Discrepancias
     ocs_discrepancia = 0
     for oc in ordenes.filter(estatus='RECIBIDA'):
         reclamado = sum(p.cantidad_recibida for p in oc.partidas_compra.all() if p.cantidad_recibida)
@@ -488,39 +532,36 @@ def dashboard_compras(request):
             ocs_discrepancia += 1
     if ocs_discrepancia > 0:
         alertas_criticas.append({
-            'tipo': 'discrepancia', 'color': '#d35400', # Rojo oscuro
+            'tipo': 'discrepancia', 'color': '#d35400',
             'mensaje': f"AUDITORÍA CIEGA: Existen {ocs_discrepancia} Órdenes de Compra con discrepancia entre lo pagado y lo recibido físicamente."
         })
 
-    # ALERTA 3: Medicamentos próximos a Caducar (6 meses)
+    # ALERTA 3: Caducidades
     limite_caducidad = hoy + datetime.timedelta(days=180)
     lotes_riesgo = Inventario.objects.filter(cantidad_disponible__gt=0, fecha_caducidad__lte=limite_caducidad).count()
     if lotes_riesgo > 0:
         alertas_criticas.append({
-            'tipo': 'caducidad', 'color': '#f1c40f', # Amarillo
+            'tipo': 'caducidad', 'color': '#f1c40f',
             'mensaje': f"RIESGO DE MERMA: Tienes {lotes_riesgo} lotes de medicamentos próximos a caducar en almacén."
         })
 
-    # ALERTA 4: Traspasos Inter-Compañías pendientes
+    # ALERTA 4: Traspasos
     traspasos_pendientes = TraspasoIntercompany.objects.filter(estatus='BORRADOR').count()
     if traspasos_pendientes > 0:
         alertas_criticas.append({
-            'tipo': 'traspaso', 'color': '#3498db', # Azul
+            'tipo': 'traspaso', 'color': '#3498db',
             'mensaje': f"LOGÍSTICA INTERNA: Tienes {traspasos_pendientes} traspasos entre almacenes pendientes de procesar."
         })
 
-    # ALERTA 5: Reintegros / Devoluciones al inventario (Últimos 7 días)
+    # ALERTA 5: Reintegros / Devoluciones (Últimos 7 días)
     fecha_reciente = hoy - datetime.timedelta(days=7)
     devoluciones = MovimientoKardex.objects.filter(tipo='ENTRADA_DEVOLUCION', fecha__gte=fecha_reciente).count()
     if devoluciones > 0:
         alertas_criticas.append({
-            'tipo': 'devolucion', 'color': '#9b59b6', # Morado
+            'tipo': 'devolucion', 'color': '#9b59b6',
             'mensaje': f"REINTEGROS: Se han devuelto {devoluciones} lotes de mercancía al almacén por rechazo de hospitales (últimos 7 días)."
         })
 
-    # ===============================================
-    # TABLA DE ESTADO
-    # ===============================================
     ultimas_ordenes = ordenes.order_by('-fecha_emision')[:10]
     tabla_ordenes = []
     for oc in ultimas_ordenes:
@@ -568,6 +609,7 @@ def dashboard_compras(request):
 # ==========================================
 # 5. DASHBOARD DE INVENTARIO
 # ==========================================
+@staff_member_required
 def dashboard_inventario(request):
     import datetime
     from django.db.models import Sum
@@ -641,8 +683,6 @@ def buscar_kardex(request):
     mensaje_error = None
 
     if query:
-        from .models import MovimientoKardex # Aseguramos la importación local
-        
         # Usamos Q para buscar en código de barras O lote en una sola consulta
         # icontains ayuda por si escriben el lote en minúsculas o incompleto
         inventario_actual = Inventario.objects.filter(
