@@ -10,11 +10,12 @@ from django.contrib.admin.views.decorators import staff_member_required
 from .models import Inventario
 from .services import DashboardService
 
-# Traemos todos los modelos (¡Incluidos PartidaOrden, Cotizacion y DEPENDENCIAS_MAESTRAS!)
+# Traemos todos los modelos necesarios
 from .models import (
     Contrato, Licitacion, PartidaRequerimiento, Empresa, 
     OrdenSuministro, RemisionEntrega, ClaveContrato, CatalogoMedicamento,
     PartidaOrden, Cotizacion, PartidaCotizacion, PedidoDirecto,
+    OrdenCompra, PartidaCompra, SocioComercial, # 👈 Agregados para el dashboard de compras
     DEPENDENCIAS_MAESTRAS
 )
 
@@ -449,90 +450,140 @@ def dashboard_ordenes(request):
     
     return render(request, 'dashboard_ordenes.html', context)
 
+
+# ==========================================
+# 4. DASHBOARD DE COMPRAS E INTELIGENCIA
+# ==========================================
+@staff_member_required
 def dashboard_compras(request):
-    # 1. FILTROS
     fecha_inicio = request.GET.get('fecha_inicio', '')
     fecha_fin = request.GET.get('fecha_fin', '')
     proveedor_id = request.GET.get('proveedor', '')
     
-    ordenes = OrdenCompra.objects.all()
-    partidas = PartidaCompra.objects.exclude(orden__estatus='CANCELADA')
+    ordenes = OrdenCompra.objects.all().prefetch_related('partidas_compra')
 
     if fecha_inicio:
         ordenes = ordenes.filter(fecha_emision__gte=fecha_inicio)
-        partidas = partidas.filter(orden__fecha_emision__gte=fecha_inicio)
     if fecha_fin:
         ordenes = ordenes.filter(fecha_emision__lte=fecha_fin)
-        partidas = partidas.filter(orden__fecha_emision__lte=fecha_fin)
     if proveedor_id:
         ordenes = ordenes.filter(proveedor_id=proveedor_id)
-        partidas = partidas.filter(orden__proveedor_id=proveedor_id)
 
-    # 2. KPIs REALES BÁSICOS
-    completas = ordenes.filter(estatus='RECIBIDA').count()
-    total_ordenes = ordenes.count()
-    
-    stats_piezas = partidas.aggregate(
-        total_pedidas=Sum('cantidad'),
-        total_recibidas=Sum('cantidad_recibida')
-    )
-    piezas_pedidas = stats_piezas['total_pedidas'] or 0
-    piezas_recibidas = stats_piezas['total_recibidas'] or 0
-    
-    # 3. CÁLCULOS PARA EL SEMÁFORO (Adaptados a tu imagen)
-    porcentaje_otd = 0 # On Time Delivery (Cumplimiento)
-    if piezas_pedidas > 0:
-        porcentaje_otd = round((piezas_recibidas / piezas_pedidas) * 100, 1)
+    # Variables para KPIs
+    total_gasto = 0
+    ahorro_ppv = 0
+    maverick_spend = 0
+    tiempo_ciclo_dias = 0
+    ordenes_recibidas = 0
+    otif_count = 0
+    piezas_totales_recibidas = 0
+    piezas_totales_rechazadas = 0
+    costo_admin_total = 0
+
+    for oc in ordenes:
+        total_oc = float(oc.total_compra)
+        total_gasto += total_oc
         
-    tasa_desabasto = round(100 - porcentaje_otd, 1) if porcentaje_otd > 0 else 0.0
+        if hasattr(oc, 'costo_administrativo'):
+            costo_admin_total += float(oc.costo_administrativo)
+        
+        # 1. Gasto fuera de contrato (Maverick)
+        if hasattr(oc, 'es_compra_no_planeada') and oc.es_compra_no_planeada:
+            maverick_spend += total_oc
 
-    # 4. ALERTAS DEL SISTEMA (Reales)
+        # Lógica para órdenes ya cerradas/recibidas
+        if oc.estatus == 'RECIBIDA' and hasattr(oc, 'fecha_recepcion_real') and oc.fecha_recepcion_real:
+            ordenes_recibidas += 1
+            
+            # 2. Tiempo de Ciclo de Compra
+            if hasattr(oc, 'fecha_necesidad') and oc.fecha_necesidad:
+                dias_ciclo = (oc.fecha_recepcion_real - oc.fecha_necesidad).days
+                tiempo_ciclo_dias += max(dias_ciclo, 1)
+
+            # 3. OTIF (On-Time In-Full)
+            a_tiempo = oc.fecha_recepcion_real <= oc.fecha_entrega_esperada
+            completa = all(p.cantidad_recibida >= p.cantidad for p in oc.partidas_compra.all())
+            
+            # Verificar si existe el campo de rechazos
+            sin_rechazos = True
+            for p in oc.partidas_compra.all():
+                if hasattr(p, 'piezas_rechazadas') and p.piezas_rechazadas > 0:
+                    sin_rechazos = False
+                    break
+            
+            if a_tiempo and completa and sin_rechazos:
+                otif_count += 1
+
+        # Análisis de partidas (Ahorro y Calidad)
+        for p in oc.partidas_compra.all():
+            piezas_totales_recibidas += (p.cantidad_recibida or 0)
+            
+            if hasattr(p, 'piezas_rechazadas'):
+                piezas_totales_rechazadas += p.piezas_rechazadas
+            
+            # 4. PPV (Ahorro de Costes) = (Presupuesto - Real) * Cantidad
+            if hasattr(p, 'precio_referencia') and p.precio_referencia > 0:
+                ahorro = float(p.precio_referencia - p.precio_unitario) * p.cantidad
+                ahorro_ppv += ahorro
+
+    # ===============================================
+    # 🏆 CÁLCULO FINAL DE PORCENTAJES PARA EL DASHBOARD
+    # ===============================================
+    pct_maverick = (maverick_spend / total_gasto * 100) if total_gasto > 0 else 0
+    avg_tiempo_ciclo = (tiempo_ciclo_dias / ordenes_recibidas) if ordenes_recibidas > 0 else 0
+    
+    # 5. Índice de Calidad de Proveedores
+    calidad_proveedores = 100
+    if piezas_totales_recibidas > 0:
+        calidad_proveedores = ((piezas_totales_recibidas - piezas_totales_rechazadas) / piezas_totales_recibidas) * 100
+
+    pct_otif = (otif_count / ordenes_recibidas * 100) if ordenes_recibidas > 0 else 0
+
+    # 6. Alertas Críticas (Atrasos)
     alertas_criticas = []
     hoy = timezone.now().date()
-    
-    # Buscar OC atrasadas
     oc_atrasadas = ordenes.filter(estatus__in=['BORRADOR', 'AUTORIZADA', 'TRANSITO'], fecha_entrega_esperada__lt=hoy)
     for oc in oc_atrasadas:
         dias_retraso = (hoy - oc.fecha_entrega_esperada).days
         alertas_criticas.append({
             'tipo': 'oc_atrasada',
             'mensaje': f"{oc.folio} presenta un atraso de {dias_retraso} días.",
-            'color': '#c0392b' # Rojo
+            'color': '#c0392b'
         })
 
-    # 5. TABLA DE ESTADO ACTUAL (Últimas 6 órdenes)
-    ultimas_ordenes = ordenes.order_by('-fecha_emision')[:6]
+    # 7. Tabla de Estado
+    ultimas_ordenes = ordenes.order_by('-fecha_emision')[:10]
     tabla_ordenes = []
     for oc in ultimas_ordenes:
         primera_partida = oc.partidas_compra.first()
         descripcion = "Varias partidas"
         if primera_partida:
             descripcion = f"{primera_partida.medicamento.denominacion_generica} x {primera_partida.cantidad}"
-            if oc.partidas_compra.count() > 1:
-                descripcion += " (+)"
-                
-        dias_transcurridos = (hoy - oc.fecha_emision).days if oc.fecha_emision else 0
+            if oc.partidas_compra.count() > 1: descripcion += " (+)"
         
         tabla_ordenes.append({
             'folio': oc.folio,
+            'proveedor': oc.proveedor.nombre[:25],
             'descripcion': descripcion,
-            'proveedor': oc.proveedor.nombre[:20] + '...' if len(oc.proveedor.nombre) > 20 else oc.proveedor.nombre,
             'monto': oc.total_compra,
             'estatus': oc.get_estatus_display(),
-            'estatus_raw': oc.estatus,
-            'dias': dias_transcurridos
+            'dias': (hoy - oc.fecha_emision).days
         })
 
     proveedores_con_ordenes = SocioComercial.objects.filter(ordencompra__isnull=False).distinct()
 
-    # 6. EMPAQUETAMOS SOLO LO QUE EL NUEVO HTML NECESITA
     context = {
-        'porcentaje_otd': porcentaje_otd,
-        'tasa_desabasto': tasa_desabasto,
+        'total_gasto': f"${total_gasto:,.2f}",
+        'ahorro_ppv': f"${ahorro_ppv:,.2f}",
+        'avg_tiempo_ciclo': f"{avg_tiempo_ciclo:.1f} días",
+        'calidad_proveedores': f"{calidad_proveedores:.1f}%",
+        'pct_otif': f"{pct_otif:.1f}%",
+        'pct_maverick': f"{pct_maverick:.1f}%",
+        'costo_admin_total': f"${costo_admin_total:,.2f}",
+        
         'num_alertas': len(alertas_criticas),
         'alertas': alertas_criticas,
         'tabla_ordenes': tabla_ordenes,
-        
         'proveedores': proveedores_con_ordenes,
         'filtros': {
             'fecha_inicio': fecha_inicio,
@@ -543,6 +594,10 @@ def dashboard_compras(request):
     
     return render(request, 'dashboard_compras.html', context)
 
+
+# ==========================================
+# 5. DASHBOARD DE INVENTARIO
+# ==========================================
 def dashboard_inventario(request):
     import datetime
     from django.db.models import Sum
@@ -607,9 +662,6 @@ def dashboard_inicio(request):
     }
     return render(request, 'dashboard_inicio.html', context)
 
-from django.shortcuts import render
-from django.contrib.admin.views.decorators import staff_member_required
-from .models import Inventario, MovimientoKardex
 
 @staff_member_required
 def buscar_kardex(request):
@@ -619,6 +671,8 @@ def buscar_kardex(request):
     mensaje_error = None
 
     if query:
+        from .models import MovimientoKardex # Aseguramos la importación local
+        
         # Usamos Q para buscar en código de barras O lote en una sola consulta
         # icontains ayuda por si escriben el lote en minúsculas o incompleto
         inventario_actual = Inventario.objects.filter(
