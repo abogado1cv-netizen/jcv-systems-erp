@@ -110,7 +110,7 @@ JAZZMIN_SETTINGS = {
     # 🎯 1. MENÚ SUPERIOR (El "Modo Dueño" con los KPIs)
     # ==================================================
     "topmenu_links": [
-        {"name": "🏠 Inicio",  "url": "admin:index"}, # 👈 Quitamos la regla de permisos aquí
+        {"name": "🏠 Inicio",  "url": "admin:index"}, 
         {"name": "📊 Comercial", "url": "/dashboard/licitaciones/"},
         {"name": "📁 Contratos", "url": "/dashboard/contratos/"},
         {"name": "🛒 Compras", "url": "/dashboard/compras/"},
@@ -119,14 +119,15 @@ JAZZMIN_SETTINGS = {
     ],
 
     # ==================================================
-    # 🚫 2. LO QUE EL USUARIO NO DEBE VER
+    # 🚫 2. LO QUE EL USUARIO NO DEBE VER (Limpieza de basura)
     # ==================================================
     "hide_models": [
+        "auth.user",
+        "auth.group",
         "licitaciones.estatusprocedimiento",
         "licitaciones.configuracionemail",
         "licitaciones.partidarequerimiento",
     ],
-    "hide_apps": ["auth"], # Oculta la app de Usuarios y Grupos
 
     # ==================================================
     # 🎨 3. ICONOS EXACTOS DE TUS MÓDULOS
@@ -150,42 +151,6 @@ JAZZMIN_SETTINGS = {
         "licitaciones.remisionentrega": "fas fa-receipt",
         "licitaciones.registroubicacion": "fas fa-map-marker-alt",
     },
-    
-    # ==================================================
-    # 📋 4. ORDEN EXACTO EN LA BARRA LATERAL
-    # ==================================================
-    "order_with_respect_to": [
-        "licitaciones", # 👈 ¡LA CLAVE! Agregamos la "caja madre" al principio
-        
-        # --- A. CATÁLOGOS MAESTROS ---
-        "licitaciones.catalogomedicamento",
-        "licitaciones.empresa",
-        "licitaciones.sociocomercial",
-        "licitaciones.almacen",
-        
-        # --- B. ÁREA COMERCIAL ---
-        "licitaciones.licitacion",
-        "licitaciones.cotizacion",
-        "licitaciones.contrato",
-        
-        # --- C. COMPRAS Y ABASTECIMIENTO ---
-        "licitaciones.ordencompra",
-        "licitaciones.entradaalmacen",
-        
-        # --- D. INVENTARIO Y CALIDAD ---
-        "licitaciones.inventario",
-        "licitaciones.traspasointercompany",
-        "licitaciones.incidenciainventario",
-        "licitaciones.escanerkardex", 
-        
-        # --- E. LOGÍSTICA Y DESPACHO ---
-        "licitaciones.ordensuministro",
-        "licitaciones.pedidodirecto",
-        "licitaciones.remisionentrega",
-        
-        # --- F. EXTRAS ---
-        "licitaciones.registroubicacion",
-    ],
     
     "default_icon_parents": "fas fa-folder",
     "default_icon_children": "fas fa-circle",
