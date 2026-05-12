@@ -1625,46 +1625,57 @@ class RemisionEntregaAdmin(admin.ModelAdmin):
         remision = self.get_object(request, object_id)
         orden = remision.orden
         
-        # 1. BUSCAMOS LA EMPRESA Y EL CONTRATO VINCULADO
+        # ==========================================
+        # EXTRACCIÓN SEGURA DE DATOS (Anti-Errores)
+        # Usamos getattr() para no romper si el campo no existe
+        # ==========================================
+        num_contrato_hist = getattr(orden, 'numero_contrato_historico', None)
+        clave_hist = getattr(orden, 'clave_medicamento_historico', None)
+        desc_hist = getattr(orden, 'descripcion_medicamento', None)
+        precio_hist = getattr(orden, 'precio_unitario', "0.00")
+        
         contrato_vinculado = None
         empresa_emisora = None
         
-        # Intento A: Por la partida
+        # Intento A: Por la partida moderna
         primera_partida = orden.partidas.first()
-        if primera_partida and primera_partida.clave_contrato:
+        if primera_partida and hasattr(primera_partida, 'clave_contrato') and primera_partida.clave_contrato:
             contrato_vinculado = primera_partida.clave_contrato.contrato
             
         # Intento B: Por el número de contrato histórico
-        if not contrato_vinculado and orden.numero_contrato_historico:
+        if not contrato_vinculado and num_contrato_hist:
             from .models import Contrato
-            contrato_vinculado = Contrato.objects.filter(numero_contrato__iexact=orden.numero_contrato_historico).first()
+            contrato_vinculado = Contrato.objects.filter(numero_contrato__iexact=num_contrato_hist).first()
 
         # Si encontramos contrato, sacamos la empresa y el número final
         if contrato_vinculado:
             empresa_emisora = contrato_vinculado.empresa
             numero_contrato_final = contrato_vinculado.numero_contrato
         else:
-            numero_contrato_final = orden.numero_contrato_historico or "S/D"
+            numero_contrato_final = num_contrato_hist or "S/D"
 
-        # 2. LIMPIEZA DEL CLIENTE (Evitar que diga SAGO en dependencia)
-        # Si la dependencia o razón social dicen SAGO por error de importación, lo limpiamos
-        cliente_final = orden.dependencia or orden.razon_social or "S/D"
+        # LIMPIEZA DEL CLIENTE (Evitar que diga SAGO)
+        cliente_final = getattr(orden, 'dependencia', '') or getattr(orden, 'razon_social', '') or "S/D"
         cliente_upper = cliente_final.upper()
         if "SAGO" in cliente_upper or "GAMS" in cliente_upper or "GSM" in cliente_upper:
-            # Si el cliente capturado es nuestra propia empresa, usamos la unidad de destino o entidad
-            cliente_final = orden.entidad_destino or orden.nombre_unidad or "DEPENDENCIA NO ESPECIFICADA"
+            cliente_final = getattr(orden, 'entidad_destino', '') or getattr(orden, 'nombre_unidad', '') or "DEPENDENCIA NO ESPECIFICADA"
 
-        dependencia_str = (orden.dependencia or '').upper()
+        dependencia_str = (getattr(orden, 'dependencia', '') or '').upper()
 
         contexto = {
             'remision': remision,
             'orden': orden,
             'empresa': empresa_emisora,
-            'contrato': contrato_vinculado,
-            'numero_contrato_final': numero_contrato_final,  # 👈 Variable inteligente
-            'cliente_final': cliente_final,                  # 👈 Variable limpia
+            'numero_contrato_final': numero_contrato_final,
+            'cliente_final': cliente_final,
             'dependencia_str': dependencia_str,
-            'fecha_actual': remision.fecha_despacho if hasattr(remision, 'fecha_despacho') else timezone.now().date(),
+            
+            # Pasamos los datos históricos sueltos para que el HTML no se rompa buscando en la orden
+            'clave_hist': clave_hist,
+            'desc_hist': desc_hist,
+            'precio_hist': precio_hist,
+            
+            'fecha_actual': getattr(remision, 'fecha_despacho', timezone.now().date()),
         }
 
         html_string = render_to_string('admin/licitaciones/remisionentrega/pdf/formato_remision.html', contexto)

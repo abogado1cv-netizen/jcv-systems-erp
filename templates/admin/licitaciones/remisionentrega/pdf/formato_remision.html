@@ -135,30 +135,15 @@
                 <tr>
                     <td style="text-align: center;">1</td>
                     <td>
-                        <b>
-                        {% if orden.clave_contrato %}
-                            {{ orden.clave_contrato.medicamento.clave_sector }}
-                        {% elif orden.clave_medicamento_historico %}
-                            {{ orden.clave_medicamento_historico }}
-                        {% else %}
-                            S/C
-                        {% endif %}
-                        </b>
+                        <b>{{ clave_hist|default:"S/C" }}</b>
                     </td>
                     <td style="font-size: 7.5pt;">
-                        {% if orden.clave_contrato %}
-                            {{ orden.clave_contrato.medicamento.denominacion_generica|truncatechars:90 }}
-                            <br><i style="color: #666;">Lab: {{ orden.clave_contrato.medicamento.fabricante }}</i>
-                        {% elif orden.descripcion_medicamento %}
-                            {{ orden.descripcion_medicamento|truncatechars:90 }}
-                        {% else %}
-                            S/D
-                        {% endif %}
+                        {{ desc_hist|default:"Descripción no capturada"|truncatechars:90 }}
                     </td>
                     <td style="text-align: center; font-weight: bold;">{{ remision.lote }}</td>
                     <td style="text-align: center;">{{ remision.caducidad|date:"m/Y" }}</td>
                     <td style="text-align: right; font-size: 11pt; font-weight: bold;">{{ remision.cantidad_entregada }}</td>
-                    <td style="text-align: right;">$ {{ orden.precio_unitario|default:"0.00" }}</td>
+                    <td style="text-align: right;">$ {{ precio_hist|default:"0.00" }}</td>
                 </tr>
             {% endif %}
         </tbody>
