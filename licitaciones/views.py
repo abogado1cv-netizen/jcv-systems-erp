@@ -565,6 +565,18 @@ def dashboard_compras(request):
         })
     # 👆 FIN DE LA NUEVA ALERTA 👆
 
+    # 👇 NUEVA ALERTA 7: Mermas / Piezas dañadas reportadas por Almacén 👇
+    # Solo mostramos los rechazos reportados en los últimos 30 días para no saturar
+    fecha_merma = timezone.now() - datetime.timedelta(days=30)
+    rechazos_almacen = EntradaAlmacen.objects.filter(piezas_rechazadas__gt=0, fecha_ingreso__gte=fecha_merma)
+
+    for rechazo in rechazos_almacen:
+        alertas_criticas.append({
+            'tipo': 'merma', 'color': '#8e44ad', # Morado oscuro / Calidad
+            'mensaje': f"DEFECTO DE CALIDAD: Almacén rechazó {rechazo.piezas_rechazadas} pzas de la clave {rechazo.medicamento.clave_sector} (Lote: {rechazo.lote}) por llegar en mal estado."
+        })
+    # 👆 FIN DE LA NUEVA ALERTA 7 👆
+
     ultimas_ordenes = ordenes.order_by('-fecha_emision')[:10]
     tabla_ordenes = []
     for oc in ultimas_ordenes:

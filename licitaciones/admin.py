@@ -481,6 +481,83 @@ class CatalogoMedicamentoResource(resources.ModelResource):
         if str(row.get('fecha_vigencia', '')).strip() in ['None', '#N/A', 'N/A', 'NA', '']:
             row['fecha_vigencia'] = None
 
+
+# 👇 1. CREAMOS EL FILTRO INTELIGENTE PARA EL SEMÁFORO 👇
+class SemaforoVigenciaFilter(admin.SimpleListFilter):
+    title = 'Vigencia de Registro (Semáforo)'
+    parameter_name = 'semaforo_vigencia'
+
+    def lookups(self, request, model_admin):
+        return (
+            ('rojo', '🔴 Vencidos'),
+            ('amarillo', '🟡 Por Vencer (≤ 90 días)'),
+            ('verde', '🟢 Vigentes (> 90 días)'),
+        )
+
+    def queryset(self, request, queryset):
+        hoy = timezone.now().date()
+        import datetime
+        limite_90 = hoy + datetime.timedelta(days=90)
+        
+        if self.value() == 'rojo':
+            return queryset.filter(fecha_vigencia__lt=hoy)
+        if self.value() == 'amarillo':
+            return queryset.filter(fecha_vigencia__gte=hoy, fecha_vigencia__lte=limite_90)
+        if self.value() == 'verde':
+            return queryset.filter(fecha_vigencia__gt=limite_90)
+        return queryset
+
+# 👇 2. ACTUALIZAMOS EL CATÁLOGO DE CLAVES 👇
+class CatalogoMedicamentoAdmin(ImportExportModelAdmin): 
+    resource_class = CatalogoMedicamentoResource
+    list_per_page = 30
+    search_fields = ['clave_sector', 'denominacion_distintiva', 'denominacion_generica', 'socio_contacto__nombre', 'fabricante']
+    
+    # Agregamos el filtro personalizado que acabamos de crear
+    list_filter = ('socio_contacto', 'fabricante', SemaforoVigenciaFilter)
+    
+    list_display = (
+        'clave_sector', 
+        'descripcion_corta', 
+        'denominacion_generica', 
+        'socio_contacto', 
+        'fabricante', 
+        'registro_sanitario_formato',
+        'semaforo_vigencia_display' # 👈 Cambiamos fecha normal por la del semáforo
+    )
+
+    def registro_sanitario_formato(self, obj):
+        return obj.num_registro_sanitario
+    registro_sanitario_formato.short_description = "Reg. Sanitario"
+    
+    def descripcion_corta(self, obj):
+        if obj.descripcion and len(obj.descripcion) > 35:
+            return f"{obj.descripcion[:35]}..."
+        return obj.descripcion
+    descripcion_corta.short_description = "Descripción"
+
+    # 👇 3. LA LÓGICA DE PINTADO (COLORES) 👇
+    def semaforo_vigencia_display(self, obj):
+        from django.utils.html import format_html
+        
+        if not obj.fecha_vigencia:
+            return format_html('<span style="color: #999;">Sin Fecha</span>')
+            
+        hoy = timezone.now().date()
+        dias_restantes = (obj.fecha_vigencia - hoy).days
+        fecha_str = obj.fecha_vigencia.strftime('%d/%m/%Y')
+        
+        if dias_restantes < 0:
+            return format_html('<span style="background-color: #dc3545; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px;">🔴 Venció ({})</span>', fecha_str)
+        elif dias_restantes <= 90:
+            return format_html('<span style="background-color: #f39c12; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px;">🟡 Por Vencer ({})</span>', fecha_str)
+        else:
+            return format_html('<span style="color: #28a745; font-weight: bold;">🟢 {}</span>', fecha_str)
+            
+    semaforo_vigencia_display.short_description = "Vigencia Reg."
+    semaforo_vigencia_display.admin_order_field = 'fecha_vigencia'
+
+
 class CatalogoMedicamentoAdmin(ImportExportModelAdmin): 
     resource_class = CatalogoMedicamentoResource
     list_per_page = 30
