@@ -1922,7 +1922,8 @@ class EntradaAlmacenAdmin(admin.ModelAdmin):
     form = EntradaAlmacenForm 
     
     list_per_page = 30
-    list_display = ('orden', 'almacen_destino', 'medicamento', 'cantidad_recibida', 'lote', 'ver_acuse', 'ver_factura', 'documentacion_ok', 'fecha_ingreso')
+    # 👇 Se agregó piezas_rechazadas_badge 👇
+    list_display = ('orden', 'almacen_destino', 'medicamento', 'cantidad_recibida', 'piezas_rechazadas_badge', 'lote', 'ver_acuse', 'ver_factura', 'documentacion_ok', 'fecha_ingreso')
     search_fields = ('orden__folio', 'medicamento__clave_sector', 'lote', 'ubicacion')
     list_filter = ('almacen_destino', 'documentacion_completa', 'fecha_ingreso')
     
@@ -1933,12 +1934,21 @@ class EntradaAlmacenAdmin(admin.ModelAdmin):
             'fields': ('almacen_destino', 'orden', 'medicamento')
         }),
         ('📦 Datos Físicos', {
-            'fields': ('cantidad_recibida', 'lote', 'fecha_caducidad')
+            # 👇 Se agregó piezas_rechazadas al formulario 👇
+            'fields': ('cantidad_recibida', 'piezas_rechazadas', 'lote', 'fecha_caducidad')
         }),
         ('📋 Calidad y Logística', {
             'fields': ('documentacion_completa', 'ubicacion', 'observaciones_calidad', 'acuse_recibo', 'factura_proveedor')
         }),
     )
+
+    def piezas_rechazadas_badge(self, obj):
+        from django.utils.html import format_html
+        if obj.piezas_rechazadas > 0:
+            return format_html('<span style="color: #dc3545; font-weight: bold;">⚠️ {} pzas</span>', obj.piezas_rechazadas)
+        from django.utils.safestring import mark_safe
+        return mark_safe('<span style="color: #ccc;">0</span>')
+    piezas_rechazadas_badge.short_description = "Rechazos"
 
     def get_urls(self):
         urls = super().get_urls()
