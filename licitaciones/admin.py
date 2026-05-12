@@ -538,12 +538,14 @@ class CatalogoMedicamentoAdmin(ImportExportModelAdmin):
         return obj.descripcion
     descripcion_corta.short_description = "Descripción"
 
-    # 👇 3. LA LÓGICA DE PINTADO (COLORES) 👇
+# 👇 3. LA LÓGICA DE PINTADO (COLORES) CORREGIDA 👇
     def semaforo_vigencia_display(self, obj):
         from django.utils.html import format_html
+        from django.utils.safestring import mark_safe  # 👈 1. Importamos mark_safe
         
         if not obj.fecha_vigencia:
-            return format_html('<span style="color: #999;">Sin Fecha</span>')
+            # 👈 2. Usamos mark_safe para texto fijo sin variables
+            return mark_safe('<span style="color: #999;">Sin Fecha</span>') 
             
         hoy = timezone.now().date()
         dias_restantes = (obj.fecha_vigencia - hoy).days
