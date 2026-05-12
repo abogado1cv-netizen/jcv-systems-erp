@@ -1567,7 +1567,8 @@ class InventarioAdmin(ImportExportModelAdmin):
 @admin.register(RemisionEntrega)
 class RemisionEntregaAdmin(admin.ModelAdmin):
     list_per_page = 50
-    list_display = ('folio_remision_factura', 'orden_vinculada', 'cantidad_entregada', 'estatus_viaje')
+    # 👇 Agregamos el botón 'imprimir_pdf' a la vista 👇
+    list_display = ('folio_remision_factura', 'orden_vinculada', 'cantidad_entregada', 'estatus_viaje', 'imprimir_pdf')
     search_fields = ('folio_remision_factura', 'lote', 'orden__numero_orden_suministro')
     list_filter = ('estatus_viaje',)
 
@@ -1587,6 +1588,74 @@ class RemisionEntregaAdmin(admin.ModelAdmin):
     def orden_vinculada(self, obj):
         return obj.orden.numero_orden_suministro
     orden_vinculada.short_description = "OPM Vinculada"
+
+    # 👇 1. EL BOTÓN ROJO DE PDF 👇
+    def imprimir_pdf(self, obj):
+        from django.utils.html import format_html
+        return format_html(
+            '<a class="button" href="{}/pdf/" style="background-color: #e74c3c; color:white; padding: 5px 10px; border-radius: 4px; text-decoration: none; font-weight:bold;"><i class="fas fa-file-pdf"></i> Generar PDF</a>',
+            obj.id
+        )
+    imprimir_pdf.short_description = "Formato Oficial"
+
+    # 👇 2. REGISTRAMOS LA URL DEL BOTÓN 👇
+    def get_urls(self):
+        urls = super().get_urls()
+        from django.urls import path
+        custom_urls = [
+            path('<path:object_id>/pdf/', self.admin_site.admin_view(self.generar_remision_pdf_view), name='generar_remision_pdf'),
+        ]
+        return custom_urls + urls
+
+    # 👇 3. LA LÓGICA QUE CONSTRUYE EL ARCHIVO 👇
+    def generar_remision_pdf_view(self, request, object_id):
+        from django.http import HttpResponse
+        from django.template.loader import render_to_string
+        from django.shortcuts import redirect
+        from django.contrib import messages
+        import io
+        
+        try:
+            from xhtml2pdf import pisa
+        except ImportError:
+            messages.error(request, "Falta instalar xhtml2pdf. Ejecuta: pip install xhtml2pdf")
+            return redirect('admin:licitaciones_remisionentrega_changelist')
+
+        remision = self.get_object(request, object_id)
+        orden = remision.orden
+        
+        # Buscamos a qué empresa pertenece el contrato para sacar el logo (GPHARMA, SAGO, GSM, etc.)
+        empresa_emisora = None
+        contrato_vinculado = None
+        if orden.partidas.first() and orden.partidas.first().clave_contrato:
+            contrato_vinculado = orden.partidas.first().clave_contrato.contrato
+            empresa_emisora = contrato_vinculado.empresa
+        
+        # Identificamos el tipo de formato que debemos pintar
+        dependencia_upper = (orden.dependencia or '').upper()
+        
+        contexto = {
+            'remision': remision,
+            'orden': orden,
+            'empresa': empresa_emisora,
+            'contrato': contrato_vinculado,
+            'dependencia_str': dependencia_upper,
+            'fecha_actual': remision.fecha_despacho if hasattr(remision, 'fecha_despacho') else timezone.now().date(),
+        }
+
+        html_string = render_to_string('admin/licitaciones/remisionentrega/pdf/formato_remision.html', contexto)
+        
+        result_file = io.BytesIO()
+        pisa_status = pisa.CreatePDF(html_string, dest=result_file)
+        
+        if not pisa_status.err:
+            response = HttpResponse(result_file.getvalue(), content_type='application/pdf')
+            nombre_archivo = f"Remision_{dependencia_upper}_{remision.folio_remision_factura}.pdf".replace(' ', '_')
+            response['Content-Disposition'] = f'inline; filename="{nombre_archivo}"'
+            return response
+        else:
+            messages.error(request, "Error al procesar el documento PDF.")
+            return redirect('admin:licitaciones_remisionentrega_changelist')
 
 # ==========================================
 # RECURSO PARA IMPORTAR CLAVES A LOS CONTRATOS (CARGA HISTÓRICA)
