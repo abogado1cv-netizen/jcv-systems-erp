@@ -15,7 +15,7 @@
     
     .clean-table { width: 100%; font-size: 13px; }
     .clean-table th { color: #888; font-weight: 600; padding-bottom: 10px; border-bottom: 2px solid #eee; }
-    .clean-table td { padding: 12px 0; border-bottom: 1px solid #f9f9f9; color: #444; }
+    .clean-table td { padding: 12px 0; border-bottom: 1px solid #f9f9f9; color: #444; vertical-align: top; }
     
     .search-bar-container { background: #fff; border-radius: 8px; padding: 15px 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); border: 1px solid #eee; margin-bottom: 20px; }
     .search-input { border-radius: 20px 0 0 20px !important; border-right: none; }
@@ -106,6 +106,77 @@
                 <div class="kpi-title"><span class="dot" style="background-color: #6c757d;"></span> Pz. Canceladas</div>
                 <div class="kpi-value" style="color: #6c757d;">{{ piezas_canceladas|intcomma }}</div>
                 <div class="kpi-subtitle">Mermas o cancelaciones</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="modern-panel" style="border: 2px solid #28a745;">
+                <div class="panel-title" style="color: #28a745; border-bottom-color: #dcedc8;">
+                    <i class="fas fa-truck-fast"></i> RADAR LOGÍSTICO: ÓRDENES LISTAS PARA SURTIRSE ({{ num_surtibles }})
+                </div>
+                
+                {% if num_surtibles > 0 %}
+                <p style="font-size: 13px; color: #666; margin-bottom: 15px;">
+                    El sistema detectó inventario disponible para estos pedidos detenidos. Haz clic en "Surtir Ahora" para despacharlos inmediatamente y actualizar el Kardex.
+                </p>
+                <div class="table-responsive">
+                    <table class="clean-table">
+                        <thead>
+                            <tr>
+                                <th>Prioridad / Límite</th>
+                                <th>Documento</th>
+                                <th>Cliente / Unidad</th>
+                                <th>Estado de Stock</th>
+                                <th>Claves Disponibles</th>
+                                <th>Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for orden in ordenes_surtibles %}
+                            <tr>
+                                <td>
+                                    {% if orden.dias_restantes < 0 %}
+                                        <span style="color: #dc3545; font-weight: bold;">🔴 Atrasado ({{ orden.dias_restantes }} días)</span>
+                                    {% elif orden.dias_restantes <= 3 %}
+                                        <span style="color: #fd7e14; font-weight: bold;">🟡 Urgente ({{ orden.dias_restantes }} días)</span>
+                                    {% else %}
+                                        <span style="color: #28a745; font-weight: bold;">🟢 {{ orden.dias_restantes }} días</span>
+                                    {% endif %}
+                                </td>
+                                <td><strong>{{ orden.folio }}</strong><br><span style="font-size: 11px; color: #888;">{{ orden.tipo }}</span></td>
+                                <td>{{ orden.cliente }}</td>
+                                <td>
+                                    {% if orden.surtido_completo %}
+                                        <span class="badge" style="background-color: #dcedc8; color: #3b7c25; padding: 5px 10px;">Surtido Completo ✅</span>
+                                    {% else %}
+                                        <span class="badge" style="background-color: #fff3e0; color: #e65100; padding: 5px 10px;">Surtido Parcial ⚠️</span>
+                                    {% endif %}
+                                </td>
+                                <td style="font-size: 12px; line-height: 1.4;">
+                                    {% for det in orden.detalles %}
+                                        <div style="margin-bottom: 4px;">
+                                            <b>{{ det.clave }}</b><br>
+                                            <span style="color: #666;">Piden: {{ det.faltan }} | Stock: <span style="color: #28a745; font-weight: bold;">{{ det.hay }}</span></span>
+                                        </div>
+                                    {% endfor %}
+                                </td>
+                                <td style="vertical-align: middle;">
+                                    <a href="/admin/licitaciones/ordensuministro/{{ orden.id }}/surtir/" class="btn btn-sm btn-success" style="font-weight:bold; padding: 6px 15px;">Surtir Ahora 🚚</a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div style="text-align: center; padding: 30px; color: #888;">
+                    <i class="fas fa-box-open fa-2x mb-3" style="color: #ccc;"></i><br>
+                    <strong>No hay órdenes pendientes que puedan surtirse con el inventario actual.</strong><br>
+                    <span style="font-size: 13px;">Estamos a la espera de que Compras ingrese mercancía al almacén.</span>
+                </div>
+                {% endif %}
             </div>
         </div>
     </div>

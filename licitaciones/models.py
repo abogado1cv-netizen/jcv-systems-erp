@@ -11,7 +11,9 @@ from datetime import date, timedelta
 from django.core.exceptions import ValidationError
 
 TIPO_PRODUCTO_CHOICES = [
-    ('SECTORIZADO', 'Sectorizado (Sector Salud)'),
+    ('GENERICO_SEC', 'Genérico (Sectorizado)'),
+    ('COMERCIAL_SEC', 'Comercial (Sectorizado)'),
+    ('GENERICO', 'Genérico'),
     ('COMERCIAL', 'Comercial'),
 ]
 
@@ -949,3 +951,77 @@ class PedidoDirecto(OrdenSuministro):
             self.fecha_limite = self.fecha_recepcion + timedelta(days=10)
             
         super().save(*args, **kwargs)
+
+        # ==========================================
+# 🛑 MÓDULO DE CUARENTENA, MERMAS Y DEVOLUCIONES
+# ==========================================
+class IncidenciaInventario(models.Model):
+    MOTIVO_CHOICES = [
+        ('PROXIMO_CADUCAR', '⏳ Próximo a Caducar'),
+        ('VICIO_OCULTO', '🕵️‍♂️ Vicio Oculto / Defecto de Fábrica'),
+        ('DANADO', '💥 Dañado en Almacén o Transporte'),
+    ]
+    RESOLUCION_CHOICES = [
+        ('EN_CUARENTENA', '🔒 En Cuarentena (Esperando decisión)'),
+        ('DONATIVO', '🎁 Donativo (Salida sin cobro)'),
+        ('DEVOLUCION', '🚚 Devolución a Proveedor (Garantía)'),
+        ('DESTRUCCION', '🔥 Destrucción / Merma (Pérdida)'),
+    ]
+    
+    inventario_origen = models.ForeignKey('Inventario', on_delete=models.SET_NULL, null=True, verbose_name="Lote Original en Inventario", help_text="Selecciona el lote del inventario que vas a mandar a Cuarentena.")
+    medicamento = models.ForeignKey('CatalogoMedicamento', on_delete=models.CASCADE, verbose_name="Clave / Medicamento")
+    lote = models.CharField("Lote Afectado", max_length=50)
+    cantidad_afectada = models.PositiveIntegerField("Piezas Afectadas (Se restarán del stock)")
+    
+    motivo = models.CharField("Motivo del Problema", max_length=20, choices=MOTIVO_CHOICES)
+    resolucion = models.CharField("Decisión Final (Destino)", max_length=20, choices=RESOLUCION_CHOICES, default='EN_CUARENTENA')
+    
+    # FINANZAS Y GARANTÍAS
+    socio_comercial = models.ForeignKey('SocioComercial', on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Proveedor (Socio Comercial)", help_text="¿A quién le vamos a reclamar?")
+    genera_nota_credito = models.BooleanField("¿Genera Nota de Crédito a nuestro favor?", default=False)
+    monto_nota_credito = models.DecimalField("Monto Nota de Crédito ($)", max_digits=12, decimal_places=2, default=0.00)
+    
+    aplica_penalizacion = models.BooleanField("¿Aplicar Multa/Penalización al Proveedor?", default=False)
+    monto_penalizacion = models.DecimalField("Monto Penalización ($)", max_digits=12, decimal_places=2, default=0.00)
+    
+    observaciones = models.TextField("Observaciones / Detalles del defecto", blank=True, null=True)
+    fecha_registro = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Control de Cuarentena y Merma"
+        verbose_name_plural = "Cuarentenas y Devoluciones"
+
+    def __str__(self):
+        return f"Incidencia {self.id} | {self.medicamento.clave_sector} | {self.get_motivo_display()}"
+
+    def save(self, *args, **kwargs):
+        es_nuevo = self.pk is None
+        
+        # Si no han llenado el medicamento o lote, lo jalamos del inventario origen
+        if self.inventario_origen:
+            if not self.medicamento_id:
+                self.medicamento = self.inventario_origen.medicamento
+            if not self.lote:
+                self.lote = self.inventario_origen.lote
+                
+        super().save(*args, **kwargs)
+        
+        # 👇 MAGIA: DESCONTAR DEL INVENTARIO SANO AUTOMÁTICAMENTE 👇
+        if es_nuevo and self.inventario_origen:
+            self.inventario_origen.cantidad_disponible -= self.cantidad_afectada
+            if self.inventario_origen.cantidad_disponible < 0:
+                self.inventario_origen.cantidad_disponible = 0
+            self.inventario_origen.save()
+            
+            # Dejamos la huella de auditoría en el Kardex
+            from .models import MovimientoKardex
+            MovimientoKardex.objects.create(
+                almacen=self.inventario_origen.almacen,
+                medicamento=self.medicamento,
+                lote=self.lote,
+                tipo='MERMA',
+                cantidad=self.cantidad_afectada,
+                saldo_restante=self.inventario_origen.cantidad_disponible,
+                folio_documento=f"INC-{self.id}",
+                observaciones=f"Aislado en CUARENTENA. Motivo: {self.get_motivo_display()}"
+            )
