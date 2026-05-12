@@ -1613,6 +1613,7 @@ class RemisionEntregaAdmin(admin.ModelAdmin):
         from django.template.loader import render_to_string
         from django.shortcuts import redirect
         from django.contrib import messages
+        from django.utils import timezone
         import io
         
         try:
@@ -1624,22 +1625,45 @@ class RemisionEntregaAdmin(admin.ModelAdmin):
         remision = self.get_object(request, object_id)
         orden = remision.orden
         
-        # Buscamos a qué empresa pertenece el contrato para sacar el logo (GPHARMA, SAGO, GSM, etc.)
-        empresa_emisora = None
+        # 1. BUSCAMOS LA EMPRESA Y EL CONTRATO VINCULADO
         contrato_vinculado = None
-        if orden.partidas.first() and orden.partidas.first().clave_contrato:
-            contrato_vinculado = orden.partidas.first().clave_contrato.contrato
+        empresa_emisora = None
+        
+        # Intento A: Por la partida
+        primera_partida = orden.partidas.first()
+        if primera_partida and primera_partida.clave_contrato:
+            contrato_vinculado = primera_partida.clave_contrato.contrato
+            
+        # Intento B: Por el número de contrato histórico
+        if not contrato_vinculado and orden.numero_contrato_historico:
+            from .models import Contrato
+            contrato_vinculado = Contrato.objects.filter(numero_contrato__iexact=orden.numero_contrato_historico).first()
+
+        # Si encontramos contrato, sacamos la empresa y el número final
+        if contrato_vinculado:
             empresa_emisora = contrato_vinculado.empresa
-        
-        # Identificamos el tipo de formato que debemos pintar
-        dependencia_upper = (orden.dependencia or '').upper()
-        
+            numero_contrato_final = contrato_vinculado.numero_contrato
+        else:
+            numero_contrato_final = orden.numero_contrato_historico or "S/D"
+
+        # 2. LIMPIEZA DEL CLIENTE (Evitar que diga SAGO en dependencia)
+        # Si la dependencia o razón social dicen SAGO por error de importación, lo limpiamos
+        cliente_final = orden.dependencia or orden.razon_social or "S/D"
+        cliente_upper = cliente_final.upper()
+        if "SAGO" in cliente_upper or "GAMS" in cliente_upper or "GSM" in cliente_upper:
+            # Si el cliente capturado es nuestra propia empresa, usamos la unidad de destino o entidad
+            cliente_final = orden.entidad_destino or orden.nombre_unidad or "DEPENDENCIA NO ESPECIFICADA"
+
+        dependencia_str = (orden.dependencia or '').upper()
+
         contexto = {
             'remision': remision,
             'orden': orden,
             'empresa': empresa_emisora,
             'contrato': contrato_vinculado,
-            'dependencia_str': dependencia_upper,
+            'numero_contrato_final': numero_contrato_final,  # 👈 Variable inteligente
+            'cliente_final': cliente_final,                  # 👈 Variable limpia
+            'dependencia_str': dependencia_str,
             'fecha_actual': remision.fecha_despacho if hasattr(remision, 'fecha_despacho') else timezone.now().date(),
         }
 
@@ -1650,7 +1674,7 @@ class RemisionEntregaAdmin(admin.ModelAdmin):
         
         if not pisa_status.err:
             response = HttpResponse(result_file.getvalue(), content_type='application/pdf')
-            nombre_archivo = f"Remision_{dependencia_upper}_{remision.folio_remision_factura}.pdf".replace(' ', '_')
+            nombre_archivo = f"Remision_{dependencia_str}_{remision.folio_remision_factura}.pdf".replace(' ', '_')
             response['Content-Disposition'] = f'inline; filename="{nombre_archivo}"'
             return response
         else:
