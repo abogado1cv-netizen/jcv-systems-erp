@@ -26,7 +26,7 @@
     }
 
     /* -------------------------------------------
-       BARRA SUPERIOR DE BÚSQUEDA (Simulada)
+       BARRA SUPERIOR DE BÚSQUEDA
        ------------------------------------------- */
     .top-launcher-bar {
         background-color: var(--bg-card);
@@ -39,32 +39,20 @@
         box-shadow: var(--shadow-sm);
     }
     .brand-title { font-size: 1.25rem; font-weight: 600; color: var(--text-dark); margin: 0; }
-    .brand-title span { color: #8b5cf6; } /* Color morado para "Suite" */
+    .brand-title span { color: #8b5cf6; } 
     
-    .search-box {
-        position: relative;
-        width: 300px;
-    }
+    .search-box { position: relative; width: 300px; }
     .search-box input {
-        width: 100%;
-        padding: 8px 15px 8px 35px;
-        border-radius: 8px;
-        border: 1px solid #e5e7eb;
-        background-color: #f9fafb;
-        color: var(--text-dark);
-        outline: none;
-        transition: border-color 0.2s;
+        width: 100%; padding: 8px 15px 8px 35px; border-radius: 8px;
+        border: 1px solid #e5e7eb; background-color: #f9fafb;
+        color: var(--text-dark); outline: none; transition: border-color 0.2s;
     }
     .search-box input:focus { border-color: #8b5cf6; }
     .search-box i { position: absolute; left: 12px; top: 12px; color: #9ca3af; font-size: 0.9rem;}
 
-    /* Avatar circular a la derecha */
     .user-avatar {
-        width: 35px; height: 35px;
-        background-color: #8b5cf6;
-        color: white;
-        border-radius: 50%;
-        display: flex; align-items: center; justify-content: center;
+        width: 35px; height: 35px; background-color: #8b5cf6; color: white;
+        border-radius: 50%; display: flex; align-items: center; justify-content: center;
         font-weight: 700; font-size: 0.9rem;
     }
 
@@ -73,14 +61,9 @@
        ------------------------------------------- */
     .app-section { margin: 0 25px 40px 25px; }
     .section-title {
-        font-size: 0.8rem;
-        font-weight: 600;
-        color: var(--text-muted);
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        margin-bottom: 20px;
-        border-bottom: 1px solid #e5e7eb;
-        padding-bottom: 8px;
+        font-size: 0.8rem; font-weight: 600; color: var(--text-muted);
+        text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 20px;
+        border-bottom: 1px solid #e5e7eb; padding-bottom: 8px;
     }
 
     .app-grid {
@@ -93,32 +76,18 @@
     .app-card {
         background-color: var(--bg-card);
         border-radius: var(--border-radius-card);
-        padding: 20px 10px;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        text-decoration: none;
-        box-shadow: var(--shadow-sm);
-        transition: all 0.2s ease-in-out;
-        cursor: pointer;
+        padding: 20px 10px; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; text-decoration: none;
+        box-shadow: var(--shadow-sm); transition: all 0.2s ease-in-out; cursor: pointer;
     }
-    .app-card:hover {
-        transform: translateY(-5px);
-        box-shadow: var(--shadow-hover);
-        text-decoration: none;
-    }
+    .app-card:hover { transform: translateY(-5px); box-shadow: var(--shadow-hover); text-decoration: none; }
 
-    /* CAJA DE COLOR DEL ICONO */
     .app-icon-box {
-        width: 60px; height: 60px;
-        border-radius: var(--border-radius-icon);
-        display: flex; align-items: center; justify-content: center;
-        font-size: 26px;
-        margin-bottom: 12px;
+        width: 60px; height: 60px; border-radius: var(--border-radius-icon);
+        display: flex; align-items: center; justify-content: center; font-size: 26px; margin-bottom: 12px;
     }
 
-    /* Colores Pastel (Fondos y Textos) */
+    /* Colores Pastel */
     .bg-purple-light { background-color: #f3e8ff; color: #9333ea; }
     .bg-orange-light { background-color: #ffedd5; color: #ea580c; }
     .bg-green-light { background-color: #dcfce7; color: #16a34a; }
@@ -128,13 +97,7 @@
     .bg-red-light { background-color: #fee2e2; color: #dc2626; }
     .bg-yellow-light { background-color: #fef08a; color: #ca8a04; }
 
-    .app-label {
-        color: var(--text-dark);
-        font-size: 0.85rem;
-        font-weight: 500;
-        text-align: center;
-        line-height: 1.2;
-    }
+    .app-label { color: var(--text-dark); font-size: 0.85rem; font-weight: 500; text-align: center; line-height: 1.2; }
 </style>
 {% endblock %}
 
@@ -153,93 +116,106 @@
 </div>
 
 <div class="app-section">
-    <div class="section-title">Gestión Comercial</div>
+    <div class="section-title">1. Catálogos y Configuración</div>
     <div class="app-grid">
-        
-        <a href="/admin/licitaciones/licitacion/" class="app-card">
-            <div class="app-icon-box bg-purple-light"><i class="fas fa-gavel"></i></div>
-            <div class="app-label">Licitaciones</div>
-        </a>
-
-        <a href="/admin/licitaciones/contrato/" class="app-card">
-            <div class="app-icon-box bg-orange-light"><i class="fas fa-file-signature"></i></div>
-            <div class="app-label">Contratos</div>
-        </a>
-
-        <a href="/dashboard/contratos/" class="app-card">
-            <div class="app-icon-box bg-pink-light"><i class="fas fa-chart-pie"></i></div>
-            <div class="app-label">Dashboards</div>
-        </a>
-
         <a href="/admin/licitaciones/catalogomedicamento/" class="app-card">
             <div class="app-icon-box bg-teal-light"><i class="fas fa-pills"></i></div>
-            <div class="app-label">Productos</div>
+            <div class="app-label">Catálogo de Claves</div>
         </a>
-
+        <a href="/admin/licitaciones/empresa/" class="app-card">
+            <div class="app-icon-box bg-blue-light"><i class="fas fa-building"></i></div>
+            <div class="app-label">Empresas Gpharma</div>
+        </a>
         <a href="/admin/licitaciones/sociocomercial/" class="app-card">
-            <div class="app-icon-box bg-blue-light"><i class="fas fa-handshake"></i></div>
+            <div class="app-icon-box bg-purple-light"><i class="fas fa-handshake-angle"></i></div>
             <div class="app-label">Socios CRM</div>
         </a>
-
-    </div>
-</div>
-
-<div class="app-section">
-    <div class="section-title">Compras, Logística y Almacén</div>
-    <div class="app-grid">
-        
-        <a href="/admin/licitaciones/ordencompra/" class="app-card">
-            <div class="app-icon-box bg-red-light"><i class="fas fa-shopping-cart"></i></div>
-            <div class="app-label">Órdenes (OC)</div>
-        </a>
-
-        <a href="/admin/licitaciones/ordensuministro/" class="app-card">
-            <div class="app-icon-box bg-blue-light"><i class="fas fa-file-invoice"></i></div>
-            <div class="app-label">Órdenes (OPM)</div>
-        </a>
-
-        <a href="/admin/licitaciones/entradaalmacen/" class="app-card">
-            <div class="app-icon-box bg-teal-light"><i class="fas fa-dolly"></i></div>
-            <div class="app-label">Recepciones</div>
-        </a>
-
-        <a href="/admin/licitaciones/inventario/" class="app-card">
-            <div class="app-icon-box bg-green-light"><i class="fas fa-boxes"></i></div>
-            <div class="app-label">Inventario</div>
-        </a>
-
-        <a href="/admin/licitaciones/remisionentrega/" class="app-card">
-            <div class="app-icon-box bg-orange-light"><i class="fas fa-receipt"></i></div>
-            <div class="app-label">Remisiones</div>
-        </a>
-
-        <a href="/admin/licitaciones/traspasointercompany/" class="app-card">
-            <div class="app-icon-box bg-purple-light"><i class="fas fa-exchange-alt"></i></div>
-            <div class="app-label">Traspasos</div>
-        </a>
-
         <a href="/admin/licitaciones/almacen/" class="app-card">
             <div class="app-icon-box bg-yellow-light"><i class="fas fa-warehouse"></i></div>
             <div class="app-label">Almacenes Físicos</div>
         </a>
-
     </div>
 </div>
 
 <div class="app-section">
-    <div class="section-title">Administración</div>
+    <div class="section-title">2. Gestión Comercial y Ventas</div>
     <div class="app-grid">
-        
-        <a href="/admin/licitaciones/empresa/" class="app-card">
-            <div class="app-icon-box bg-teal-light"><i class="fas fa-building"></i></div>
-            <div class="app-label">Empresas</div>
+        <a href="/admin/licitaciones/licitacion/" class="app-card">
+            <div class="app-icon-box bg-purple-light"><i class="fas fa-gavel"></i></div>
+            <div class="app-label">Licitaciones</div>
         </a>
+        <a href="/admin/licitaciones/cotizacion/" class="app-card">
+            <div class="app-icon-box bg-green-light"><i class="fas fa-file-invoice-dollar"></i></div>
+            <div class="app-label">Ventas Directas</div>
+        </a>
+        <a href="/admin/licitaciones/contrato/" class="app-card">
+            <div class="app-icon-box bg-orange-light"><i class="fas fa-file-signature"></i></div>
+            <div class="app-label">Contratos</div>
+        </a>
+    </div>
+</div>
 
+<div class="app-section">
+    <div class="section-title">3. Abastecimiento y Compras</div>
+    <div class="app-grid">
+        <a href="/admin/licitaciones/ordencompra/" class="app-card">
+            <div class="app-icon-box bg-red-light"><i class="fas fa-shopping-cart"></i></div>
+            <div class="app-label">Órdenes (OC)</div>
+        </a>
+        <a href="/admin/licitaciones/entradaalmacen/" class="app-card">
+            <div class="app-icon-box bg-teal-light"><i class="fas fa-dolly"></i></div>
+            <div class="app-label">Recepción Aduana</div>
+        </a>
+    </div>
+</div>
+
+<div class="app-section">
+    <div class="section-title">4. Control de Inventarios y Calidad</div>
+    <div class="app-grid">
+        <a href="/admin/licitaciones/inventario/" class="app-card">
+            <div class="app-icon-box bg-green-light"><i class="fas fa-boxes"></i></div>
+            <div class="app-label">Existencias Reales</div>
+        </a>
+        <a href="/admin/licitaciones/traspasointercompany/" class="app-card">
+            <div class="app-icon-box bg-purple-light"><i class="fas fa-exchange-alt"></i></div>
+            <div class="app-label">Traspasos</div>
+        </a>
+        <a href="/admin/licitaciones/incidenciainventario/" class="app-card">
+            <div class="app-icon-box bg-red-light" style="background-color: #fee2e2; color: #dc3545;"><i class="fas fa-radiation-alt"></i></div>
+            <div class="app-label">Cuarentena y Mermas</div>
+        </a>
+        <a href="/admin/licitaciones/escanerkardex/" class="app-card">
+            <div class="app-icon-box bg-blue-light"><i class="fas fa-barcode"></i></div>
+            <div class="app-label">Escáner Kardex</div>
+        </a>
+    </div>
+</div>
+
+<div class="app-section">
+    <div class="section-title">5. Logística y Despacho Final</div>
+    <div class="app-grid">
+        <a href="/admin/licitaciones/ordensuministro/" class="app-card">
+            <div class="app-icon-box bg-blue-light"><i class="fas fa-truck-loading"></i></div>
+            <div class="app-label">OPMs Gobierno</div>
+        </a>
+        <a href="/admin/licitaciones/pedidodirecto/" class="app-card">
+            <div class="app-icon-box bg-orange-light"><i class="fas fa-paper-plane"></i></div>
+            <div class="app-label">Pedidos Directos</div>
+        </a>
+        <a href="/admin/licitaciones/remisionentrega/" class="app-card">
+            <div class="app-icon-box bg-pink-light"><i class="fas fa-receipt"></i></div>
+            <div class="app-label">Remisiones Viaje</div>
+        </a>
+    </div>
+</div>
+
+<div class="app-section">
+    <div class="section-title">6. Administración y Extras</div>
+    <div class="app-grid">
         <a href="/admin/licitaciones/registroubicacion/" class="app-card">
-            <div class="app-icon-box bg-purple-light"><i class="fas fa-map-marker-alt"></i></div>
-            <div class="app-label">Ubicaciones</div>
+            <div class="app-icon-box bg-pink-light"><i class="fas fa-map-marker-alt"></i></div>
+            <div class="app-label">Ubicaciones GPS</div>
         </a>
-
     </div>
 </div>
 
