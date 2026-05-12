@@ -106,15 +106,21 @@ JAZZMIN_SETTINGS = {
     "welcome_sign": "Bienvenido al Centro de Control GPHARMA",
     "copyright": "JCV Systems",
     
+    # ==================================================
+    # 🎯 1. MENÚ SUPERIOR (El "Modo Dueño" con los KPIs)
+    # ==================================================
     "topmenu_links": [
-        {"name": "📊 KPIs Licitaciones", "url": "/dashboard/licitaciones/"},
-        {"name": "📁 KPIs Contratos", "url": "/dashboard/contratos/"},
-        {"name": "🛒 KPIs Compras", "url": "/dashboard/compras/"},
-        {"name": "📦 Almacén / Inventario", "url": "/dashboard/inventario/"},
-        {'name': '🚚 KPIs Logística (OPMs)', 'url': '/dashboard/ordenes/'},
+        {"name": "Inicio",  "url": "admin:index", "permissions": ["auth.view_user"]},
+        {"name": "📊 Comercial", "url": "/dashboard/licitaciones/"},
+        {"name": "📁 Contratos", "url": "/dashboard/contratos/"},
+        {"name": "🛒 Compras", "url": "/dashboard/compras/"},
+        {"name": "🚚 Logística", "url": "/dashboard/ordenes/"},
+        {"name": "📦 Almacén", "url": "/dashboard/inventario/"},
     ],
 
-    # 🚫 AQUÍ ESCONDEMOS LOS MÓDULOS QUE NO QUEREMOS VER EN EL MENÚ
+    # ==================================================
+    # 🚫 2. LO QUE EL USUARIO NO DEBE VER (Ocultar basura)
+    # ==================================================
     "hide_models": [
         "licitaciones.estatusprocedimiento",
         "licitaciones.configuracionemail",
@@ -122,43 +128,76 @@ JAZZMIN_SETTINGS = {
     ],
     "hide_apps": ["auth"], # Oculta la app de Usuarios y Grupos
 
-    # 🎨 ICONOS EXACTOS DE TUS MÓDULOS ACTUALES
+    # ==================================================
+    # 🎨 3. ICONOS EXACTOS DE TUS MÓDULOS (Nuevos agregados)
+    # ==================================================
     "icons": {
-        "licitaciones.licitacion": "fas fa-gavel",           
+        # Maestros
+        "licitaciones.catalogomedicamento": "fas fa-pills", 
+        "licitaciones.empresa": "fas fa-building",           
+        "licitaciones.sociocomercial": "fas fa-handshake-angle", 
+        "licitaciones.almacen": "fas fa-warehouse",
+        
+        # Comercial
+        "licitaciones.licitacion": "fas fa-gavel",
+        "licitaciones.cotizacion": "fas fa-file-invoice-dollar",
         "licitaciones.contrato": "fas fa-file-signature",          
-        "licitaciones.ordensuministro": "fas fa-truck-loading",
-        "licitaciones.remisionentrega": "fas fa-receipt",
+        
+        # Compras
         "licitaciones.ordencompra": "fas fa-shopping-cart",
         "licitaciones.entradaalmacen": "fas fa-dolly",
+        
+        # Inventario
         "licitaciones.inventario": "fas fa-boxes",               
-        "licitaciones.almacen": "fas fa-warehouse",
         "licitaciones.traspasointercompany": "fas fa-exchange-alt",
-        "licitaciones.catalogomedicamento": "fas fa-pills", 
-        "licitaciones.sociocomercial": "fas fa-handshake-angle", 
-        "licitaciones.empresa": "fas fa-building",           
+        "licitaciones.incidenciainventario": "fas fa-radiation-alt", # Ícono de Cuarentena
+        "licitaciones.escanerkardex": "fas fa-barcode",
+        
+        # Logística
+        "licitaciones.ordensuministro": "fas fa-truck-loading",
+        "licitaciones.pedidodirecto": "fas fa-paper-plane",
+        "licitaciones.remisionentrega": "fas fa-receipt",
+        
+        # Extras
         "licitaciones.registroubicacion": "fas fa-map-marker-alt",
     },
     
-    # 📋 ORDEN EXACTO DE APARICIÓN EN LA BARRA LATERAL (Flujo lógico de negocio)
+    # ==================================================
+    # 📋 4. ORDEN EXACTO EN LA BARRA LATERAL (Flujo lógico)
+    # ==================================================
     "order_with_respect_to": [
+        # --- A. CATÁLOGOS MAESTROS ---
+        "licitaciones.catalogomedicamento",
+        "licitaciones.empresa",
+        "licitaciones.sociocomercial",
+        "licitaciones.almacen",
+        
+        # --- B. ÁREA COMERCIAL ---
         "licitaciones.licitacion",
         "licitaciones.cotizacion",
         "licitaciones.contrato",
+        
+        # --- C. COMPRAS Y ABASTECIMIENTO ---
         "licitaciones.ordencompra",
+        "licitaciones.entradaalmacen",
+        
+        # --- D. INVENTARIO Y CALIDAD ---
+        "licitaciones.inventario",
+        "licitaciones.traspasointercompany",
+        "licitaciones.incidenciainventario", # Módulo de mermas
+        "licitaciones.escanerkardex", 
+        
+        # --- E. LOGÍSTICA Y DESPACHO ---
         "licitaciones.ordensuministro",
         "licitaciones.pedidodirecto",
-        "licitaciones.traspasointercompany",
         "licitaciones.remisionentrega",
-        "licitaciones.entradaalmacen",
-        "licitaciones.escanerkardex", 
-        "licitaciones.inventario",
-        "licitaciones.almacen",
-        "licitaciones.catalogomedicamento",
-        "licitaciones.sociocomercial",
-        "licitaciones.empresa",
+        
+        # --- F. EXTRAS ---
         "licitaciones.registroubicacion",
     ],
     
+    "default_icon_parents": "fas fa-folder",
+    "default_icon_children": "fas fa-circle",
     "show_sidebar": True,
     "navigation_expanded": True,
 }
