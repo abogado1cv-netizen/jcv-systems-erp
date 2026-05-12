@@ -110,7 +110,7 @@ JAZZMIN_SETTINGS = {
     # 🎯 1. MENÚ SUPERIOR (El "Modo Dueño" con los KPIs)
     # ==================================================
     "topmenu_links": [
-        {"name": "Inicio",  "url": "admin:index", "permissions": ["auth.view_user"]},
+        {"name": "🏠 Inicio",  "url": "admin:index"}, # 👈 Quitamos la regla de permisos aquí
         {"name": "📊 Comercial", "url": "/dashboard/licitaciones/"},
         {"name": "📁 Contratos", "url": "/dashboard/contratos/"},
         {"name": "🛒 Compras", "url": "/dashboard/compras/"},
@@ -119,7 +119,7 @@ JAZZMIN_SETTINGS = {
     ],
 
     # ==================================================
-    # 🚫 2. LO QUE EL USUARIO NO DEBE VER (Ocultar basura)
+    # 🚫 2. LO QUE EL USUARIO NO DEBE VER
     # ==================================================
     "hide_models": [
         "licitaciones.estatusprocedimiento",
@@ -129,43 +129,34 @@ JAZZMIN_SETTINGS = {
     "hide_apps": ["auth"], # Oculta la app de Usuarios y Grupos
 
     # ==================================================
-    # 🎨 3. ICONOS EXACTOS DE TUS MÓDULOS (Nuevos agregados)
+    # 🎨 3. ICONOS EXACTOS DE TUS MÓDULOS
     # ==================================================
     "icons": {
-        # Maestros
         "licitaciones.catalogomedicamento": "fas fa-pills", 
         "licitaciones.empresa": "fas fa-building",           
         "licitaciones.sociocomercial": "fas fa-handshake-angle", 
         "licitaciones.almacen": "fas fa-warehouse",
-        
-        # Comercial
         "licitaciones.licitacion": "fas fa-gavel",
         "licitaciones.cotizacion": "fas fa-file-invoice-dollar",
         "licitaciones.contrato": "fas fa-file-signature",          
-        
-        # Compras
         "licitaciones.ordencompra": "fas fa-shopping-cart",
         "licitaciones.entradaalmacen": "fas fa-dolly",
-        
-        # Inventario
         "licitaciones.inventario": "fas fa-boxes",               
         "licitaciones.traspasointercompany": "fas fa-exchange-alt",
-        "licitaciones.incidenciainventario": "fas fa-radiation-alt", # Ícono de Cuarentena
+        "licitaciones.incidenciainventario": "fas fa-radiation-alt", 
         "licitaciones.escanerkardex": "fas fa-barcode",
-        
-        # Logística
         "licitaciones.ordensuministro": "fas fa-truck-loading",
         "licitaciones.pedidodirecto": "fas fa-paper-plane",
         "licitaciones.remisionentrega": "fas fa-receipt",
-        
-        # Extras
         "licitaciones.registroubicacion": "fas fa-map-marker-alt",
     },
     
     # ==================================================
-    # 📋 4. ORDEN EXACTO EN LA BARRA LATERAL (Flujo lógico)
+    # 📋 4. ORDEN EXACTO EN LA BARRA LATERAL
     # ==================================================
     "order_with_respect_to": [
+        "licitaciones", # 👈 ¡LA CLAVE! Agregamos la "caja madre" al principio
+        
         # --- A. CATÁLOGOS MAESTROS ---
         "licitaciones.catalogomedicamento",
         "licitaciones.empresa",
@@ -184,7 +175,7 @@ JAZZMIN_SETTINGS = {
         # --- D. INVENTARIO Y CALIDAD ---
         "licitaciones.inventario",
         "licitaciones.traspasointercompany",
-        "licitaciones.incidenciainventario", # Módulo de mermas
+        "licitaciones.incidenciainventario",
         "licitaciones.escanerkardex", 
         
         # --- E. LOGÍSTICA Y DESPACHO ---
