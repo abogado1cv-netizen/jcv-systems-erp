@@ -2250,8 +2250,13 @@ class IncidenciaInventarioAdmin(ImportExportModelAdmin):
 
     def total_recuperado(self, obj):
         from django.utils.html import format_html
+        from django.utils.safestring import mark_safe # 👈 1. Agregamos esto
+        
         total = float(obj.monto_nota_credito) + float(obj.monto_penalizacion)
         if total > 0:
             return format_html('<b style="color: #28a745;">+ ${:,.2f}</b>', total)
-        return format_html('<span style="color: #ccc;">$0.00</span>')
+            
+        # 👈 2. Usamos mark_safe aquí porque es texto fijo
+        return mark_safe('<span style="color: #ccc;">$0.00</span>') 
+        
     total_recuperado.short_description = "Cobro a Proveedor"
