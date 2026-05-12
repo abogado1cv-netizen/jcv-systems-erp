@@ -78,9 +78,9 @@
                 <b>Dirección:</b> NAYARIT 56, COL. ROMA SUR, CUAUHTÉMOC, CDMX.
             </td>
             <td>
-                <b>Dependencia:</b> {{ orden.dependencia|default:orden.razon_social }}<br>
+                <b>Dependencia / Institución:</b> {{ cliente_final }}<br>
                 <b>Unidad / Destino:</b> {{ orden.nombre_unidad|default:"S/A" }}<br>
-                <b>Número de Contrato:</b> {{ contrato.numero_contrato|default:orden.numero_contrato_historico }}
+                <b>Número de Contrato:</b> {{ numero_contrato_final }}
             </td>
         </tr>
     </table>
