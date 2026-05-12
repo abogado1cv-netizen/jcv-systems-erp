@@ -11,7 +11,6 @@ from django.contrib.admin.views.decorators import staff_member_required
 from .models import Inventario, MovimientoKardex
 from .services import DashboardService
 
-# Traemos todos los modelos necesarios
 from .models import (
     Contrato, Licitacion, PartidaRequerimiento, Empresa, 
     OrdenSuministro, RemisionEntrega, ClaveContrato, CatalogoMedicamento,
@@ -60,7 +59,6 @@ def dashboard_contratos(request):
     piezas_minimas = agregados.get('pzas_min') or 0
     piezas_maximas = agregados.get('pzas_max') or 0
 
-    # 1. Solicitado (Nuevo + Histórico)
     agg_sol_nuevo = PartidaOrden.objects.filter(clave_contrato__contrato__in=contratos).aggregate(
         pzas=Sum('cantidad_solicitada'), din=Sum(F('cantidad_solicitada') * F('clave_contrato__precio_neto'))
     )
@@ -70,7 +68,6 @@ def dashboard_contratos(request):
     piezas_solicitadas = (agg_sol_nuevo['pzas'] or 0) + (agg_sol_hist['pzas'] or 0)
     monto_solicitado = (agg_sol_nuevo['din'] or 0) + (agg_sol_hist['din'] or 0)
 
-    # 2. Entregado (Nuevo + Histórico)
     agg_ent_nuevo = PartidaOrden.objects.filter(clave_contrato__contrato__in=contratos).aggregate(
         pzas=Sum('cantidad_entregada'), din=Sum(F('cantidad_entregada') * F('clave_contrato__precio_neto'))
     )
@@ -118,7 +115,6 @@ def dashboard_contratos(request):
 
         detalle_claves.append(clave)
 
-    # Filtros
     codigos_presentes = Contrato.objects.values_list('dependencia', flat=True).distinct()
     dependencias_agrupadas = []
     for categoria, items in DEPENDENCIAS_MAESTRAS:
@@ -343,7 +339,6 @@ def dashboard_licitaciones(request):
 # ==========================================
 # 3. DASHBOARD DE ÓRDENES DE SUMINISTRO (LOGÍSTICA)
 # ==========================================
-
 @staff_member_required
 def dashboard_ordenes(request):
     busqueda = request.GET.get('q', '').strip()
@@ -418,7 +413,7 @@ def dashboard_ordenes(request):
 
 
 # ==========================================
-# 🔥 4. DASHBOARD DE COMPRAS E INTELIGENCIA (NUEVO RADAR 360)
+# 🔥 4. DASHBOARD DE COMPRAS E INTELIGENCIA 
 # ==========================================
 @staff_member_required
 def dashboard_compras(request):
@@ -493,11 +488,10 @@ def dashboard_compras(request):
 
     pct_otif = (otif_count / ordenes_recibidas * 100) if ordenes_recibidas > 0 else 0
 
-    # 🚨 RADAR DE ALERTAS INTER-MÓDULOS 🚨
+    # 🚨 RADAR DE ALERTAS INTER-MÓDULOS
     alertas_criticas = []
     hoy = timezone.now().date()
 
-    # ALERTA 0: OCs Atrasadas
     oc_atrasadas = ordenes.filter(estatus__in=['BORRADOR', 'AUTORIZADA', 'TRANSITO'], fecha_entrega_esperada__lt=hoy)
     for oc in oc_atrasadas:
         dias_retraso = (hoy - oc.fecha_entrega_esperada).days
@@ -506,7 +500,6 @@ def dashboard_compras(request):
             'mensaje': f"PROVEEDOR ATRASADO: La OC-{oc.folio} presenta un atraso de {dias_retraso} días."
         })
 
-    # ALERTA 1: Órdenes sin atender por Falta de Inventario
     pedidos_pendientes = OrdenSuministro.objects.filter(estatus__in=['PENDIENTE', 'PARCIAL'])
     alertas_stockout = 0
     for ped in pedidos_pendientes:
@@ -523,7 +516,6 @@ def dashboard_compras(request):
             'mensaje': f"FALTA DE STOCK: Hay {alertas_stockout} órdenes/pedidos detenidos porque no hay suficiente inventario para surtirlos."
         })
 
-    # ALERTA 2: Discrepancias
     ocs_discrepancia = 0
     for oc in ordenes.filter(estatus='RECIBIDA'):
         reclamado = sum(p.cantidad_recibida for p in oc.partidas_compra.all() if p.cantidad_recibida)
@@ -536,7 +528,6 @@ def dashboard_compras(request):
             'mensaje': f"AUDITORÍA CIEGA: Existen {ocs_discrepancia} Órdenes de Compra con discrepancia entre lo pagado y lo recibido físicamente."
         })
 
-    # ALERTA 3: Caducidades
     limite_caducidad = hoy + datetime.timedelta(days=180)
     lotes_riesgo = Inventario.objects.filter(cantidad_disponible__gt=0, fecha_caducidad__lte=limite_caducidad).count()
     if lotes_riesgo > 0:
@@ -545,7 +536,6 @@ def dashboard_compras(request):
             'mensaje': f"RIESGO DE MERMA: Tienes {lotes_riesgo} lotes de medicamentos próximos a caducar en almacén."
         })
 
-    # ALERTA 4: Traspasos
     traspasos_pendientes = TraspasoIntercompany.objects.filter(estatus='BORRADOR').count()
     if traspasos_pendientes > 0:
         alertas_criticas.append({
@@ -553,7 +543,6 @@ def dashboard_compras(request):
             'mensaje': f"LOGÍSTICA INTERNA: Tienes {traspasos_pendientes} traspasos entre almacenes pendientes de procesar."
         })
 
-    # ALERTA 5: Reintegros / Devoluciones (Últimos 7 días)
     fecha_reciente = hoy - datetime.timedelta(days=7)
     devoluciones = MovimientoKardex.objects.filter(tipo='ENTRADA_DEVOLUCION', fecha__gte=fecha_reciente).count()
     if devoluciones > 0:
@@ -580,7 +569,49 @@ def dashboard_compras(request):
             'dias': (hoy - oc.fecha_emision).days
         })
 
-    from .models import SocioComercial
+    # ===============================================
+    # 🛒 EL PUENTE: VENTAS -> COMPRAS (Planificador)
+    # ===============================================
+    requerimientos = {}
+
+    partidas_lic = PartidaRequerimiento.objects.filter(resultado='Asignada').select_related('medicamento', 'licitacion')
+    for p in partidas_lic:
+        if not p.medicamento: continue
+        med_id = p.medicamento.id
+        if med_id not in requerimientos:
+            requerimientos[med_id] = {'medicamento': p.medicamento, 'requerido': 0, 'origen': []}
+        requerimientos[med_id]['requerido'] += (p.cantidad_maxima or 0)
+        requerimientos[med_id]['origen'].append(f"{p.licitacion.num_procedimiento}")
+
+    partidas_cot = PartidaCotizacion.objects.filter(cotizacion__estatus='GANADA').select_related('medicamento', 'cotizacion')
+    for p in partidas_cot:
+        if not p.medicamento: continue
+        med_id = p.medicamento.id
+        if med_id not in requerimientos:
+            requerimientos[med_id] = {'medicamento': p.medicamento, 'requerido': 0, 'origen': []}
+        requerimientos[med_id]['requerido'] += (p.cantidad or 0)
+        requerimientos[med_id]['origen'].append(f"{p.cotizacion.folio}")
+
+    planificador_abasto = []
+    for med_id, data in requerimientos.items():
+        med = data['medicamento']
+        stock_real = Inventario.objects.filter(medicamento=med).aggregate(tot=Sum('cantidad_disponible'))['tot'] or 0
+        faltante = data['requerido'] - stock_real
+        
+        if faltante > 0:
+            planificador_abasto.append({
+                'clave': med.clave_sector,
+                'descripcion': med.denominacion_generica[:45] + "..." if len(med.denominacion_generica) > 45 else med.denominacion_generica,
+                'socio': med.socio_contacto.nombre if med.socio_contacto else 'S/A',
+                'requerido': data['requerido'],
+                'stock': stock_real,
+                'faltante': faltante,
+                'origenes': list(set(data['origen']))[:2] # Máximo 2 para no saturar la vista
+            })
+    
+    # Ordenar por el que más falte
+    planificador_abasto.sort(key=lambda x: x['faltante'], reverse=True)
+
     proveedores_con_ordenes = SocioComercial.objects.filter(ordencompra__isnull=False).distinct()
 
     context = {
@@ -595,6 +626,7 @@ def dashboard_compras(request):
         'num_alertas': len(alertas_criticas),
         'alertas': alertas_criticas,
         'tabla_ordenes': tabla_ordenes,
+        'planificador_abasto': planificador_abasto, # 👈 MANDAMOS EL PUENTE AL HTML
         'proveedores': proveedores_con_ordenes,
         'filtros': {
             'fecha_inicio': fecha_inicio,
@@ -618,21 +650,16 @@ def dashboard_inventario(request):
     hoy = datetime.date.today()
     limite_caducidad = hoy + datetime.timedelta(days=180) # Alerta: 6 meses
     
-    # Solo tomamos lo que realmente tiene existencias
     inventario_activo = Inventario.objects.filter(cantidad_disponible__gt=0)
     
-    # 1. KPIs Básicos
     total_piezas = inventario_activo.aggregate(total=Sum('cantidad_disponible'))['total'] or 0
     total_lotes = inventario_activo.count()
     
-    # 2. Análisis de Caducidades
     lotes_riesgo = inventario_activo.filter(fecha_caducidad__lte=limite_caducidad).order_by('fecha_caducidad')
     alertas_caducidad = lotes_riesgo.count()
     
-    # Lotes caducados (ya pasaron la fecha de hoy)
     lotes_caducados = inventario_activo.filter(fecha_caducidad__lt=hoy).count()
 
-    # 3. Alertas para el panel derecho
     alertas_sistema = []
     if lotes_caducados > 0:
         alertas_sistema.append({
@@ -645,8 +672,7 @@ def dashboard_inventario(request):
             'color': 'orange'
         })
         
-    # 4. Tabla de Estado Actual (Mostramos los más recientes o más críticos)
-    tabla_inventario = inventario_activo.order_by('fecha_caducidad')[:10] # Ordenamos por caducidad para sacar lo más viejo primero
+    tabla_inventario = inventario_activo.order_by('fecha_caducidad')[:10] 
 
     context = {
         'total_piezas': total_piezas,
@@ -662,15 +688,12 @@ def dashboard_inventario(request):
 
 @staff_member_required
 def dashboard_inicio(request):
-    # Instanciamos tu código
     svc = DashboardService("GPHARMA")
-    
-    # Extraemos los datos (por ejemplo, del Año a la Fecha 'YTD')
     datos_ejecutivos = svc.obtener_datos_dashboard("YTD")
     
     context = {
         'title': 'Inicio',
-        'datos': datos_ejecutivos, # Mandamos todo tu paquete al HTML
+        'datos': datos_ejecutivos, 
     }
     return render(request, 'dashboard_inicio.html', context)
 
@@ -683,14 +706,11 @@ def buscar_kardex(request):
     mensaje_error = None
 
     if query:
-        # Usamos Q para buscar en código de barras O lote en una sola consulta
-        # icontains ayuda por si escriben el lote en minúsculas o incompleto
         inventario_actual = Inventario.objects.filter(
             Q(codigo_barras=query) | Q(lote__icontains=query)
         ).first()
 
         if inventario_actual:
-            # Si lo encontramos, traemos su historial del Kardex
             movimientos = MovimientoKardex.objects.filter(
                 medicamento=inventario_actual.medicamento,
                 lote=inventario_actual.lote
