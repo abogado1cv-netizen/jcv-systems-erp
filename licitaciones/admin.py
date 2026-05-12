@@ -484,12 +484,36 @@ class CatalogoMedicamentoResource(resources.ModelResource):
 class CatalogoMedicamentoAdmin(ImportExportModelAdmin): 
     resource_class = CatalogoMedicamentoResource
     list_per_page = 30
-    search_fields = ['clave_sector', 'denominacion_distintiva', 'denominacion_generica']
-    list_display = ('clave_sector', 'denominacion_generica', 'denominacion_distintiva', 'fabricante', 'registro_sanitario_formato')
+    
+    # 🔍 Le agregamos búsqueda por Socio y Fabricante
+    search_fields = ['clave_sector', 'denominacion_distintiva', 'denominacion_generica', 'socio_contacto__nombre', 'fabricante']
+    
+    # 📑 Aquí agregamos los filtros laterales rápidos para Compras
+    list_filter = ('socio_contacto', 'fabricante')
+    
+    # 👁️ AQUÍ AGREGAMOS TODAS LAS COLUMNAS QUE PIDIÓ COMPRAS
+    list_display = (
+        'clave_sector', 
+        'descripcion_corta', 
+        'denominacion_generica', 
+        'denominacion_distintiva', 
+        'socio_contacto', 
+        'fabricante', 
+        'registro_sanitario_formato',
+        'fecha_expedicion',
+        'fecha_vigencia'
+    )
 
     def registro_sanitario_formato(self, obj):
         return obj.num_registro_sanitario
-    registro_sanitario_formato.short_description = "Registro Sanitario"
+    registro_sanitario_formato.short_description = "Reg. Sanitario"
+    
+    # Hacemos la descripción un poco más corta en la tabla para que no desborde la pantalla
+    def descripcion_corta(self, obj):
+        if obj.descripcion and len(obj.descripcion) > 35:
+            return f"{obj.descripcion[:35]}..."
+        return obj.descripcion
+    descripcion_corta.short_description = "Descripción"
 
 class RegistroUbicacionAdmin(admin.ModelAdmin):
     list_per_page = 30
