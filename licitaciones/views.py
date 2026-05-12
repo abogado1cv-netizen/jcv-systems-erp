@@ -551,6 +551,20 @@ def dashboard_compras(request):
             'mensaje': f"REINTEGROS: Se han devuelto {devoluciones} lotes de mercancía al almacén por rechazo de hospitales (últimos 7 días)."
         })
 
+    # 👇 NUEVA ALERTA 6: REGISTROS SANITARIOS POR VENCER (90 DÍAS) 👇
+    limite_registro = hoy + datetime.timedelta(days=90)
+    registros_por_vencer = CatalogoMedicamento.objects.filter(
+        fecha_vigencia__lte=limite_registro, 
+        fecha_vigencia__gte=hoy
+    ).count()
+
+    if registros_por_vencer > 0:
+        alertas_criticas.append({
+            'tipo': 'sanitario', 'color': '#2c3e50', # Gris oscuro / Elegante pero serio
+            'mensaje': f"REGISTROS SANITARIOS: Tienes {registros_por_vencer} claves cuyo registro sanitario vence en menos de 3 meses. Revisar en Módulo Claves."
+        })
+    # 👆 FIN DE LA NUEVA ALERTA 👆
+
     ultimas_ordenes = ordenes.order_by('-fecha_emision')[:10]
     tabla_ordenes = []
     for oc in ultimas_ordenes:
@@ -568,6 +582,7 @@ def dashboard_compras(request):
             'estatus': oc.get_estatus_display(),
             'dias': (hoy - oc.fecha_emision).days
         })
+
 
     # ===============================================
     # 🛒 EL PUENTE: VENTAS -> COMPRAS (Planificador)
@@ -626,7 +641,7 @@ def dashboard_compras(request):
         'num_alertas': len(alertas_criticas),
         'alertas': alertas_criticas,
         'tabla_ordenes': tabla_ordenes,
-        'planificador_abasto': planificador_abasto, # 👈 MANDAMOS EL PUENTE AL HTML
+        'planificador_abasto': planificador_abasto, 
         'proveedores': proveedores_con_ordenes,
         'filtros': {
             'fecha_inicio': fecha_inicio,

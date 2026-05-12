@@ -769,7 +769,12 @@ class EntradaAlmacen(models.Model):
     folio_remision = models.CharField("Folio de Remisión / Factura", max_length=100, default="S/F", help_text="Anota el número de ticket o factura.")
     medicamento = models.ForeignKey('CatalogoMedicamento', on_delete=models.CASCADE, verbose_name="Clave / Medicamento")
     tipo_producto = models.CharField(max_length=20, choices=TIPO_PRODUCTO_CHOICES, default='COMERCIAL', verbose_name="Tipo de Producto")
+    
     cantidad_recibida = models.PositiveIntegerField("Piezas Físicas Recibidas")
+    
+    # 👇 ESTE ES EL NUEVO CAMPO DE CALIDAD 👇
+    piezas_rechazadas = models.PositiveIntegerField("Piezas Rechazadas (Mal estado)", default=0, help_text="Anota si llegaron cajas rotas, caducadas o diferentes.") 
+    
     lote = models.CharField("Lote Impreso", max_length=50)
     fecha_caducidad = models.DateField("Fecha de Caducidad")
     
@@ -817,12 +822,20 @@ class EntradaAlmacen(models.Model):
                     'fecha_ingreso': self.fecha_ingreso.date()
                 }
             )
+            # Solo metemos al almacén lo que SÍ se recibió
             inventario_obj.cantidad_disponible += self.cantidad_recibida
             inventario_obj.save()
 
             if self.orden.estatus not in ['RECIBIDA', 'CANCELADA']:
                 self.orden.estatus = 'PARCIAL' 
                 self.orden.save()
+
+            # 👇 MAGIA DE CALIDAD: REPORTARLE A COMPRAS EL DEFECTO 👇
+            if self.piezas_rechazadas > 0:
+                partida_oc = self.orden.partidas_compra.filter(medicamento=self.medicamento).first()
+                if partida_oc:
+                    partida_oc.piezas_rechazadas += self.piezas_rechazadas
+                    partida_oc.save()
 
             from .models import MovimientoKardex
             MovimientoKardex.objects.create(
