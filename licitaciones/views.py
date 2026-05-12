@@ -391,6 +391,48 @@ def dashboard_ordenes(request):
     ordenes_criticas.sort(key=lambda x: x.penalizacion_estimada, reverse=True)
     ordenes_criticas = ordenes_criticas[:50] 
 
+    # ==========================================
+    # 🚀 NUEVO: RADAR LOGÍSTICO (ÓRDENES SURTIBLES)
+    # ==========================================
+    pedidos_pendientes = ordenes.filter(estatus__in=['PENDIENTE', 'PARCIAL'])
+    ordenes_surtibles = []
+
+    for ped in pedidos_pendientes:
+        es_surtible = False
+        detalles_surtibles = []
+        
+        for p in ped.partidas.all():
+            pendientes_item = p.cantidad_solicitada - p.cantidad_entregada
+            if pendientes_item > 0 and p.medicamento:
+                # Buscamos si en almacén hay stock de esta clave
+                stock_real = Inventario.objects.filter(medicamento=p.medicamento).aggregate(tot=Sum('cantidad_disponible'))['tot'] or 0
+                if stock_real > 0:
+                    es_surtible = True
+                    detalles_surtibles.append({
+                        'clave': p.medicamento.clave_sector,
+                        'faltan': pendientes_item,
+                        'hay': stock_real
+                    })
+        
+        if es_surtible:
+            # Calculamos si con el stock actual se puede matar la orden completa o solo un cacho
+            surtido_completo = all((det['hay'] >= det['faltan']) for det in detalles_surtibles)
+            
+            dias_restantes = (ped.fecha_limite - hoy).days if ped.fecha_limite else 99
+            
+            ordenes_surtibles.append({
+                'id': ped.id,
+                'folio': ped.numero_orden_suministro,
+                'cliente': ped.nombre_unidad or ped.dependencia or ped.razon_social,
+                'tipo': ped.get_tipo_documento_display(),
+                'detalles': detalles_surtibles,
+                'surtido_completo': surtido_completo,
+                'dias_restantes': dias_restantes
+            })
+    
+    # Ordenamos: Primero las más urgentes (menos días) que se puedan surtir completas
+    ordenes_surtibles.sort(key=lambda x: (-x['surtido_completo'], x['dias_restantes']))
+
     context = {
         'busqueda': busqueda,
         'total_ordenes': total_ordenes,
@@ -407,6 +449,8 @@ def dashboard_ordenes(request):
         'piezas_pendientes': total_piezas_pendientes,
         'piezas_canceladas': total_piezas_canceladas,
         'top_claves_entregadas': top_claves_entregadas,
+        'ordenes_surtibles': ordenes_surtibles, # 👈 SE LO MANDAMOS AL HTML
+        'num_surtibles': len(ordenes_surtibles)
     }
     
     return render(request, 'dashboard_ordenes.html', context)

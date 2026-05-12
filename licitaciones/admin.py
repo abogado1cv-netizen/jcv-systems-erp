@@ -2205,3 +2205,53 @@ class CotizacionAdmin(admin.ModelAdmin):
 
         messages.success(request, f"¡Magia pura! ✨ Se generó el Pedido Directo {nueva_orden.numero_orden_suministro} con {claves_copiadas} claves. Tiene 10 días límite.")
         return redirect('admin:licitaciones_pedidodirecto_change', nueva_orden.id)
+    
+    # ==========================================
+# 🛑 PANEL DE CUARENTENA, MERMAS Y DEVOLUCIONES
+# ==========================================
+from .models import IncidenciaInventario
+
+@admin.register(IncidenciaInventario)
+class IncidenciaInventarioAdmin(ImportExportModelAdmin):
+    list_display = ('id', 'medicamento_clave', 'lote', 'cantidad_afectada', 'motivo', 'resolucion_badge', 'socio_comercial', 'total_recuperado')
+    list_filter = ('motivo', 'resolucion', 'socio_comercial', 'genera_nota_credito')
+    search_fields = ('medicamento__clave_sector', 'lote', 'observaciones')
+    autocomplete_fields = ['inventario_origen', 'medicamento', 'socio_comercial']
+    
+    fieldsets = (
+        ('1. Origen del Problema (Descuento de Stock)', {
+            'fields': ('inventario_origen', 'cantidad_afectada', 'motivo', 'observaciones'),
+            'description': 'Al guardar, estas piezas se restarán del Inventario sano y pasarán a estado de cuarentena.'
+        }),
+        ('2. Resolución y Destino', {
+            'fields': ('resolucion',)
+        }),
+        ('3. Finanzas y Reclamaciones (Socio Comercial)', {
+            'fields': ('socio_comercial', 'genera_nota_credito', 'monto_nota_credito', 'aplica_penalizacion', 'monto_penalizacion'),
+            'description': 'Llena esto si el producto se devolverá al proveedor y se le cobrará mediante nota de crédito o multa.'
+        }),
+    )
+
+    def medicamento_clave(self, obj):
+        return obj.medicamento.clave_sector
+    medicamento_clave.short_description = "Clave"
+
+    def resolucion_badge(self, obj):
+        from django.utils.html import format_html
+        colores = {
+            'EN_CUARENTENA': '#f39c12', # Naranja
+            'DONATIVO': '#17a2b8',      # Azul
+            'DEVOLUCION': '#28a745',    # Verde
+            'DESTRUCCION': '#dc3545',   # Rojo
+        }
+        color = colores.get(obj.resolucion, '#000')
+        return format_html('<span style="background-color: {}; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px;">{}</span>', color, obj.get_resolucion_display())
+    resolucion_badge.short_description = "Estatus / Destino"
+
+    def total_recuperado(self, obj):
+        from django.utils.html import format_html
+        total = float(obj.monto_nota_credito) + float(obj.monto_penalizacion)
+        if total > 0:
+            return format_html('<b style="color: #28a745;">+ ${:,.2f}</b>', total)
+        return format_html('<span style="color: #ccc;">$0.00</span>')
+    total_recuperado.short_description = "Cobro a Proveedor"
