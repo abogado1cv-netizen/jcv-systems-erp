@@ -241,7 +241,7 @@ EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.resend.com'
 EMAIL_PORT = 465
 EMAIL_HOST_USER = 'resend' 
-EMAIL_HOST_PASSWORD = 're_j49WJ9MN_2wMxfrbjcVw7gigZ3opy3j6T'
+EMAIL_HOST_PASSWORD = 'CONTRASENA_FALSA_AQUI'
 EMAIL_USE_SSL = False 
 EMAIL_USE_TLS = True 
 DEFAULT_FROM_EMAIL = 'notificaciones@jcv-sistemas.lat' # 👈 Agregamos esta línea
@@ -263,3 +263,11 @@ DATETIME_INPUT_FORMATS = [
 # --- CONFIGURACIÓN PARA LÍMITES MASIVOS ---
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 100000
 DATA_UPLOAD_MAX_MEMORY_SIZE = 52428800
+
+# ==========================================
+# CONFIGURACIÓN DE TWILIO (WHATSAPP Y SMS)
+# ==========================================
+
+TWILIO_ACCOUNT_SID = 'SID_FALSO_AQUI'
+TWILIO_AUTH_TOKEN = 'TOKEN_FALSO_AQUI'
+TWILIO_PHONE_NUMBER = 'whatsapp:NUM_FALSO_AQUI'

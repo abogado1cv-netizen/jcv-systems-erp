@@ -796,3 +796,28 @@ def buscar_kardex(request):
         'mensaje_error': mensaje_error,
     }
     return render(request, 'buscar_kardex.html', context)
+
+# ==========================================
+# 📱 PRUEBA DE WHATSAPP (TWILIO)
+# ==========================================
+from django.conf import settings
+from twilio.rest import Client
+
+@staff_member_required
+def probar_whatsapp(request):
+    try:
+        # 1. Conectamos con Twilio usando las llaves de tu settings.py
+        client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
+        
+        # 2. Armamos el mensaje de prueba
+        # OJO: Cambia el '+525500000000' por tu número real de celular con código de país
+        mensaje = client.messages.create(
+            from_=settings.TWILIO_PHONE_NUMBER,
+            body="🚀 ¡Hola líder! Si estás leyendo esto, GPHARMA ERP acaba de conectarse exitosamente a tu WhatsApp. El motor está encendido y listo para operar.",
+            to='whatsapp:+525500000000' 
+        )
+        
+        return HttpResponse(f"<div style='text-align: center; margin-top: 50px; font-family: sans-serif;'><h2 style='color: green;'>¡ÉXITO! Mensaje enviado. Revisa tu celular.</h2><p>SID: {mensaje.sid}</p><br> <a href='/dashboard/inicio/' style='padding: 10px 20px; background: #2c3e50; color: white; text-decoration: none; border-radius: 5px;'>Regresar al inicio</a></div>")
+        
+    except Exception as e:
+        return HttpResponse(f"<div style='text-align: center; margin-top: 50px; font-family: sans-serif;'><h2 style='color: red;'>Error al enviar:</h2> <p>{str(e)}</p><br> <a href='/dashboard/inicio/' style='padding: 10px 20px; background: #2c3e50; color: white; text-decoration: none; border-radius: 5px;'>Regresar al inicio</a></div>")
