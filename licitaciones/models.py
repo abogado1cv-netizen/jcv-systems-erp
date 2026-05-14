@@ -1025,3 +1025,21 @@ class IncidenciaInventario(models.Model):
                 folio_documento=f"INC-{self.id}",
                 observaciones=f"Aislado en CUARENTENA. Motivo: {self.get_motivo_display()}"
             )
+
+            from django.contrib.auth.models import User
+
+class PerfilEquipo(models.Model):
+    ROLES = [
+        ('ADMIN', 'Dirección General'),
+        ('COMERCIAL', 'Coordinador Comercial'),
+        ('LOGISTICA', 'Gerente de Logística'),
+        ('ALMACEN', 'Control de Almacén'),
+    ]
+    
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='perfil')
+    whatsapp = models.CharField(max_length=20, help_text="Ej: +5215540741751")
+    rol = models.CharField(max_length=20, choices=ROLES, default='COMERCIAL')
+    activo = models.BooleanField(default=True)
+
+    def __str__(self):
+        return f"{self.user.get_full_name()} - {self.rol}"

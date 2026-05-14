@@ -821,3 +821,12 @@ def probar_whatsapp(request):
         
     except Exception as e:
         return HttpResponse(f"<div style='text-align: center; margin-top: 50px; font-family: sans-serif;'><h2 style='color: red;'>Error al enviar:</h2> <p>{str(e)}</p><br> <a href='/dashboard/inicio/' style='padding: 10px 20px; background: #2c3e50; color: white; text-decoration: none; border-radius: 5px;'>Regresar al inicio</a></div>")
+    
+@staff_member_required
+def panel_equipo(request):
+    equipo = PerfilEquipo.objects.select_related('user').all()
+    context = {
+        'titulo': 'Gestión de Equipo GPHARMA',
+        'equipo': equipo,
+    }
+    return render(request, 'dashboard_equipo.html', context)
