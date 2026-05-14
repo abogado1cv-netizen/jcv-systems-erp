@@ -118,6 +118,14 @@ JAZZMIN_SETTINGS = {
         {"name": "📦 Almacén", "url": "/dashboard/inventario/"},
     ],
 
+    "custom_links": {
+        "licitaciones": [{
+            "name": "Gestión de Equipo",
+            "url": "/dashboard/equipo/",
+            "icon": "fas fa-users",
+        }]
+    },
+
     # ==================================================
     # 🚫 2. LO QUE EL USUARIO NO DEBE VER (Ocultar basura)
     # ==================================================

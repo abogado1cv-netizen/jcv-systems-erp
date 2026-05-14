@@ -3,7 +3,7 @@
 <div style="padding: 20px; background: #eff3f8; min-height: 100vh;">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
         <h2 style="color: #2c3e50; font-weight: 700;">👥 Gestión de Equipo Profesional</h2>
-        <button style="background: #8b5cf6; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 600;">+ Añadir Integrante</button>
+        <a href="/admin/licitaciones/perfilequipo/add/" style="text-decoration: none; display: inline-block; background: #8b5cf6; color: white; padding: 10px 20px; border-radius: 8px; font-weight: 600;">+ Añadir Integrante</a>
     </div>
 
     <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px;">
@@ -29,9 +29,16 @@
             </div>
 
             <div style="margin-top: 20px; display: flex; gap: 10px;">
-                <button style="flex: 1; padding: 8px; border-radius: 6px; border: 1px solid #e5e7eb; background: white; font-size: 0.8rem;">Editar</button>
-                <button style="flex: 1; padding: 8px; border-radius: 6px; border: none; background: #fee2e2; color: #dc2626; font-size: 0.8rem;">Suspender</button>
+                <a href="/admin/licitaciones/perfilequipo/{{ miembro.id }}/change/" style="flex: 1; padding: 8px; border-radius: 6px; border: 1px solid #e5e7eb; background: white; color: #374151; font-size: 0.8rem; text-align: center; text-decoration: none; font-weight: 600;">Editar</a>
+                <button style="flex: 1; padding: 8px; border-radius: 6px; border: none; background: #fee2e2; color: #dc2626; font-size: 0.8rem; font-weight: 600;">Suspender</button>
             </div>
+        </div>
+        
+        {% empty %}
+        <div style="grid-column: 1 / -1; background: white; border-radius: 18px; padding: 50px; text-align: center; border: 2px dashed #cbd5e1;">
+            <div style="font-size: 3rem; color: #94a3b8; margin-bottom: 15px;">👤</div>
+            <h3 style="color: #475569; margin-bottom: 10px;">Aún no hay integrantes registrados</h3>
+            <p style="color: #64748b;">Haz clic en el botón morado de arriba para dar de alta a tu equipo directivo.</p>
         </div>
         {% endfor %}
     </div>

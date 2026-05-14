@@ -2364,3 +2364,11 @@ class IncidenciaInventarioAdmin(ImportExportModelAdmin):
         return mark_safe('<span style="color: #ccc;">$0.00</span>') 
         
     total_recuperado.short_description = "Cobro a Proveedor"
+
+# ==========================================
+# 👥 PANEL DE EQUIPO Y ROLES
+# ==========================================
+@admin.register(PerfilEquipo)
+class PerfilEquipoAdmin(admin.ModelAdmin):
+    list_display = ('user', 'rol', 'whatsapp', 'activo')
+    list_filter = ('rol', 'activo')
