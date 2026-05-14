@@ -3,8 +3,7 @@ from django.urls import path
 from django.views.generic import RedirectView 
 from django.conf import settings
 from django.conf.urls.static import static
-from licitaciones.views import probar_whatsapp
-
+from licitaciones.views import probar_whatsapp, panel_equipo
 # Importamos tus vistas para el tablero
 from licitaciones import views
 
@@ -32,7 +31,7 @@ urlpatterns = [
     path('dashboard/ordenes/', views.dashboard_ordenes, name='dashboard_ordenes'),
     path('dashboard/compras/', views.dashboard_compras, name='dashboard_compras'),
     path('dashboard/inventario/', views.dashboard_inventario, name='dashboard_inventario'),
-    
+    path('dashboard/equipo/', panel_equipo, name='panel_equipo'),
     # 🔥 NUEVA RUTA: El escáner del Kardex
     path('dashboard/kardex/', views.buscar_kardex, name='buscar_kardex'),
     path('probar-whatsapp/', probar_whatsapp, name='probar_whatsapp'),
