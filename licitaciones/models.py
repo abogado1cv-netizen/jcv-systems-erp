@@ -1026,18 +1026,77 @@ class IncidenciaInventario(models.Model):
                 observaciones=f"Aislado en CUARENTENA. Motivo: {self.get_motivo_display()}"
             )
 
+from django.contrib.auth.models import User, Group # <--- Agregamos Group aquí
+
 class PerfilEquipo(models.Model):
     ROLES = [
-        ('ADMIN', 'Dirección General'),
-        ('COMERCIAL', 'Coordinador Comercial'),
-        ('LOGISTICA', 'Gerente de Logística'),
-        ('ALMACEN', 'Control de Almacén'),
+        # --- DIRECCIÓN ---
+        ('DIRECCION_GRAL', 'Dirección General'),
+
+        # --- ÁREA COMERCIAL Y LICITACIONES ---
+        ('DIRECCION_COMER', 'Dirección Comercial'),
+        ('GERENCIA_COMERCIAL', 'Gerencia Comercial'),
+        ('COORD_COMERCIAL', 'Coordinador Comercial'),
+        ('ANALISTA_LICITA', 'Analista de Licitaciones'),
+        ('ATENCION_COMERCIAL', 'Atención Comercial / Ventas'),
+        ('ANALISTA_ATENCION', 'Analista Atención Comercial'),
+        ('COMPRADOR', 'Ejecutivo de Compras'), # <--- Lo movimos a su casa correcta
+
+        # --- ÁREA LOGÍSTICA Y OPERACIONES ---
+        ('GERENTE_LOGISTICA', 'Gerente de Logística'),
+        ('AUX_ALMACEN', 'Auxiliar de Almacén / Chofer'),
+
+        # --- ÁREA COMPRAS Y FINANZAS ---
+        ('DIRECCION_ADMIN', 'Dirección Administrativa'),
+
+
+        # --- ÁREA COBRANZA ---
+        ('DIRECCION_COBR', 'Dirección Cobranza'),
     ]
     
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='perfil')
     whatsapp = models.CharField(max_length=20, help_text="Ej: +5215540741751")
-    rol = models.CharField(max_length=20, choices=ROLES, default='COMERCIAL')
+    rol = models.CharField(max_length=20, choices=ROLES, default='COORD_COMERCIAL')
     activo = models.BooleanField(default=True)
 
     def __str__(self):
         return f"{self.user.get_full_name()} - {self.rol}"
+
+    # 👇 AQUÍ EMPIEZA LA MAGIA DEL PILOTO AUTOMÁTICO 👇
+    def save(self, *args, **kwargs):
+        # 1. Guardamos el perfil normalmente
+        super().save(*args, **kwargs)
+        
+        # 2. El "Diccionario" que mapea tu organigrama con los Megagrupos
+        mapa_megagrupos = {
+            'DIRECCION_GRAL': 'DIRECCION_GLOBAL',
+            
+            'DIRECCION_COMER': 'COMERCIAL',
+            'GERENCIA_COMERCIAL': 'COMERCIAL',
+            'COORD_COMERCIAL': 'COMERCIAL',
+            'ANALISTA_LICITA': 'COMERCIAL',
+            'ATENCION_COMERCIAL': 'COMERCIAL',
+            'ANALISTA_ATENCION': 'COMERCIAL',
+            'COMPRADOR': 'COMERCIAL',
+            
+            'GERENTE_LOGISTICA': 'LOGISTICA',
+            'AUX_ALMACEN': 'LOGISTICA',
+            
+            'DIRECCION_ADMIN': 'COMPRAS_FINANZAS',
+            
+            'DIRECCION_COBR': 'COBRANZA'
+        }
+        
+        nombre_megagrupo = mapa_megagrupos.get(self.rol)
+        
+        if nombre_megagrupo:
+            # 3. Le quitamos permisos viejos (por si lo cambiaste de puesto)
+            self.user.groups.clear()
+            
+            # 4. Buscamos el Megagrupo (o lo creamos si no existe)
+            grupo, creado = Group.objects.get_or_create(name=nombre_megagrupo)
+            
+            # 5. Metemos al usuario a su nueva "casa" y le damos acceso al sistema
+            self.user.groups.add(grupo)
+            self.user.is_staff = True 
+            self.user.save()
