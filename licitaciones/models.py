@@ -1026,8 +1026,6 @@ class IncidenciaInventario(models.Model):
                 observaciones=f"Aislado en CUARENTENA. Motivo: {self.get_motivo_display()}"
             )
 
-            from django.contrib.auth.models import User
-
 class PerfilEquipo(models.Model):
     ROLES = [
         ('ADMIN', 'Dirección General'),

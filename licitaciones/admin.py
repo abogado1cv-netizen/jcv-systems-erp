@@ -25,7 +25,7 @@ from .models import (
     Licitacion, PartidaRequerimiento, RegistroUbicacion, Contrato, 
     FianzaContrato, ClaveContrato, OrdenSuministro, RemisionEntrega,
     EntradaAlmacen, Almacen, TraspasoIntercompany, PartidaOrden,
-    Cotizacion, PartidaCotizacion, PedidoDirecto
+    Cotizacion, PartidaCotizacion, PedidoDirecto, DEPENDENCIAS_MAESTRAS, PerfilEquipo
     
 )
 
