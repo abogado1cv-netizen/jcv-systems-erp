@@ -605,7 +605,7 @@ class PartidaRequerimientoInline(admin.TabularInline):
 class LicitacionAdmin(admin.ModelAdmin):
     list_per_page = 30
     form = LicitacionForm 
-    list_display = ('num_procedimiento', 'dependencia', 'estatus_color', 'apertura_semaforo', 'fecha_fallo')
+    list_display = ('num_procedimiento', 'dependencia', 'estatus_color', 'apertura_semaforo', 'fecha_fallo', 'notificar_whatsapp_btn')
     search_fields = ['num_procedimiento', 'dependencia']
     inlines = [PartidaRequerimientoInline]
     
@@ -649,6 +649,7 @@ class LicitacionAdmin(admin.ModelAdmin):
             path('<path:object_id>/borrar-partidas/', self.admin_site.admin_view(self.borrar_partidas_view), name='borrar_partidas_licitacion'),
             path('<path:object_id>/notificar-socios/', self.admin_site.admin_view(self.notificar_socios_view), name='notificar_socios_licitacion'),
             path('<path:object_id>/notificar-resultados/', self.admin_site.admin_view(self.notificar_resultados_view), name='notificar_resultados_licitacion'),
+            path('<path:object_id>/notificar-whatsapp/', self.admin_site.admin_view(self.notificar_whatsapp_view), name='notificar_whatsapp_licitacion'),
         ]
         return custom_urls + urls
 
@@ -911,6 +912,70 @@ class LicitacionAdmin(admin.ModelAdmin):
 
         context = {'title': f'Notificar Resultados: {licitacion.num_procedimiento}', 'licitacion': licitacion, 'socios_data': socios_dict.values(), 'opts': self.model._meta, 'empresas_grupo': Empresa.objects.all(), 'has_view_permission': self.has_view_permission(request, licitacion)}
         return render(request, 'admin/licitaciones/licitacion/notificar_resultados.html', context)
+    
+# 🔒 EL GATILLO CON CANDADO DE SEGURIDAD
+    def notificar_whatsapp_btn(self, obj):
+        # Validamos si existen partidas cuyo resultado ya no sea 'Pendiente'
+        tiene_resultados = obj.partidas.exclude(resultado='Pendiente').exists()
+        
+        if not tiene_resultados:
+            return format_html('<span style="color: #94a3b8; background: #f1f5f9; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;"><i class="fas fa-lock"></i> Capturar Resultados</span>')
+            
+        # Si ya tiene resultados, activa el botón que abre la pestaña emergente (Popup)
+        return format_html(
+            '<a class="button" href="{}/notificar-whatsapp/" onclick="window.open(this.href, \'whatsapp_popup\', \'width=500,height=520,resizable=no,scrollbars=yes\'); return false;" style="background-color: #25D366; color:white; padding: 5px 10px; border-radius: 4px; text-decoration: none; font-weight:bold; font-size:11px;"><i class="fab fa-whatsapp"></i> Notificar WA</a>',
+            obj.id
+        )
+    notificar_whatsapp_btn.short_description = "WhatsApp"
+
+    # 🧠 LA VISTA QUE PROCESA EL ENVÍO DESDE LA VENTANA EMERGENTE
+    def notificar_whatsapp_view(self, request, object_id):
+        from django.shortcuts import render
+        from django.http import HttpResponse
+        from .models import PerfilEquipo, Licitacion
+        from twilio.rest import Client
+        from django.conf import settings
+
+        licitacion = self.get_object(request, object_id)
+        equipo = PerfilEquipo.objects.select_related('user').filter(activo=True)
+
+        if request.method == 'POST':
+            miembros_ids = request.POST.getlist('miembros')
+            estatus_txt = licitacion.estatus.estado if licitacion.estatus else "Finalizado"
+            
+            # Formato elegante para el mensaje de WhatsApp corporativo
+            mensaje_texto = f"📋 *GPHARMA ERP - Alerta de Fallo*\n\n" \
+                            f"El analista ha registrado los resultados del evento:\n" \
+                            f"• *Procedimiento:* {licitacion.num_procedimiento}\n" \
+                            f"• *Dependencia:* {licitacion.get_dependencia_display()}\n" \
+                            f"• *Resultado General:* {estatus_txt}\n\n" \
+                            f"Por favor ingresa al ERP para consultar el desglose de las claves asignadas."
+
+            if miembros_ids:
+                try:
+                    # Conexión directa a tu motor de Twilio
+                    client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
+                    enviados = 0
+                    for m_id in miembros_ids:
+                        miembro = PerfilEquipo.objects.get(id=m_id)
+                        if miembro.whatsapp:
+                            client.messages.create(
+                                from_=settings.TWILIO_PHONE_NUMBER,
+                                body=mensaje_texto,
+                                to=f"whatsapp:{miembro.whatsapp}"
+                            )
+                            enviados += 1
+                    # Este script cierra la pestaña emergente solita al terminar
+                    return HttpResponse(f"<html><body><script>alert('¡Éxito! Notificaciones enviadas correctamente a {enviados} integrantes.'); window.close();</script></body></html>")
+                except Exception as e:
+                    return HttpResponse(f"<html><body><h3 style='color:#dc3545;'>Error al disparar Twilio: {str(e)}</h3><button onclick='window.close()'>Cerrar Ventana</button></body></html>")
+
+        context = {
+            'licitacion': licitacion,
+            'equipo': equipo,
+            'opts': self.model._meta,
+        }
+        return render(request, 'admin/licitaciones/licitacion/notificar_whatsapp_popup.html', context)    
 
 @admin.register(Empresa)
 class EmpresaAdmin(ImportExportModelAdmin):

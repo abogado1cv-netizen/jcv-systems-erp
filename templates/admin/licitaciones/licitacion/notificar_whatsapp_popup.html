@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Enviar Alerta WhatsApp</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #eff3f8; color: #1e293b; margin: 0; padding: 15px; }
+        .box { background: white; padding: 20px; border-radius: 14px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+        h3 { color: #1e3a8a; margin-top: 0; display: flex; align-items: center; gap: 8px; font-size: 1.2rem; }
+        .info-panel { background: #f8fafc; border-left: 4px solid #8b5cf6; padding: 10px; border-radius: 4px; margin-bottom: 15px; font-size: 0.85rem; }
+        .row-user { display: flex; align-items: center; padding: 10px; border-bottom: 1px solid #f1f5f9; }
+        .row-user:hover { background: #f8fafc; }
+        .meta-user { margin-left: 12px; flex: 1; }
+        .name { font-weight: 600; font-size: 0.9rem; color: #1f2937; }
+        .phone { font-size: 0.8rem; color: #25D366; font-weight: 500; }
+        .badge { background: #e0f2fe; color: #0369a1; padding: 2px 8px; border-radius: 10px; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; }
+        .btn-submit { background: #25D366; color: white; border: none; padding: 12px; width: 100%; border-radius: 8px; font-weight: 700; font-size: 0.95rem; cursor: pointer; margin-top: 15px; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 3px 6px rgba(37,211,102,0.2); }
+        .btn-submit:hover { background: #1ebd54; }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h3><i class="fab fa-whatsapp" style="color: #25D366; font-size: 1.4rem;"></i> Notificación de Resultados</h3>
+        <div class="info-panel">
+            <b>Evento:</b> {{ licitacion.num_procedimiento }}<br>
+            <b>Cliente:</b> {{ licitacion.get_dependencia_display }}
+        </div>
+        
+        <form method="POST">
+            {% csrf_token %}
+            <p style="font-size: 0.8rem; color: #64748b; font-weight: 600; margin-bottom: 8px;">SELECCIONA LAS ÁREAS INTERESADAS:</p>
+            <div style="max-height: 220px; overflow-y: auto; border: 1px solid #cbd5e1; border-radius: 8px; background: white;">
+                {% for miembro in equipo %}
+                <div class="row-user">
+                    <input type="checkbox" name="miembros" value="{{ miembro.id }}" id="user_{{ miembro.id }}" style="width: 16px; height: 16px; cursor: pointer;">
+                    <label class="meta-user" for="user_{{ miembro.id }}" style="cursor: pointer;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span class="name">{{ miembro.user.get_full_name }}</span>
+                            <span class="badge">{{ miembro.get_rol_display }}</span>
+                        </div>
+                        <div class="phone"><i class="fab fa-whatsapp"></i> {{ miembro.whatsapp }}</div>
+                    </label>
+                </div>
+                {% empty %}
+                <p style="padding: 15px; text-align: center; color: #64748b; font-size: 0.85rem;">No hay personal dado de alta en el organigrama.</p>
+                {% endfor %}
+            </div>
+            
+            {% if equipo %}
+            <button type="submit" class="btn-submit">
+                <i class="fab fa-whatsapp"></i> Enviar Alertas de WhatsApp
+            </button>
+            {% endif %}
+        </form>
+    </div>
+</body>
+</html>
