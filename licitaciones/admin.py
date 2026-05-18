@@ -928,6 +928,25 @@ class LicitacionAdmin(admin.ModelAdmin):
         )
     notificar_whatsapp_btn.short_description = "WhatsApp"
 
+# 🔒 EL GATILLO CON CANDADO DE SEGURIDAD
+    def notificar_whatsapp_btn(self, obj):
+        from django.utils.html import format_html
+        from django.utils.safestring import mark_safe  # 👈 Importamos mark_safe para texto fijo
+
+        # Validamos si existen partidas cuyo resultado ya no sea 'Pendiente'
+        tiene_resultados = obj.partidas.exclude(resultado='Pendiente').exists()
+        
+        if not tiene_resultados:
+            # 👇 Usamos mark_safe en lugar de format_html porque no hay variables {} 👇
+            return mark_safe('<span style="color: #94a3b8; background: #f1f5f9; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;"><i class="fas fa-lock"></i> Capturar Resultados</span>')
+            
+        # Si ya tiene resultados, activa el botón que abre la pestaña emergente (Popup)
+        return format_html(
+            '<a class="button" href="{}/notificar-whatsapp/" onclick="window.open(this.href, \'whatsapp_popup\', \'width=500,height=520,resizable=no,scrollbars=yes\'); return false;" style="background-color: #25D366; color:white; padding: 5px 10px; border-radius: 4px; text-decoration: none; font-weight:bold; font-size:11px;"><i class="fab fa-whatsapp"></i> Notificar WA</a>',
+            obj.id
+        )
+    notificar_whatsapp_btn.short_description = "WhatsApp"
+
     # 🧠 LA VISTA QUE PROCESA EL ENVÍO DESDE LA VENTANA EMERGENTE
     def notificar_whatsapp_view(self, request, object_id):
         from django.shortcuts import render
@@ -975,8 +994,7 @@ class LicitacionAdmin(admin.ModelAdmin):
             'equipo': equipo,
             'opts': self.model._meta,
         }
-        return render(request, 'admin/licitaciones/licitacion/notificar_whatsapp_popup.html', context)    
-
+        return render(request, 'admin/licitaciones/licitacion/notificar_whatsapp_popup.html', context)
 @admin.register(Empresa)
 class EmpresaAdmin(ImportExportModelAdmin):
     list_per_page = 30
