@@ -2295,7 +2295,7 @@ class CotizacionAdmin(admin.ModelAdmin):
     list_per_page = 30
     form = CotizacionForm
     inlines = [PartidaCotizacionInline]
-    change_form_template = "admin/licitaciones/cotizacion/change_form.html" # 👈 Habilita los 4 botones
+    change_form_template = "admin/licitaciones/cotizacion/change_form.html"
     
     list_display = ('folio', 'tipo_procedimiento', 'cliente_visual', 'fecha_emision', 'total_cotizado', 'estatus_badge', 'btn_convertir')
     search_fields = ('folio', 'razon_social', 'dependencia')
@@ -2343,12 +2343,11 @@ class CotizacionAdmin(admin.ModelAdmin):
 
                             PartidaCotizacion.objects.create(cotizacion=obj, medicamento=medicamento_db, cantidad=cantidad_final, precio_unitario=0.00)
                             importes_agregados += 1
-                    except Exception as e: continue 
+                    except Exception: continue 
             
             if importes_agregados > 0: messages.success(request, f"¡Éxito! Se cargaron {importes_agregados} partidas. Recuerda capturar los precios.")
             if claves_nuevas: messages.warning(request, f"🔔 Se crearon {len(claves_nuevas)} CLAVES NUEVAS.")
 
-    # 🔗 REGISTRO DE URLs DE LOS BOTONES
     def get_urls(self):
         urls = super().get_urls()
         from django.urls import path
@@ -2362,12 +2361,19 @@ class CotizacionAdmin(admin.ModelAdmin):
         return custom_urls + urls
 
     # ==========================================
-    # LÓGICA DE LOS 4 BOTONES MÁGICOS
+    # LÓGICA DE LOS 4 BOTONES MÁGICOS BLINDADOS
     # ==========================================
     def exportar_analisis_view(self, request, object_id):
         from django.http import HttpResponse
+        from .models import Cotizacion
+        
+        try:
+            cotizacion = Cotizacion.objects.get(id=object_id)
+        except Cotizacion.DoesNotExist:
+            messages.error(request, "⚠️ Error: No se encontró la cotización solicitada.")
+            return redirect('admin:licitaciones_cotizacion_changelist')
+
         response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-        cotizacion = self.get_object(request, object_id)
         response['Content-Disposition'] = f'attachment; filename="Analisis_Comercial_{cotizacion.folio}.xlsx"'
         
         wb = openpyxl.Workbook()
@@ -2390,9 +2396,9 @@ class CotizacionAdmin(admin.ModelAdmin):
             clave = med.clave_sector if med else 'S/C'
             precio = float(p.precio_unitario or 0)
             importe = p.cantidad * precio
-            fab = med.fabricante if med.fabricante else 'S/D'
-            marca = med.denominacion_distintiva if med.denominacion_distintiva else 'Genérico'
-            gen = med.denominacion_generica if med.denominacion_generica else 'S/D'
+            fab = med.fabricante if med else 'S/D'
+            marca = med.denominacion_distintiva if med and med.denominacion_distintiva else 'Genérico'
+            gen = med.denominacion_generica if med else 'S/D'
             
             ws.append([counter, clave, p.cantidad, precio, importe, cotizacion.get_estatus_display(), fab, marca, gen])
             counter += 1
@@ -2403,12 +2409,20 @@ class CotizacionAdmin(admin.ModelAdmin):
     def exportar_reporte_laboratorios_view(self, request, object_id):
         from django.http import HttpResponse
         from django.db.models import Sum
+        from .models import Cotizacion, Inventario
+        
+        try:
+            cotizacion = Cotizacion.objects.get(id=object_id)
+        except Cotizacion.DoesNotExist:
+            messages.error(request, "⚠️ Error: No se encontró la cotización solicitada.")
+            return redirect('admin:licitaciones_cotizacion_changelist')
+
         response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-        cotizacion = self.get_object(request, object_id)
         response['Content-Disposition'] = f'attachment; filename="Socios_{cotizacion.folio}.xlsx"'
         
         wb = openpyxl.Workbook()
         ws = wb.active
+        ws.title = "Socios"
         ws.append(['Socio Comercial', 'Clave', 'Descripción', 'Cantidad', 'Importe', 'Inventario Disponible'])
         
         for c in range(1, 7):
@@ -2423,7 +2437,7 @@ class CotizacionAdmin(admin.ModelAdmin):
             importe = p.cantidad * float(p.precio_unitario or 0)
             
             stock = Inventario.objects.filter(medicamento=med).aggregate(t=Sum('cantidad_disponible'))['t'] or 0
-            filas.append([socio, clave, med.denominacion_generica, p.cantidad, importe, stock])
+            filas.append([socio, clave, med.denominacion_generica if med else 'S/D', p.cantidad, importe, stock])
             
         filas.sort(key=lambda x: str(x[0]))
         for f in filas: ws.append(f)
@@ -2431,19 +2445,19 @@ class CotizacionAdmin(admin.ModelAdmin):
         wb.save(response)
         return response
 
-# ==========================================
-    # LÓGICA DE LOS 4 BOTONES MÁGICOS (COTIZACIONES)
-    # ==========================================
-
     def notificar_socios_view(self, request, object_id):
         from django.core.mail import EmailMultiAlternatives, get_connection
         from django.template.loader import render_to_string
         from django.utils.html import strip_tags
         from django.utils import timezone
-        from django.shortcuts import render, redirect
-        from django.contrib import messages
+        from .models import Cotizacion
         
-        cotizacion = self.get_object(request, object_id)
+        try:
+            cotizacion = Cotizacion.objects.get(id=object_id)
+        except Cotizacion.DoesNotExist:
+            messages.error(request, "⚠️ Error: No se encontró la cotización solicitada.")
+            return redirect('admin:licitaciones_cotizacion_changelist')
+            
         partidas = cotizacion.partidas_cotizacion.all()
         socios_dict = {}
         
@@ -2457,7 +2471,6 @@ class CotizacionAdmin(admin.ModelAdmin):
             socios_seleccionados = request.POST.getlist('socios')
             empresa = Empresa.objects.get(id=request.POST.get('empresa_emisora'))
             
-            # --- RUTEO MULTIPLE ---
             nombre_empresa_up = empresa.nombre.upper()
             if "SAGO" in nombre_empresa_up: lista_respuesta = ["sagomedical.licitaciones@gmail.com"]
             elif "GSM" in nombre_empresa_up: lista_respuesta = ["gsm.licitaciones@gmail.com"]
@@ -2474,7 +2487,6 @@ class CotizacionAdmin(admin.ModelAdmin):
                 if not data: continue
                 socio = data['socio']
                 
-                # Contexto para la plantilla HTML de correo
                 items = [{'partida': i+1, 'clave': p.medicamento.clave_sector, 'descripcion': p.medicamento.denominacion_generica, 'cantidad': f"{p.cantidad:,}"} for i, p in enumerate(data['partidas'])]
                 
                 color_empresa = "#3498db"
@@ -2510,10 +2522,14 @@ class CotizacionAdmin(admin.ModelAdmin):
         from django.template.loader import render_to_string
         from django.utils.html import strip_tags
         from django.utils import timezone
-        from django.shortcuts import render, redirect
-        from django.contrib import messages
+        from .models import Cotizacion
         
-        cotizacion = self.get_object(request, object_id)
+        try:
+            cotizacion = Cotizacion.objects.get(id=object_id)
+        except Cotizacion.DoesNotExist:
+            messages.error(request, "⚠️ Error: No se encontró la cotización solicitada.")
+            return redirect('admin:licitaciones_cotizacion_changelist')
+            
         partidas = cotizacion.partidas_cotizacion.all()
         socios_dict = {}
         
@@ -2523,7 +2539,6 @@ class CotizacionAdmin(admin.ModelAdmin):
                 if socio.id not in socios_dict: 
                     socios_dict[socio.id] = {'socio': socio, 'asignadas': [], 'perdidas_precio': [], 'perdidas_tecnica': [], 'pendientes': []}
                 
-                # Clasificación inteligente: Como las cotizaciones son globales, pasamos todo el bloque según el estatus de la cotización
                 if cotizacion.estatus == 'GANADA': socios_dict[socio.id]['asignadas'].append(p)
                 elif cotizacion.estatus in ['PERDIDA', 'CANCELADA']: socios_dict[socio.id]['perdidas_precio'].append(p)
                 else: socios_dict[socio.id]['pendientes'].append(p)
@@ -2582,15 +2597,13 @@ class CotizacionAdmin(admin.ModelAdmin):
 
         context = {'title': f'Notificar Resultados: {cotizacion.folio}', 'evento': cotizacion, 'socios_data': socios_dict.values(), 'opts': self.model._meta, 'empresas_grupo': Empresa.objects.all(), 'has_view_permission': True}
         return render(request, 'admin/licitaciones/cotizacion/notificar_resultados_cot.html', context)
-    # ==========================================
-    # DISPLAY EN LISTA
-    # ==========================================
+
     def cliente_visual(self, obj): return obj.razon_social if obj.tipo_procedimiento == 'COTIZACION_PRIVADA' else obj.get_dependencia_display()
     cliente_visual.short_description = "Cliente / Dependencia"
 
     def total_cotizado(self, obj):
         from django.utils.html import format_html
-        total_str = "{:,.2f}".format(float(obj.total_cotizacion)) # 👈 Formato seguro por fuera
+        total_str = "{:,.2f}".format(float(obj.total_cotizacion))
         return format_html('<b style="color: #5e35b1;">${}</b>', total_str)
     total_cotizado.short_description = "Monto Total"
 
