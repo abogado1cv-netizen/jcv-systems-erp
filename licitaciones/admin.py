@@ -2254,7 +2254,7 @@ class EscanerKardexAdmin(admin.ModelAdmin):
         return HttpResponseRedirect(reverse('buscar_kardex'))
     
 # ==========================================
-# 🚀 MÓDULO: COTIZACIONES Y VENTAS DIRECTAS
+# 🚀 MÓDULO: COTIZACIONES Y VENTAS DIRECTAS (AHORA CON CARGA MASIVA)
 # ==========================================
 class PartidaCotizacionInline(admin.TabularInline):
     model = PartidaCotizacion
@@ -2281,6 +2281,9 @@ class CotizacionAdmin(admin.ModelAdmin):
     search_fields = ('folio', 'razon_social', 'dependencia')
     list_filter = ('tipo_procedimiento', 'estatus', 'fecha_emision')
     
+    # 👇 1. AGREGAMOS EL BOTÓN DE CARGA A LOS CAMPOS DE SOLO LECTURA
+    readonly_fields = ('boton_carga_masiva',)
+    
     fieldsets = (
         ('📄 Datos del Evento', {
             'fields': ('tipo_procedimiento', 'folio', 'fecha_emision', 'vigencia_dias')
@@ -2289,10 +2292,23 @@ class CotizacionAdmin(admin.ModelAdmin):
             'fields': ('razon_social', 'dependencia'),
             'description': 'Llena Razón Social si es Privado, o elige Dependencia si es Gobierno.'
         }),
-        ('🚦 Estatus', {
-            'fields': ('estatus',)
+        ('🚦 Estatus y Acciones', {
+            # 👇 LO AGREGAMOS AL PANEL VISUAL
+            'fields': ('estatus', 'boton_carga_masiva')
         }),
     )
+
+    # 👇 2. EL BOTÓN QUE APARECE ADENTRO DEL FORMULARIO
+    def boton_carga_masiva(self, obj):
+        from django.utils.html import format_html
+        from django.utils.safestring import mark_safe
+        if obj.pk:
+            return format_html(
+                '<a class="button" href="{}/carga-masiva/" style="background-color: #3498db; color:white; padding: 10px 15px; border-radius: 4px; font-weight:bold; text-decoration: none;"><i class="fas fa-file-csv"></i> Subir Claves desde CSV</a>',
+                obj.pk
+            )
+        return mark_safe('<span style="color: #e74c3c; font-weight: bold;">Guarda la cotización por primera vez para habilitar la carga masiva.</span>')
+    boton_carga_masiva.short_description = "Carga Masiva (Excel)"
 
     def cliente_visual(self, obj):
         return obj.razon_social if obj.tipo_procedimiento == 'COTIZACION_PRIVADA' else obj.get_dependencia_display()
@@ -2335,13 +2351,75 @@ class CotizacionAdmin(admin.ModelAdmin):
         )
     btn_convertir.short_description = "Acción"
 
+    # 👇 3. FUSIONAMOS LAS URLs (El de convertir y el de carga masiva)
     def get_urls(self):
         urls = super().get_urls()
         from django.urls import path
         custom_urls = [
             path('<path:object_id>/convertir-pedido/', self.admin_site.admin_view(self.convertir_pedido_view), name='convertir_cotizacion_pedido'),
+            path('<path:object_id>/carga-masiva/', self.admin_site.admin_view(self.carga_masiva_view), name='carga_masiva_cotizacion'),
         ]
         return custom_urls + urls
+
+    # 👇 4. EL CEREBRO QUE LEE EL EXCEL/CSV Y CREA LAS PARTIDAS
+    def carga_masiva_view(self, request, object_id):
+        from django.shortcuts import render, redirect
+        from django.contrib import messages
+        import csv
+        import io
+        
+        cotizacion = self.get_object(request, object_id)
+        
+        if request.method == 'POST':
+            archivo = request.FILES.get('archivo_csv')
+            
+            if not archivo or not archivo.name.endswith('.csv'):
+                messages.error(request, "🚨 Por favor sube un archivo con formato .CSV")
+                return redirect('..')
+
+            try:
+                decoded_file = archivo.read().decode('utf-8-sig')
+                io_string = io.StringIO(decoded_file)
+                reader = csv.DictReader(io_string)
+
+                agregadas = 0
+                errores = []
+
+                for fila in reader:
+                    clave = fila.get('clave_sector', '').strip()
+                    cantidad = fila.get('cantidad', 0)
+                    precio = fila.get('precio_unitario', 0)
+
+                    if clave:
+                        med = CatalogoMedicamento.objects.filter(clave_sector=clave).first()
+                        if med:
+                            PartidaCotizacion.objects.create(
+                                cotizacion=cotizacion,
+                                medicamento=med,
+                                cantidad=int(float(cantidad or 0)),
+                                precio_unitario=float(precio or 0)
+                            )
+                            agregadas += 1
+                        else:
+                            errores.append(clave)
+
+                if agregadas > 0:
+                    messages.success(request, f"✅ ¡Magia pura! Se agregaron {agregadas} partidas a la cotización.")
+                if errores:
+                    messages.warning(request, f"⚠️ Las siguientes claves no existen en tu catálogo y fueron omitidas: {', '.join(errores)}")
+
+                return redirect('..')
+                
+            except Exception as e:
+                messages.error(request, f"❌ Error técnico al procesar el archivo: {str(e)}")
+                return redirect('..')
+
+        context = {
+            'title': f'Carga Masiva: {cotizacion.folio}',
+            'cotizacion': cotizacion,
+            'opts': self.model._meta,
+        }
+        return render(request, 'admin/licitaciones/cotizacion/carga_masiva_cot.html', context)
 
     def convertir_pedido_view(self, request, object_id):
         from django.shortcuts import redirect
@@ -2492,3 +2570,5 @@ class PedidoDirectoAdmin(admin.ModelAdmin):
             return format_html('<span style="color: white; background: #2ecc71; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px;">🟢 A tiempo ({} días)</span>', dias_restantes)
     
     semaforo_urgencia.short_description = 'Tiempo de Entrega'
+
+    

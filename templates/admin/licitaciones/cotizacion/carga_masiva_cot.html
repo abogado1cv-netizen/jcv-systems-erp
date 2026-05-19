@@ -1,0 +1,38 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls static admin_modify %}
+
+{% block content %}
+<div style="background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); max-width: 600px; margin: 0 auto; font-family: 'Segoe UI', sans-serif;">
+    <h2 style="color: #2c3e50; font-weight: 800; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-top: 0;">
+        <i class="fas fa-rocket" style="color: #3498db;"></i> Carga Masiva de Partidas
+    </h2>
+    <p style="color: #64748b; font-size: 14px;">Estás a punto de inyectar partidas automáticas a la cotización: <b>{{ cotizacion.folio }}</b>.</p>
+    
+    <div style="background: #f8fafc; border-left: 4px solid #f1c40f; padding: 15px; border-radius: 4px; margin-bottom: 20px;">
+        <h4 style="margin: 0 0 10px 0; color: #b48608; font-size: 13px; text-transform: uppercase;">⚠️ Instrucciones del Archivo</h4>
+        <p style="margin: 0; font-size: 12px; color: #475569;">
+            Tu archivo de Excel debe guardarse con formato <b>CSV (Delimitado por comas)</b> y la primera fila debe tener exactamente estos 3 encabezados en minúsculas:
+        </p>
+        <ul style="font-size: 12px; color: #475569; font-family: monospace; font-weight: bold;">
+            <li>clave_sector</li>
+            <li>cantidad</li>
+            <li>precio_unitario</li>
+        </ul>
+    </div>
+
+    <form method="POST" enctype="multipart/form-data" style="margin-top: 20px;">
+        {% csrf_token %}
+        <div style="border: 2px dashed #cbd5e1; padding: 30px; text-align: center; border-radius: 8px; background: #fdfdfd; margin-bottom: 20px;">
+            <i class="fas fa-file-excel" style="font-size: 40px; color: #2ecc71; margin-bottom: 15px;"></i><br>
+            <input type="file" name="archivo_csv" accept=".csv" required style="font-size: 14px; color: #444;">
+        </div>
+
+        <div style="display: flex; gap: 15px; justify-content: flex-end;">
+            <a href="../" style="padding: 12px 20px; background: #e2e8f0; color: #475569; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 13px;">Cancelar</a>
+            <button type="submit" style="padding: 12px 20px; background: #3498db; color: white; border: none; border-radius: 6px; font-weight: bold; font-size: 13px; cursor: pointer; box-shadow: 0 4px 6px rgba(52, 152, 219, 0.2);">
+                <i class="fas fa-upload"></i> Subir y Procesar Claves
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}
