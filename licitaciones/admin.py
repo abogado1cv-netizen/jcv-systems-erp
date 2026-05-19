@@ -2254,11 +2254,28 @@ class EscanerKardexAdmin(admin.ModelAdmin):
         return HttpResponseRedirect(reverse('buscar_kardex'))
     
 # ==========================================
-# 🚀 MÓDULO: COTIZACIONES Y VENTAS DIRECTAS (AHORA CON CARGA MASIVA)
+# 🚀 MÓDULO: COTIZACIONES Y VENTAS DIRECTAS (COPIAR Y PEGAR DESDE EXCEL)
 # ==========================================
+from django import forms
+from django.contrib import messages
+from django.shortcuts import redirect
+import io
+import csv
+
+class CotizacionForm(forms.ModelForm):
+    pegar_excel = forms.CharField(
+        label="📥 Carga Masiva (Pegar desde Excel)", 
+        required=False, 
+        widget=forms.Textarea(attrs={'rows': 6, 'placeholder': 'Ejemplo:\n010.000.4434.00\t500\t12.50'}), 
+        help_text="Copia de Excel 3 columnas juntas: CLAVE | CANTIDAD | PRECIO_UNITARIO"
+    )
+    class Meta:
+        model = Cotizacion
+        fields = '__all__'
+
 class PartidaCotizacionInline(admin.TabularInline):
     model = PartidaCotizacion
-    extra = 1
+    extra = 0
     autocomplete_fields = ['medicamento']  
     fields = ('medicamento', 'cantidad', 'precio_unitario', 'importe_visual')
     readonly_fields = ('importe_visual',)
@@ -2267,22 +2284,19 @@ class PartidaCotizacionInline(admin.TabularInline):
         from django.utils.html import format_html
         if obj.cantidad and obj.precio_unitario:
             total = float(obj.cantidad) * float(obj.precio_unitario)
-            total_str = "{:,.2f}".format(total)
-            return format_html('<b>${}</b>', total_str)
+            return format_html('<b>${:,.2f}</b>', total)
         return "$0.00"
     importe_visual.short_description = "Importe"
 
 @admin.register(Cotizacion)
 class CotizacionAdmin(admin.ModelAdmin):
     list_per_page = 30
+    form = CotizacionForm # 👈 Le inyectamos el formulario con el cuadro de texto
     inlines = [PartidaCotizacionInline]
     
     list_display = ('folio', 'tipo_procedimiento', 'cliente_visual', 'fecha_emision', 'total_cotizado', 'estatus_badge', 'btn_convertir')
     search_fields = ('folio', 'razon_social', 'dependencia')
     list_filter = ('tipo_procedimiento', 'estatus', 'fecha_emision')
-    
-    # 👇 1. AGREGAMOS EL BOTÓN DE CARGA A LOS CAMPOS DE SOLO LECTURA
-    readonly_fields = ('boton_carga_masiva',)
     
     fieldsets = (
         ('📄 Datos del Evento', {
@@ -2292,23 +2306,61 @@ class CotizacionAdmin(admin.ModelAdmin):
             'fields': ('razon_social', 'dependencia'),
             'description': 'Llena Razón Social si es Privado, o elige Dependencia si es Gobierno.'
         }),
-        ('🚦 Estatus y Acciones', {
-            # 👇 LO AGREGAMOS AL PANEL VISUAL
-            'fields': ('estatus', 'boton_carga_masiva')
+        ('🚦 Estatus', {
+            'fields': ('estatus',)
+        }),
+        ('⚡ Carga Automática', {
+            'fields': ('pegar_excel',),
+            'description': 'Pega aquí tus partidas para llenarlas en automático al guardar.'
         }),
     )
 
-    # 👇 2. EL BOTÓN QUE APARECE ADENTRO DEL FORMULARIO
-    def boton_carga_masiva(self, obj):
-        from django.utils.html import format_html
-        from django.utils.safestring import mark_safe
-        if obj.pk:
-            return format_html(
-                '<a class="button" href="{}/carga-masiva/" style="background-color: #3498db; color:white; padding: 10px 15px; border-radius: 4px; font-weight:bold; text-decoration: none;"><i class="fas fa-file-csv"></i> Subir Claves desde CSV</a>',
-                obj.pk
-            )
-        return mark_safe('<span style="color: #e74c3c; font-weight: bold;">Guarda la cotización por primera vez para habilitar la carga masiva.</span>')
-    boton_carga_masiva.short_description = "Carga Masiva (Excel)"
+    # 👇 MAGIA: Lee lo que pegaste y lo convierte en partidas al darle "Guardar"
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change) 
+        datos_excel = form.cleaned_data.get('pegar_excel')
+        
+        if datos_excel:
+            from django.db import transaction
+            importes_agregados, claves_omitidas, errores_filas = 0, [], []
+            texto_seguro = datos_excel.replace('\r\n', '\n').replace('\r', '\n')
+            f = io.StringIO(texto_seguro)
+            lector = csv.reader(f, dialect='excel-tab')
+            
+            for columnas in lector:
+                if not columnas or not "".join(columnas).strip(): continue
+                if len(columnas) >= 3:
+                    try:
+                        with transaction.atomic():
+                            clave_val = columnas[0].strip()
+                            cant_str = columnas[1].strip().replace(',', '').replace(' ', '')
+                            precio_str = columnas[2].strip().replace(',', '').replace(' ', '').replace('$', '')
+                            
+                            if not clave_val: continue
+                            cantidad = int(float(cant_str)) if cant_str else 0
+                            precio = float(precio_str) if precio_str else 0.0
+
+                            medicamento_db = CatalogoMedicamento.objects.filter(clave_sector=clave_val).first()
+                            
+                            if not medicamento_db:
+                                claves_omitidas.append(clave_val)
+                                continue
+
+                            PartidaCotizacion.objects.create(
+                                cotizacion=obj, 
+                                medicamento=medicamento_db, 
+                                cantidad=cantidad, 
+                                precio_unitario=precio
+                            )
+                            importes_agregados += 1
+                    except Exception as e:
+                        errores_filas.append(f"Clave {columnas[0]}: Error ({e})")
+                        continue 
+            
+            if importes_agregados > 0: 
+                messages.success(request, f"¡Éxito! Se cargaron {importes_agregados} partidas a la cotización.")
+            if claves_omitidas: 
+                messages.warning(request, f"⚠️ Se omitieron estas claves porque NO existen en el catálogo: {', '.join(set(claves_omitidas))}")
 
     def cliente_visual(self, obj):
         return obj.razon_social if obj.tipo_procedimiento == 'COTIZACION_PRIVADA' else obj.get_dependencia_display()
@@ -2316,121 +2368,38 @@ class CotizacionAdmin(admin.ModelAdmin):
 
     def total_cotizado(self, obj):
         from django.utils.html import format_html
-        total_str = "{:,.2f}".format(float(obj.total_cotizacion))
-        return format_html('<b style="color: #5e35b1;">${}</b>', total_str)
+        return format_html('<b style="color: #5e35b1;">${:,.2f}</b>', float(obj.total_cotizacion))
     total_cotizado.short_description = "Monto Total"
 
     def estatus_badge(self, obj):
         from django.utils.html import format_html
-        colores = {
-            'BORRADOR': '#6c757d',   
-            'ENVIADA': '#17a2b8', 
-            'GANADA': '#28a745',   
-            'PERDIDA': '#dc3545',
-            'CANCELADA': '#343a40'
-        }
+        colores = {'BORRADOR': '#6c757d', 'ENVIADA': '#17a2b8', 'GANADA': '#28a745', 'PERDIDA': '#dc3545', 'CANCELADA': '#343a40'}
         color = colores.get(obj.estatus, '#000')
-        return format_html(
-            '<span style="background-color: {}; color: white; padding: 4px 10px; border-radius: 6px; font-weight: bold; font-size: 11px;">{}</span>',
-            color, obj.get_estatus_display()
-        )
+        return format_html('<span style="background-color: {}; color: white; padding: 4px 10px; border-radius: 6px; font-weight: bold; font-size: 11px;">{}</span>', color, obj.get_estatus_display())
     estatus_badge.short_description = "Estatus"
 
     def btn_convertir(self, obj):
         from django.utils.html import format_html
         from django.utils.safestring import mark_safe
-        
-        if obj.estatus == 'GANADA':
-            return mark_safe('<span style="color: #28a745; font-weight:bold;">✔ Ya es Pedido</span>')
-        if obj.estatus in ['PERDIDA', 'CANCELADA']:
-            return mark_safe('<span style="color: #dc3545; font-weight:bold;">🚫 Rechazada</span>')
-            
-        return format_html(
-            '<a class="button" href="{}/convertir-pedido/" style="background-color: #28a745; color:white; padding: 5px 10px; border-radius: 4px; text-decoration: none; font-weight:bold;">✨ Hacer Pedido</a>',
-            obj.id
-        )
+        if obj.estatus == 'GANADA': return mark_safe('<span style="color: #28a745; font-weight:bold;">✔ Ya es Pedido</span>')
+        if obj.estatus in ['PERDIDA', 'CANCELADA']: return mark_safe('<span style="color: #dc3545; font-weight:bold;">🚫 Rechazada</span>')
+        return format_html('<a class="button" href="{}/convertir-pedido/" style="background-color: #28a745; color:white; padding: 5px 10px; border-radius: 4px; text-decoration: none; font-weight:bold;">✨ Hacer Pedido</a>', obj.id)
     btn_convertir.short_description = "Acción"
 
-    # 👇 3. FUSIONAMOS LAS URLs (El de convertir y el de carga masiva)
     def get_urls(self):
         urls = super().get_urls()
         from django.urls import path
-        custom_urls = [
-            path('<path:object_id>/convertir-pedido/', self.admin_site.admin_view(self.convertir_pedido_view), name='convertir_cotizacion_pedido'),
-            path('<path:object_id>/carga-masiva/', self.admin_site.admin_view(self.carga_masiva_view), name='carga_masiva_cotizacion'),
-        ]
+        custom_urls = [path('<path:object_id>/convertir-pedido/', self.admin_site.admin_view(self.convertir_pedido_view), name='convertir_cotizacion_pedido')]
         return custom_urls + urls
-
-    # 👇 4. EL CEREBRO QUE LEE EL EXCEL/CSV Y CREA LAS PARTIDAS
-    def carga_masiva_view(self, request, object_id):
-        from django.shortcuts import render, redirect
-        from django.contrib import messages
-        import csv
-        import io
-        
-        cotizacion = self.get_object(request, object_id)
-        
-        if request.method == 'POST':
-            archivo = request.FILES.get('archivo_csv')
-            
-            if not archivo or not archivo.name.endswith('.csv'):
-                messages.error(request, "🚨 Por favor sube un archivo con formato .CSV")
-                return redirect('..')
-
-            try:
-                decoded_file = archivo.read().decode('utf-8-sig')
-                io_string = io.StringIO(decoded_file)
-                reader = csv.DictReader(io_string)
-
-                agregadas = 0
-                errores = []
-
-                for fila in reader:
-                    clave = fila.get('clave_sector', '').strip()
-                    cantidad = fila.get('cantidad', 0)
-                    precio = fila.get('precio_unitario', 0)
-
-                    if clave:
-                        med = CatalogoMedicamento.objects.filter(clave_sector=clave).first()
-                        if med:
-                            PartidaCotizacion.objects.create(
-                                cotizacion=cotizacion,
-                                medicamento=med,
-                                cantidad=int(float(cantidad or 0)),
-                                precio_unitario=float(precio or 0)
-                            )
-                            agregadas += 1
-                        else:
-                            errores.append(clave)
-
-                if agregadas > 0:
-                    messages.success(request, f"✅ ¡Magia pura! Se agregaron {agregadas} partidas a la cotización.")
-                if errores:
-                    messages.warning(request, f"⚠️ Las siguientes claves no existen en tu catálogo y fueron omitidas: {', '.join(errores)}")
-
-                return redirect('..')
-                
-            except Exception as e:
-                messages.error(request, f"❌ Error técnico al procesar el archivo: {str(e)}")
-                return redirect('..')
-
-        context = {
-            'title': f'Carga Masiva: {cotizacion.folio}',
-            'cotizacion': cotizacion,
-            'opts': self.model._meta,
-        }
-        return render(request, 'admin/licitaciones/cotizacion/carga_masiva_cot.html', context)
 
     def convertir_pedido_view(self, request, object_id):
         from django.shortcuts import redirect
-        from django.contrib import messages
         from django.utils import timezone
         from .models import PartidaOrden, PedidoDirecto
 
         cotizacion = self.get_object(request, object_id)
-
         if cotizacion.estatus == 'GANADA':
-            messages.warning(request, "Esta cotización ya fue convertida a pedido anteriormente.")
+            messages.warning(request, "Esta cotización ya fue convertida a pedido.")
             return redirect('admin:licitaciones_cotizacion_changelist')
 
         nueva_orden = PedidoDirecto.objects.create(
@@ -2443,23 +2412,17 @@ class CotizacionAdmin(admin.ModelAdmin):
 
         claves_copiadas = 0
         for partida in cotizacion.partidas_cotizacion.all():
-            nueva_partida = PartidaOrden.objects.create(
-                orden=nueva_orden,
-                cantidad_solicitada=partida.cantidad,
-                precio_unitario=partida.precio_unitario
-            )
+            nueva_partida = PartidaOrden.objects.create(orden=nueva_orden, cantidad_solicitada=partida.cantidad, precio_unitario=partida.precio_unitario)
             try:
                 nueva_partida.medicamento = partida.medicamento
                 nueva_partida.save()
             except Exception:
                  nueva_partida.clave_historica = partida.medicamento.clave_sector
                  nueva_partida.save()
-                 
             claves_copiadas += 1
 
         cotizacion.estatus = 'GANADA'
         cotizacion.save()
-
         messages.success(request, f"¡Magia pura! ✨ Se generó el Pedido Directo {nueva_orden.numero_orden_suministro} con {claves_copiadas} claves. Tiene 10 días límite.")
         return redirect('admin:licitaciones_pedidodirecto_change', nueva_orden.id)
     
