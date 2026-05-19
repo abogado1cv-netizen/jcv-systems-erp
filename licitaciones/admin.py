@@ -2254,20 +2254,21 @@ class EscanerKardexAdmin(admin.ModelAdmin):
         return HttpResponseRedirect(reverse('buscar_kardex'))
     
 # ==========================================
-# 🚀 MÓDULO: COTIZACIONES Y VENTAS DIRECTAS (COPIAR Y PEGAR DESDE EXCEL)
+# 🚀 MÓDULO: COTIZACIONES Y VENTAS DIRECTAS (PARIDAD CON LICITACIONES)
 # ==========================================
 from django import forms
+from django.shortcuts import redirect, render
 from django.contrib import messages
-from django.shortcuts import redirect
-import io
-import csv
+import io, csv
+import openpyxl
+from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 
 class CotizacionForm(forms.ModelForm):
     pegar_excel = forms.CharField(
         label="📥 Carga Masiva (Pegar desde Excel)", 
         required=False, 
-        widget=forms.Textarea(attrs={'rows': 6, 'placeholder': 'Ejemplo:\n010.000.4434.00\t500\t12.50'}), 
-        help_text="Copia de Excel 3 columnas juntas: CLAVE | CANTIDAD | PRECIO_UNITARIO"
+        widget=forms.Textarea(attrs={'rows': 6, 'placeholder': 'Ejemplo:\n1\t010.000.4434.00\tPARACETAMOL 500MG\t500\t1000'}), 
+        help_text="Copia de Excel 4 o 5 columnas juntas: PARTIDA | CLAVE | DESCRIPCIÓN | (OPCIONAL: MIN) | MAX. Los precios quedarán en $0.00 para llenarlos a mano."
     )
     class Meta:
         model = Cotizacion
@@ -2291,94 +2292,216 @@ class PartidaCotizacionInline(admin.TabularInline):
 @admin.register(Cotizacion)
 class CotizacionAdmin(admin.ModelAdmin):
     list_per_page = 30
-    form = CotizacionForm # 👈 Le inyectamos el formulario con el cuadro de texto
+    form = CotizacionForm
     inlines = [PartidaCotizacionInline]
+    change_form_template = "admin/licitaciones/cotizacion/change_form.html" # 👈 Habilita los 4 botones
     
     list_display = ('folio', 'tipo_procedimiento', 'cliente_visual', 'fecha_emision', 'total_cotizado', 'estatus_badge', 'btn_convertir')
     search_fields = ('folio', 'razon_social', 'dependencia')
     list_filter = ('tipo_procedimiento', 'estatus', 'fecha_emision')
     
     fieldsets = (
-        ('📄 Datos del Evento', {
-            'fields': ('tipo_procedimiento', 'folio', 'fecha_emision', 'vigencia_dias')
-        }),
-        ('🏢 Cliente', {
-            'fields': ('razon_social', 'dependencia'),
-            'description': 'Llena Razón Social si es Privado, o elige Dependencia si es Gobierno.'
-        }),
-        ('🚦 Estatus', {
-            'fields': ('estatus',)
-        }),
-        ('⚡ Carga Automática', {
-            'fields': ('pegar_excel',),
-            'description': 'Pega aquí tus partidas para llenarlas en automático al guardar.'
-        }),
+        ('📄 Datos del Evento', {'fields': ('tipo_procedimiento', 'folio', 'fecha_emision', 'vigencia_dias')}),
+        ('🏢 Cliente', {'fields': ('razon_social', 'dependencia')}),
+        ('🚦 Estatus', {'fields': ('estatus',)}),
+        ('⚡ Carga Automática (Excel)', {'fields': ('pegar_excel',)}),
     )
 
-    # 👇 MAGIA: Lee lo que pegaste y lo convierte en partidas al darle "Guardar"
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change) 
         datos_excel = form.cleaned_data.get('pegar_excel')
         
         if datos_excel:
             from django.db import transaction
-            importes_agregados, claves_omitidas, errores_filas = 0, [], []
+            importes_agregados, claves_nuevas = 0, []
             texto_seguro = datos_excel.replace('\r\n', '\n').replace('\r', '\n')
             f = io.StringIO(texto_seguro)
             lector = csv.reader(f, dialect='excel-tab')
             
             for columnas in lector:
                 if not columnas or not "".join(columnas).strip(): continue
-                if len(columnas) >= 3:
+                if len(columnas) >= 4:
                     try:
                         with transaction.atomic():
-                            clave_val = columnas[0].strip()
-                            cant_str = columnas[1].strip().replace(',', '').replace(' ', '')
-                            precio_str = columnas[2].strip().replace(',', '').replace(' ', '').replace('$', '')
+                            clave_val = columnas[1].strip()
+                            descripcion_val = columnas[2].strip().replace('\n', ' ') 
                             
-                            if not clave_val: continue
-                            cantidad = int(float(cant_str)) if cant_str else 0
-                            precio = float(precio_str) if precio_str else 0.0
+                            if len(columnas) >= 5 and columnas[4].strip():
+                                max_str = columnas[4].strip().replace(',', '').replace(' ', '')
+                            else:
+                                max_str = columnas[3].strip().replace(',', '').replace(' ', '')
+                                
+                            if not clave_val or not max_str: continue
+                            cantidad_final = int(float(max_str))
 
                             medicamento_db = CatalogoMedicamento.objects.filter(clave_sector=clave_val).first()
-                            
                             if not medicamento_db:
-                                claves_omitidas.append(clave_val)
-                                continue
+                                medicamento_db = CatalogoMedicamento(clave_sector=clave_val, descripcion=descripcion_val, denominacion_generica=descripcion_val, fabricante='')
+                                medicamento_db.save()
+                                claves_nuevas.append(clave_val)
 
-                            PartidaCotizacion.objects.create(
-                                cotizacion=obj, 
-                                medicamento=medicamento_db, 
-                                cantidad=cantidad, 
-                                precio_unitario=precio
-                            )
+                            PartidaCotizacion.objects.create(cotizacion=obj, medicamento=medicamento_db, cantidad=cantidad_final, precio_unitario=0.00)
                             importes_agregados += 1
-                    except Exception as e:
-                        errores_filas.append(f"Clave {columnas[0]}: Error ({e})")
-                        continue 
+                    except Exception as e: continue 
             
-            if importes_agregados > 0: 
-                messages.success(request, f"¡Éxito! Se cargaron {importes_agregados} partidas a la cotización.")
-            if claves_omitidas: 
-                messages.warning(request, f"⚠️ Se omitieron estas claves porque NO existen en el catálogo: {', '.join(set(claves_omitidas))}")
+            if importes_agregados > 0: messages.success(request, f"¡Éxito! Se cargaron {importes_agregados} partidas. Recuerda capturar los precios.")
+            if claves_nuevas: messages.warning(request, f"🔔 Se crearon {len(claves_nuevas)} CLAVES NUEVAS.")
 
-    def cliente_visual(self, obj):
-        return obj.razon_social if obj.tipo_procedimiento == 'COTIZACION_PRIVADA' else obj.get_dependencia_display()
+    # 🔗 REGISTRO DE URLs DE LOS BOTONES
+    def get_urls(self):
+        urls = super().get_urls()
+        from django.urls import path
+        custom_urls = [
+            path('<path:object_id>/convertir-pedido/', self.admin_site.admin_view(self.convertir_pedido_view), name='convertir_cotizacion_pedido'),
+            path('<path:object_id>/exportar-analisis/', self.admin_site.admin_view(self.exportar_analisis_view), name='exportar_analisis_cotizacion'),
+            path('<path:object_id>/exportar-reporte-laboratorios/', self.admin_site.admin_view(self.exportar_reporte_laboratorios_view), name='exportar_reporte_laboratorios_cotizacion'),
+            path('<path:object_id>/notificar-socios/', self.admin_site.admin_view(self.notificar_socios_view), name='notificar_socios_cotizacion'),
+            path('<path:object_id>/notificar-resultados/', self.admin_site.admin_view(self.notificar_resultados_view), name='notificar_resultados_cotizacion'),
+        ]
+        return custom_urls + urls
+
+    # ==========================================
+    # LÓGICA DE LOS 4 BOTONES MÁGICOS
+    # ==========================================
+    def exportar_analisis_view(self, request, object_id):
+        from django.http import HttpResponse
+        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        cotizacion = self.get_object(request, object_id)
+        response['Content-Disposition'] = f'attachment; filename="Analisis_Comercial_{cotizacion.folio}.xlsx"'
+        
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Análisis"
+        
+        encabezados = ['PARTIDA (N/A)', 'CLAVE', 'CANTIDAD SOLICITADA', 'PRECIO UNITARIO', 'IMPORTE TOTAL', 'ESTATUS GLOBAL', 'FABRICANTE', 'MARCA', 'GENÉRICA']
+        ws.append(['', 'FOLIO', 'CLIENTE/DEPENDENCIA', 'TIPO EVENTO'])
+        ws.append(['', cotizacion.folio, self.cliente_visual(cotizacion), cotizacion.get_tipo_procedimiento_display()])
+        ws.append([])
+        ws.append(encabezados)
+        
+        for c in range(1, 10):
+            ws.cell(row=4, column=c).font = Font(bold=True)
+            ws.cell(row=4, column=c).fill = PatternFill("solid", fgColor="D9D9D9")
+            
+        counter = 1
+        for p in cotizacion.partidas_cotizacion.all():
+            med = p.medicamento
+            clave = med.clave_sector if med else 'S/C'
+            precio = float(p.precio_unitario or 0)
+            importe = p.cantidad * precio
+            fab = med.fabricante if med.fabricante else 'S/D'
+            marca = med.denominacion_distintiva if med.denominacion_distintiva else 'Genérico'
+            gen = med.denominacion_generica if med.denominacion_generica else 'S/D'
+            
+            ws.append([counter, clave, p.cantidad, precio, importe, cotizacion.get_estatus_display(), fab, marca, gen])
+            counter += 1
+            
+        wb.save(response)
+        return response
+
+    def exportar_reporte_laboratorios_view(self, request, object_id):
+        from django.http import HttpResponse
+        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        cotizacion = self.get_object(request, object_id)
+        response['Content-Disposition'] = f'attachment; filename="Socios_{cotizacion.folio}.xlsx"'
+        
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.append(['Socio Comercial', 'Clave', 'Descripción', 'Cantidad', 'Importe', 'Inventario Disponible'])
+        
+        for c in range(1, 7):
+            ws.cell(row=1, column=c).font = Font(bold=True)
+            ws.cell(row=1, column=c).fill = PatternFill("solid", fgColor="D9D9D9")
+            
+        filas = []
+        for p in cotizacion.partidas_cotizacion.all():
+            med = p.medicamento
+            socio = med.socio_contacto.nombre if med and med.socio_contacto else 'SIN SOCIO'
+            clave = med.clave_sector if med else 'S/C'
+            importe = p.cantidad * float(p.precio_unitario or 0)
+            
+            stock = Inventario.objects.filter(medicamento=med).aggregate(t=django.db.models.Sum('cantidad_disponible'))['t'] or 0
+            filas.append([socio, clave, med.denominacion_generica, p.cantidad, importe, stock])
+            
+        filas.sort(key=lambda x: str(x[0]))
+        for f in filas: ws.append(f)
+            
+        wb.save(response)
+        return response
+
+    def notificar_socios_view(self, request, object_id):
+        from django.core.mail import EmailMultiAlternatives, get_connection
+        from django.template.loader import render_to_string
+        from django.utils.html import strip_tags
+        from django.utils import timezone
+        
+        cotizacion = self.get_object(request, object_id)
+        partidas = cotizacion.partidas_cotizacion.all()
+        socios_dict = {}
+        
+        for p in partidas:
+            socio = p.medicamento.socio_contacto if p.medicamento else None
+            if socio:
+                if socio.id not in socios_dict: socios_dict[socio.id] = {'socio': socio, 'partidas': []}
+                socios_dict[socio.id]['partidas'].append(p)
+
+        if request.method == 'POST':
+            socios_seleccionados = request.POST.getlist('socios')
+            empresa = Empresa.objects.get(id=request.POST.get('empresa_emisora'))
+            conexion_dinamica = get_connection()
+            enviados = 0
+            
+            for s_id in socios_seleccionados:
+                data = socios_dict.get(int(s_id))
+                if not data: continue
+                socio = data['socio']
+                
+                # Reutilizamos el template de licitaciones porque es idéntico visualmente
+                items = [{'partida': i+1, 'clave': p.medicamento.clave_sector, 'descripcion': p.medicamento.denominacion_generica, 'cantidad': p.cantidad} for i, p in enumerate(data['partidas'])]
+                
+                ctx = {
+                    'socio_nombre': socio.nombre, 'evento_num': cotizacion.folio,
+                    'dependencia': self.cliente_visual(cotizacion), 'empresa_emisora': empresa.nombre,
+                    'url_logo': empresa.url_logo if hasattr(empresa, 'url_logo') else None,
+                    'color_empresa': "#3498db", 'fecha_actual': timezone.now().strftime('%d/%m/%Y'), 'items': items
+                }
+                
+                html_content = render_to_string('admin/licitaciones/licitacion/emails/cotizacion_email.html', ctx)
+                msg = EmailMultiAlternatives(f"Apoyo Comercial - Evento {cotizacion.folio}", strip_tags(html_content), f'"{empresa.nombre}" <{empresa.correo_remitente}>', [c.strip() for c in socio.correos.split(',') if c.strip()], connection=conexion_dinamica)
+                msg.attach_alternative(html_content, "text/html")
+                for archivo in request.FILES.getlist('adjuntos'): msg.attach(archivo.name, archivo.read(), archivo.content_type)
+                try: 
+                    msg.send()
+                    enviados += 1
+                except Exception as e: messages.error(request, f"Error: {e}")
+                
+            if enviados > 0: messages.success(request, f"¡Se enviaron {enviados} requerimientos a laboratorios!")
+            return redirect('admin:licitaciones_cotizacion_change', object_id)
+
+        context = {'title': f'Notificar Socios: {cotizacion.folio}', 'licitacion': cotizacion, 'socios_data': socios_dict.values(), 'opts': self.model._meta, 'empresas_grupo': Empresa.objects.all(), 'has_view_permission': True}
+        # Reutilizamos la misma pantalla
+        return render(request, 'admin/licitaciones/licitacion/notificar_socios.html', context)
+
+    def notificar_resultados_view(self, request, object_id):
+        # Es exactamente la misma lógica, pero mandando el estatus de la cotización
+        messages.success(request, "Las notificaciones de resultados para cotizaciones directas operan a través del módulo general. Funció en desarrollo para Ventas Directas.")
+        return redirect('admin:licitaciones_cotizacion_change', object_id)
+
+    # ==========================================
+    # DISPLAY EN LISTA
+    # ==========================================
+    def cliente_visual(self, obj): return obj.razon_social if obj.tipo_procedimiento == 'COTIZACION_PRIVADA' else obj.get_dependencia_display()
     cliente_visual.short_description = "Cliente / Dependencia"
 
     def total_cotizado(self, obj):
         from django.utils.html import format_html
-        # Primero le damos el formato de moneda al número por fuera
-        total_str = "{:,.2f}".format(float(obj.total_cotizacion))
-        # Luego lo inyectamos al HTML de forma segura
-        return format_html('<b style="color: #5e35b1;">${}</b>', total_str)
+        return format_html('<b style="color: #5e35b1;">${:,.2f}</b>', float(obj.total_cotizacion))
     total_cotizado.short_description = "Monto Total"
 
     def estatus_badge(self, obj):
         from django.utils.html import format_html
         colores = {'BORRADOR': '#6c757d', 'ENVIADA': '#17a2b8', 'GANADA': '#28a745', 'PERDIDA': '#dc3545', 'CANCELADA': '#343a40'}
-        color = colores.get(obj.estatus, '#000')
-        return format_html('<span style="background-color: {}; color: white; padding: 4px 10px; border-radius: 6px; font-weight: bold; font-size: 11px;">{}</span>', color, obj.get_estatus_display())
+        return format_html('<span style="background-color: {}; color: white; padding: 4px 10px; border-radius: 6px; font-weight: bold; font-size: 11px;">{}</span>', colores.get(obj.estatus, '#000'), obj.get_estatus_display())
     estatus_badge.short_description = "Estatus"
 
     def btn_convertir(self, obj):
@@ -2389,44 +2512,18 @@ class CotizacionAdmin(admin.ModelAdmin):
         return format_html('<a class="button" href="{}/convertir-pedido/" style="background-color: #28a745; color:white; padding: 5px 10px; border-radius: 4px; text-decoration: none; font-weight:bold;">✨ Hacer Pedido</a>', obj.id)
     btn_convertir.short_description = "Acción"
 
-    def get_urls(self):
-        urls = super().get_urls()
-        from django.urls import path
-        custom_urls = [path('<path:object_id>/convertir-pedido/', self.admin_site.admin_view(self.convertir_pedido_view), name='convertir_cotizacion_pedido')]
-        return custom_urls + urls
-
     def convertir_pedido_view(self, request, object_id):
-        from django.shortcuts import redirect
         from django.utils import timezone
         from .models import PartidaOrden, PedidoDirecto
-
         cotizacion = self.get_object(request, object_id)
-        if cotizacion.estatus == 'GANADA':
-            messages.warning(request, "Esta cotización ya fue convertida a pedido.")
-            return redirect('admin:licitaciones_cotizacion_changelist')
-
-        nueva_orden = PedidoDirecto.objects.create(
-            numero_orden_suministro=f"PED-{cotizacion.folio}", 
-            razon_social=cotizacion.razon_social,
-            dependencia=cotizacion.dependencia,
-            fecha_recepcion=timezone.now().date(),
-            estatus='PENDIENTE'
-        )
-
-        claves_copiadas = 0
+        nueva_orden = PedidoDirecto.objects.create(numero_orden_suministro=f"PED-{cotizacion.folio}", razon_social=cotizacion.razon_social, dependencia=cotizacion.dependencia, fecha_recepcion=timezone.now().date(), estatus='PENDIENTE')
         for partida in cotizacion.partidas_cotizacion.all():
-            nueva_partida = PartidaOrden.objects.create(orden=nueva_orden, cantidad_solicitada=partida.cantidad, precio_unitario=partida.precio_unitario)
-            try:
-                nueva_partida.medicamento = partida.medicamento
-                nueva_partida.save()
-            except Exception:
-                 nueva_partida.clave_historica = partida.medicamento.clave_sector
-                 nueva_partida.save()
-            claves_copiadas += 1
-
+            np = PartidaOrden.objects.create(orden=nueva_orden, cantidad_solicitada=partida.cantidad, precio_unitario=partida.precio_unitario)
+            if partida.medicamento: np.medicamento = partida.medicamento; np.save()
+            else: np.clave_historica = partida.medicamento.clave_sector; np.save()
         cotizacion.estatus = 'GANADA'
         cotizacion.save()
-        messages.success(request, f"¡Magia pura! ✨ Se generó el Pedido Directo {nueva_orden.numero_orden_suministro} con {claves_copiadas} claves. Tiene 10 días límite.")
+        messages.success(request, "Se generó el Pedido Directo.")
         return redirect('admin:licitaciones_pedidodirecto_change', nueva_orden.id)
     
     # ==========================================
