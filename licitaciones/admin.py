@@ -1612,14 +1612,6 @@ class OrdenSuministroAdmin(ImportExportModelAdmin):
                 del actions['marcar_como_canceladas']
                 
         return actions
-    
-
-@admin.register(PedidoDirecto)
-class PedidoDirectoAdmin(OrdenSuministroAdmin):
-    def get_queryset(self, request):
-        # FIX: Usar super() de forma correcta para que no choque con ImportExportModelAdmin
-        qs = super().get_queryset(request)
-        return qs.filter(tipo_documento='PEDIDO')
 
 # ==========================================
 # REGISTRO DEL NUEVO MÓDULO DE INVENTARIO
