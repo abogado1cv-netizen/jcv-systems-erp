@@ -2402,6 +2402,7 @@ class CotizacionAdmin(admin.ModelAdmin):
 
     def exportar_reporte_laboratorios_view(self, request, object_id):
         from django.http import HttpResponse
+        from django.db.models import Sum
         response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         cotizacion = self.get_object(request, object_id)
         response['Content-Disposition'] = f'attachment; filename="Socios_{cotizacion.folio}.xlsx"'
@@ -2421,7 +2422,7 @@ class CotizacionAdmin(admin.ModelAdmin):
             clave = med.clave_sector if med else 'S/C'
             importe = p.cantidad * float(p.precio_unitario or 0)
             
-            stock = Inventario.objects.filter(medicamento=med).aggregate(t=django.db.models.Sum('cantidad_disponible'))['t'] or 0
+            stock = Inventario.objects.filter(medicamento=med).aggregate(t=Sum('cantidad_disponible'))['t'] or 0
             filas.append([socio, clave, med.denominacion_generica, p.cantidad, importe, stock])
             
         filas.sort(key=lambda x: str(x[0]))
@@ -2430,11 +2431,17 @@ class CotizacionAdmin(admin.ModelAdmin):
         wb.save(response)
         return response
 
+# ==========================================
+    # LÓGICA DE LOS 4 BOTONES MÁGICOS (COTIZACIONES)
+    # ==========================================
+
     def notificar_socios_view(self, request, object_id):
         from django.core.mail import EmailMultiAlternatives, get_connection
         from django.template.loader import render_to_string
         from django.utils.html import strip_tags
         from django.utils import timezone
+        from django.shortcuts import render, redirect
+        from django.contrib import messages
         
         cotizacion = self.get_object(request, object_id)
         partidas = cotizacion.partidas_cotizacion.all()
@@ -2449,6 +2456,16 @@ class CotizacionAdmin(admin.ModelAdmin):
         if request.method == 'POST':
             socios_seleccionados = request.POST.getlist('socios')
             empresa = Empresa.objects.get(id=request.POST.get('empresa_emisora'))
+            
+            # --- RUTEO MULTIPLE ---
+            nombre_empresa_up = empresa.nombre.upper()
+            if "SAGO" in nombre_empresa_up: lista_respuesta = ["sagomedical.licitaciones@gmail.com"]
+            elif "GSM" in nombre_empresa_up: lista_respuesta = ["gsm.licitaciones@gmail.com"]
+            else: lista_respuesta = ["licitaciones2@gpharma.com"]
+            
+            if empresa.correos_notificacion:
+                lista_respuesta.extend([c.strip() for c in empresa.correos_notificacion.split(',') if c.strip()])
+                
             conexion_dinamica = get_connection()
             enviados = 0
             
@@ -2457,37 +2474,114 @@ class CotizacionAdmin(admin.ModelAdmin):
                 if not data: continue
                 socio = data['socio']
                 
-                # Reutilizamos el template de licitaciones porque es idéntico visualmente
-                items = [{'partida': i+1, 'clave': p.medicamento.clave_sector, 'descripcion': p.medicamento.denominacion_generica, 'cantidad': p.cantidad} for i, p in enumerate(data['partidas'])]
+                # Contexto para la plantilla HTML de correo
+                items = [{'partida': i+1, 'clave': p.medicamento.clave_sector, 'descripcion': p.medicamento.denominacion_generica, 'cantidad': f"{p.cantidad:,}"} for i, p in enumerate(data['partidas'])]
+                
+                color_empresa = "#3498db"
+                if "SAGO" in nombre_empresa_up: color_empresa = "#8B0000"
+                elif "GAMS" in nombre_empresa_up: color_empresa = "#005b96"
+                elif "GSM" in nombre_empresa_up: color_empresa = "#218838"
                 
                 ctx = {
                     'socio_nombre': socio.nombre, 'evento_num': cotizacion.folio,
                     'dependencia': self.cliente_visual(cotizacion), 'empresa_emisora': empresa.nombre,
                     'url_logo': empresa.url_logo if hasattr(empresa, 'url_logo') else None,
-                    'color_empresa': "#3498db", 'fecha_actual': timezone.now().strftime('%d/%m/%Y'), 'items': items
+                    'color_empresa': color_empresa, 'fecha_actual': timezone.now().strftime('%d/%m/%Y'), 'items': items
                 }
                 
                 html_content = render_to_string('admin/licitaciones/licitacion/emails/cotizacion_email.html', ctx)
-                msg = EmailMultiAlternatives(f"Apoyo Comercial - Evento {cotizacion.folio}", strip_tags(html_content), f'"{empresa.nombre}" <{empresa.correo_remitente}>', [c.strip() for c in socio.correos.split(',') if c.strip()], connection=conexion_dinamica)
+                msg = EmailMultiAlternatives(f"Requerimiento de Cotización - Evento {cotizacion.folio}", strip_tags(html_content), f'"{empresa.nombre}" <{empresa.correo_remitente}>', [c.strip() for c in socio.correos.split(',') if c.strip()], connection=conexion_dinamica, bcc=lista_respuesta, reply_to=lista_respuesta)
                 msg.attach_alternative(html_content, "text/html")
                 for archivo in request.FILES.getlist('adjuntos'): msg.attach(archivo.name, archivo.read(), archivo.content_type)
+                
                 try: 
-                    msg.send()
+                    msg.send(fail_silently=False)
                     enviados += 1
-                except Exception as e: messages.error(request, f"Error: {e}")
+                except Exception as e: messages.error(request, f"Error con {socio.nombre}: {e}")
                 
             if enviados > 0: messages.success(request, f"¡Se enviaron {enviados} requerimientos a laboratorios!")
             return redirect('admin:licitaciones_cotizacion_change', object_id)
 
-        context = {'title': f'Notificar Socios: {cotizacion.folio}', 'licitacion': cotizacion, 'socios_data': socios_dict.values(), 'opts': self.model._meta, 'empresas_grupo': Empresa.objects.all(), 'has_view_permission': True}
-        # Reutilizamos la misma pantalla
-        return render(request, 'admin/licitaciones/licitacion/notificar_socios.html', context)
+        context = {'title': f'Notificar Socios: {cotizacion.folio}', 'evento': cotizacion, 'socios_data': socios_dict.values(), 'opts': self.model._meta, 'empresas_grupo': Empresa.objects.all(), 'has_view_permission': True}
+        return render(request, 'admin/licitaciones/cotizacion/notificar_socios_cot.html', context)
 
     def notificar_resultados_view(self, request, object_id):
-        # Es exactamente la misma lógica, pero mandando el estatus de la cotización
-        messages.success(request, "Las notificaciones de resultados para cotizaciones directas operan a través del módulo general. Funció en desarrollo para Ventas Directas.")
-        return redirect('admin:licitaciones_cotizacion_change', object_id)
+        from django.core.mail import EmailMultiAlternatives, get_connection
+        from django.template.loader import render_to_string
+        from django.utils.html import strip_tags
+        from django.utils import timezone
+        from django.shortcuts import render, redirect
+        from django.contrib import messages
+        
+        cotizacion = self.get_object(request, object_id)
+        partidas = cotizacion.partidas_cotizacion.all()
+        socios_dict = {}
+        
+        for p in partidas:
+            socio = p.medicamento.socio_contacto if p.medicamento else None
+            if socio:
+                if socio.id not in socios_dict: 
+                    socios_dict[socio.id] = {'socio': socio, 'asignadas': [], 'perdidas_precio': [], 'perdidas_tecnica': [], 'pendientes': []}
+                
+                # Clasificación inteligente: Como las cotizaciones son globales, pasamos todo el bloque según el estatus de la cotización
+                if cotizacion.estatus == 'GANADA': socios_dict[socio.id]['asignadas'].append(p)
+                elif cotizacion.estatus in ['PERDIDA', 'CANCELADA']: socios_dict[socio.id]['perdidas_precio'].append(p)
+                else: socios_dict[socio.id]['pendientes'].append(p)
 
+        if request.method == 'POST':
+            socios_seleccionados = request.POST.getlist('socios')
+            empresa = Empresa.objects.get(id=request.POST.get('empresa_emisora'))
+            
+            nombre_empresa_up = empresa.nombre.upper()
+            if "SAGO" in nombre_empresa_up: lista_respuesta = ["sagomedical.licitaciones@gmail.com"]
+            elif "GSM" in nombre_empresa_up: lista_respuesta = ["gsm.licitaciones@gmail.com"]
+            else: lista_respuesta = ["licitaciones2@gpharma.com"]
+            
+            if empresa.correos_notificacion:
+                lista_respuesta.extend([c.strip() for c in empresa.correos_notificacion.split(',') if c.strip()])
+
+            conexion_dinamica = get_connection()
+            enviados = 0
+            
+            for s_id in socios_seleccionados:
+                data = socios_dict.get(int(s_id))
+                if not data: continue
+                socio = data['socio']
+                
+                color_empresa = "#3498db"
+                if "SAGO" in nombre_empresa_up: color_empresa = "#8B0000"
+                elif "GAMS" in nombre_empresa_up: color_empresa = "#005b96"
+                elif "GSM" in nombre_empresa_up: color_empresa = "#218838"
+
+                def formato_item(p):
+                    return {'partida': '-', 'clave': p.medicamento.clave_sector, 'descripcion': p.medicamento.denominacion_generica, 'cantidad': f"{p.cantidad:,}", 'motivo': f"Cotización global: {cotizacion.get_estatus_display()}"}
+
+                ctx = {
+                    'socio_nombre': socio.nombre, 'evento_num': cotizacion.folio,
+                    'empresa_emisora': empresa.nombre,
+                    'url_logo': empresa.url_logo if hasattr(empresa, 'url_logo') else None,
+                    'color_empresa': color_empresa, 'fecha_actual': timezone.now().strftime('%d/%m/%Y'),
+                    'url_drive': None, 
+                    'asignadas': [formato_item(p) for p in data['asignadas']],
+                    'perdidas_precio': [formato_item(p) for p in data['perdidas_precio']],
+                    'perdidas_tecnica': [formato_item(p) for p in data['perdidas_tecnica']],
+                }
+                
+                html_content = render_to_string('admin/licitaciones/licitacion/emails/resultados_email.html', ctx)
+                msg = EmailMultiAlternatives(f"Resultados de Cotización (Evento {cotizacion.folio}) - {empresa.nombre}", strip_tags(html_content), f'"{empresa.nombre}" <{empresa.correo_remitente}>', [c.strip() for c in socio.correos.split(',') if c.strip()], connection=conexion_dinamica, bcc=lista_respuesta, reply_to=lista_respuesta)
+                msg.attach_alternative(html_content, "text/html")
+                for archivo in request.FILES.getlist('adjuntos'): msg.attach(archivo.name, archivo.read(), archivo.content_type)
+                
+                try: 
+                    msg.send(fail_silently=False)
+                    enviados += 1
+                except Exception as e: messages.error(request, f"Error con {socio.nombre}: {e}")
+                
+            if enviados > 0: messages.success(request, f"¡Resultados enviados a {enviados} laboratorios!")
+            return redirect('admin:licitaciones_cotizacion_change', object_id)
+
+        context = {'title': f'Notificar Resultados: {cotizacion.folio}', 'evento': cotizacion, 'socios_data': socios_dict.values(), 'opts': self.model._meta, 'empresas_grupo': Empresa.objects.all(), 'has_view_permission': True}
+        return render(request, 'admin/licitaciones/cotizacion/notificar_resultados_cot.html', context)
     # ==========================================
     # DISPLAY EN LISTA
     # ==========================================

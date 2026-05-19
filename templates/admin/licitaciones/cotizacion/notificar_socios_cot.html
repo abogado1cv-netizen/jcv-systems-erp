@@ -1,0 +1,54 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls static admin_modify %}
+
+{% block content %}
+<div style="background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); max-width: 800px;">
+    <h2 style="color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px;">
+        <i class="fas fa-envelope" style="color: #3498db;"></i> Panel de Notificación: {{ evento.folio }}
+    </h2>
+    
+    <form method="POST" enctype="multipart/form-data" action="">
+        {% csrf_token %}
+        <div style="margin-bottom: 20px;">
+            <label style="font-weight: bold; color: #444;">Empresa Emisora (GPHARMA / SAGO / GSM):</label><br>
+            <select name="empresa_emisora" required style="width: 100%; padding: 10px; border-radius: 4px; border: 1px solid #ccc; margin-top: 5px;">
+                {% for emp in empresas_grupo %}
+                    <option value="{{ emp.id }}">{{ emp.nombre }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div style="margin-bottom: 20px;">
+            <label style="font-weight: bold; color: #444;">Adjuntar Archivos (Anexos, PDF o Excel):</label><br>
+            <input type="file" name="adjuntos" multiple style="margin-top: 5px;">
+        </div>
+
+        <h3 style="color: #34495e; font-size: 16px; margin-top: 30px;">Laboratorios Detectados en esta Cotización</h3>
+        <div style="max-height: 300px; overflow-y: auto; border: 1px solid #eee; border-radius: 4px; padding: 10px; background: #fdfdfd;">
+            <table style="width: 100%; border-collapse: collapse;">
+                <tr style="background: #f4f6f7; text-align: left;">
+                    <th style="padding: 10px; border-bottom: 2px solid #ddd;">Enviar</th>
+                    <th style="padding: 10px; border-bottom: 2px solid #ddd;">Socio Comercial</th>
+                    <th style="padding: 10px; border-bottom: 2px solid #ddd;">Claves Involucradas</th>
+                </tr>
+                {% for data in socios_data %}
+                <tr>
+                    <td style="padding: 10px; border-bottom: 1px solid #eee;">
+                        <input type="checkbox" name="socios" value="{{ data.socio.id }}" checked>
+                    </td>
+                    <td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: bold;">{{ data.socio.nombre }}</td>
+                    <td style="padding: 10px; border-bottom: 1px solid #eee; color: #888;">{{ data.partidas|length }} claves</td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
+
+        <div style="margin-top: 30px; display: flex; justify-content: flex-end; gap: 15px;">
+            <a href="../" style="padding: 10px 20px; background: #e2e8f0; color: #333; text-decoration: none; border-radius: 4px; font-weight: bold;">Cancelar</a>
+            <button type="submit" style="padding: 10px 20px; background: #2ecc71; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer;">
+                <i class="fas fa-paper-plane"></i> Disparar Correos
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}
