@@ -2302,7 +2302,7 @@ class CotizacionAdmin(admin.ModelAdmin):
     list_filter = ('tipo_procedimiento', 'estatus', 'fecha_emision')
     
     fieldsets = (
-        ('📄 Datos del Evento', {'fields': ('tipo_procedimiento', 'folio', 'fecha_emision', 'vigencia_dias')}),
+        ('📄 Datos del Evento', {'fields': ('tipo_procedimiento', 'empresa', 'folio', 'fecha_emision', 'vigencia_dias')}),
         ('🏢 Cliente', {'fields': ('razon_social', 'dependencia')}),
         ('🚦 Estatus', {'fields': ('estatus',)}),
         ('⚡ Carga Automática (Excel)', {'fields': ('pegar_excel',)}),

@@ -894,7 +894,12 @@ class Cotizacion(models.Model):
     ]
 
     tipo_procedimiento = models.CharField(max_length=30, choices=TIPO_PROCEDIMIENTO, default='COTIZACION_PRIVADA', verbose_name="Tipo de Venta")
-    folio = models.CharField(max_length=50, unique=True, verbose_name="Folio de Cotización / Evento")
+    
+    # 👇 NUEVO: Empresa emisora
+    empresa = models.ForeignKey('Empresa', on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Empresa Emisora")
+    
+    # 👇 MODIFICADO: Folio ahora permite blancos para autogenerarse
+    folio = models.CharField(max_length=50, unique=True, blank=True, verbose_name="Folio de Cotización / Evento", help_text="Déjalo en blanco para auto-generar el consecutivo (Ej: Sago.Cot-001).")
     
     razon_social = models.CharField(max_length=200, blank=True, null=True, verbose_name="Razón Social (Cliente Privado)")
     dependencia = models.CharField(max_length=100, choices=DEPENDENCIAS_MAESTRAS, blank=True, null=True, verbose_name="Dependencia (Gobierno)")
@@ -912,6 +917,35 @@ class Cotizacion(models.Model):
     def __str__(self):
         cliente = self.razon_social or self.get_dependencia_display() or "Sin Cliente"
         return f"{self.folio} | {cliente}"
+
+    # 🧠 MAGIA: Autogenerador de Folios Consecutivos
+    def save(self, *args, **kwargs):
+        if not self.folio and self.empresa:
+            nombre_empresa = self.empresa.nombre.upper()
+            
+            if "SAGO" in nombre_empresa: prefijo = "Sago"
+            elif "GSM" in nombre_empresa: prefijo = "Gsm"
+            elif "GAMS" in nombre_empresa: prefijo = "Gams"
+            else: prefijo = "Gen"
+
+            ultimo = Cotizacion.objects.filter(folio__startswith=f"{prefijo}.Cot-").order_by('-folio').first()
+            
+            if ultimo and '-' in ultimo.folio:
+                try:
+                    num = int(ultimo.folio.split('-')[-1])
+                    siguiente = num + 1
+                except ValueError:
+                    siguiente = 1
+            else:
+                siguiente = 1
+                
+            self.folio = f"{prefijo}.Cot-{siguiente:03d}"
+            
+        elif not self.folio and not self.empresa:
+            import random
+            self.folio = f"COT-TEMP-{random.randint(1000,9999)}"
+
+        super().save(*args, **kwargs)
 
     @property
     def total_cotizacion(self):
