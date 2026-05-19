@@ -2285,7 +2285,8 @@ class PartidaCotizacionInline(admin.TabularInline):
         from django.utils.html import format_html
         if obj.cantidad and obj.precio_unitario:
             total = float(obj.cantidad) * float(obj.precio_unitario)
-            return format_html('<b>${:,.2f}</b>', total)
+            total_str = "{:,.2f}".format(total) # 👈 Formato seguro por fuera
+            return format_html('<b>${}</b>', total_str)
         return "$0.00"
     importe_visual.short_description = "Importe"
 
@@ -2495,7 +2496,8 @@ class CotizacionAdmin(admin.ModelAdmin):
 
     def total_cotizado(self, obj):
         from django.utils.html import format_html
-        return format_html('<b style="color: #5e35b1;">${:,.2f}</b>', float(obj.total_cotizacion))
+        total_str = "{:,.2f}".format(float(obj.total_cotizacion)) # 👈 Formato seguro por fuera
+        return format_html('<b style="color: #5e35b1;">${}</b>', total_str)
     total_cotizado.short_description = "Monto Total"
 
     def estatus_badge(self, obj):
