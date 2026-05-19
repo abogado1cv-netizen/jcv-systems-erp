@@ -2368,7 +2368,10 @@ class CotizacionAdmin(admin.ModelAdmin):
 
     def total_cotizado(self, obj):
         from django.utils.html import format_html
-        return format_html('<b style="color: #5e35b1;">${:,.2f}</b>', float(obj.total_cotizacion))
+        # Primero le damos el formato de moneda al número por fuera
+        total_str = "{:,.2f}".format(float(obj.total_cotizacion))
+        # Luego lo inyectamos al HTML de forma segura
+        return format_html('<b style="color: #5e35b1;">${}</b>', total_str)
     total_cotizado.short_description = "Monto Total"
 
     def estatus_badge(self, obj):
