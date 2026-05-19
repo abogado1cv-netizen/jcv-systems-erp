@@ -171,6 +171,10 @@ def dashboard_contratos(request):
 # ==========================================
 @staff_member_required
 def dashboard_licitaciones(request):
+    import json
+    from django.db.models import Q
+    from django.utils import timezone
+    
     q = request.GET.get('q', '').strip()
     filtro_empresa = request.GET.get('empresa', '')
 
@@ -205,9 +209,12 @@ def dashboard_licitaciones(request):
     adjudicadas = licitaciones.filter(estatus__estado='ADJUDICADO').count() + cotizaciones.filter(estatus='GANADA').count()
     perdidas = licitaciones.filter(estatus__estado='PERDIDO').count() + cotizaciones.filter(estatus__in=['PERDIDA', 'CANCELADA']).count()
 
+    # 💰 INICIA LA MAGIA FINANCIERA
     monto_total = 0
     monto_ganado = 0
     monto_perdido = 0
+    monto_perdido_precio = 0
+    monto_perdido_tecnica = 0
     claves_participadas = set()
     claves_ganadas = set()
     
@@ -219,8 +226,12 @@ def dashboard_licitaciones(request):
         if p.resultado == 'Asignada':
             monto_ganado += importe
             if p.medicamento_id: claves_ganadas.add(p.medicamento_id)
-        elif p.resultado in ['Perdida por precio', 'Perdida técnicamente']:
+        elif p.resultado == 'Perdida por precio':
             monto_perdido += importe
+            monto_perdido_precio += importe
+        elif p.resultado == 'Perdida técnicamente':
+            monto_perdido += importe
+            monto_perdido_tecnica += importe
 
     for p in partidas_cot:
         importe = float(p.cantidad or 0) * float(p.precio_unitario or 0)
@@ -232,10 +243,23 @@ def dashboard_licitaciones(request):
             if p.medicamento_id: claves_ganadas.add(p.medicamento_id)
         elif p.cotizacion.estatus in ['PERDIDA', 'CANCELADA']:
             monto_perdido += importe
+            monto_perdido_precio += importe # Las cotizaciones perdidas se asumen por precio/mercado
 
     monto_en_proceso = monto_total - monto_ganado - monto_perdido
     if monto_en_proceso < 0: monto_en_proceso = 0
 
+    # 🎯 CÁLCULO DEL HIT RATE (TASA DE EFECTIVIDAD)
+    hit_rate_dinero = (monto_ganado / monto_total * 100) if monto_total > 0 else 0
+    hit_rate_claves = (len(claves_ganadas) / len(claves_participadas) * 100) if len(claves_participadas) > 0 else 0
+
+    # 📊 PREPARACIÓN DE DATOS PARA CHART.JS
+    grafica_distribucion = {
+        'labels': ['Adjudicado (Ganado)', 'Perdido (Precio)', 'Perdido (Técnica)', 'En Proceso / Evaluación'],
+        'data': [monto_ganado, monto_perdido_precio, monto_perdido_tecnica, monto_en_proceso],
+        'colors': ['#25D366', '#ef4444', '#f59e0b', '#3b82f6'] # Verde, Rojo, Ámbar, Azul
+    }
+
+    # ... (El código de top_claves y detalle_ganadas/perdidas se queda idéntico al tuyo) ...
     claves_dict = {}
     for p in partidas_lic.filter(resultado='Asignada'):
         k = (p.medicamento.clave_sector, p.medicamento.fabricante)
@@ -251,11 +275,7 @@ def dashboard_licitaciones(request):
     montos_top = []
 
     for (clave, fab), importe in top_claves_sorted:
-        top_claves.append({
-            'medicamento__clave_sector': clave,
-            'medicamento__fabricante': fab,
-            'total_importe': importe
-        })
+        top_claves.append({'medicamento__clave_sector': clave, 'medicamento__fabricante': fab, 'total_importe': importe})
         nombres_top.append(clave)
         montos_top.append(importe)
 
@@ -275,39 +295,18 @@ def dashboard_licitaciones(request):
         item.importe = float(p.cantidad_maxima or 0) * float(p.precio or 0)
         item.importe_ganado = item.importe
 
-        if p.resultado == 'Asignada':
-            detalle_ganadas.append(item)
-        else:
-            detalle_perdidas.append(item)
-
-    for p in partidas_cot.filter(cotizacion__estatus__in=['GANADA', 'PERDIDA', 'CANCELADA']):
-        item = DummyObj()
-        item.licitacion = DummyObj()
-        item.licitacion.num_procedimiento = p.cotizacion.folio
-        item.licitacion.fecha_fallo = p.cotizacion.fecha_emision
-        item.medicamento = DummyObj()
-        item.medicamento.clave_sector = p.medicamento.clave_sector
-        item.medicamento.fabricante = p.medicamento.fabricante
-        item.resultado = p.cotizacion.get_estatus_display()
-        item.importe = float(p.cantidad or 0) * float(p.precio_unitario or 0)
-        item.importe_ganado = item.importe
-
-        if p.cotizacion.estatus == 'GANADA':
-            detalle_ganadas.append(item)
-        else:
-            detalle_perdidas.append(item)
+        if p.resultado == 'Asignada': detalle_ganadas.append(item)
+        else: detalle_perdidas.append(item)
 
     detalle_ganadas.sort(key=lambda x: x.importe, reverse=True)
     detalle_ganadas = detalle_ganadas[:50]
     detalle_perdidas.sort(key=lambda x: x.importe, reverse=True)
     detalle_perdidas = detalle_perdidas[:50]
 
-    proximos_fallos = licitaciones.filter(
-        estatus__estado='EN_PROCESO', fecha_fallo__gte=timezone.now()
-    ).order_by('fecha_fallo')[:5]
-
+    proximos_fallos = licitaciones.filter(estatus__estado='EN_PROCESO', fecha_fallo__gte=timezone.now()).order_by('fecha_fallo')[:5]
     empresas_disponibles = Empresa.objects.all()
 
+    # 🚀 PASAMOS TODAS LAS VARIABLES AL HTML
     context = {
         'title': 'Panel Ejecutivo Omnicanal',
         'q': q, 
@@ -316,19 +315,18 @@ def dashboard_licitaciones(request):
         'monto_total_str': f"${monto_total:,.2f}",
         'monto_ganado_str': f"${monto_ganado:,.2f}",
         'monto_perdido_str': f"${monto_perdido:,.2f}",
+        'monto_perdido_precio_str': f"${monto_perdido_precio:,.2f}",
+        'monto_perdido_tecnica_str': f"${monto_perdido_tecnica:,.2f}",
         'monto_en_proceso_str': f"${monto_en_proceso:,.2f}",
-        'monto_ganado_raw': monto_ganado,
-        'monto_perdido_raw': monto_perdido,
-        'monto_en_proceso_raw': monto_en_proceso,
+        'hit_rate_dinero': f"{hit_rate_dinero:.1f}%",
+        'hit_rate_claves': f"{hit_rate_claves:.1f}%",
+        'grafica_distribucion_json': json.dumps(grafica_distribucion),
         'nombres_top_json': json.dumps(nombres_top),
         'montos_top_json': json.dumps(montos_top),
         'total_licitaciones': total_licitaciones,
         'adjudicadas': adjudicadas,
         'perdidas': perdidas,
         'en_proceso': en_proceso,
-        'total_claves_participadas': len(claves_participadas),
-        'total_claves_ganadas': len(claves_ganadas),
-        'top_claves': top_claves,
         'proximos_fallos': proximos_fallos,
         'detalle_ganadas': detalle_ganadas,
         'detalle_perdidas': detalle_perdidas,

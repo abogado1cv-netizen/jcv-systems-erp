@@ -2455,3 +2455,48 @@ class IncidenciaInventarioAdmin(ImportExportModelAdmin):
 class PerfilEquipoAdmin(admin.ModelAdmin):
     list_display = ('user', 'rol', 'whatsapp', 'activo')
     list_filter = ('rol', 'activo')
+
+
+    # ==========================================
+# 🚀 MÓDULO RÁPIDO: PEDIDOS DIRECTOS (10 DÍAS)
+# ==========================================
+from .models import PedidoDirecto
+from django.utils import timezone
+from django.utils.html import format_html
+
+@admin.register(PedidoDirecto)
+class PedidoDirectoAdmin(admin.ModelAdmin):
+    list_display = ('numero_orden_suministro', 'cliente_info', 'fecha_recepcion', 'fecha_limite', 'semaforo_urgencia', 'estatus')
+    list_filter = ('estatus', 'fecha_recepcion')
+    search_fields = ('numero_orden_suministro', 'razon_social', 'dependencia')
+    
+    # Ocultamos el campo tipo_documento porque por detrás siempre será 'PEDIDO'
+    exclude = ('tipo_documento',) 
+
+    def get_queryset(self, request):
+        # 🧠 MAGIA: Este panel filtra automáticamente y SOLO muestra las ventas rápidas, ocultando los contratos grandes.
+        qs = super().get_queryset(request)
+        return qs.filter(tipo_documento='PEDIDO')
+
+    def cliente_info(self, obj):
+        return obj.razon_social or obj.get_dependencia_display() or "Sin Cliente"
+    cliente_info.short_description = 'Cliente / Dependencia'
+
+    def semaforo_urgencia(self, obj):
+        if obj.estatus in ['ENTREGADA', 'CANCELADA', 'CANCELADA_EVIDENCIA', 'DEVUELTA']:
+            return format_html('<span style="color: #94a3b8; font-weight: bold;"><i class="fas fa-check-circle"></i> Cerrado</span>')
+            
+        if not obj.fecha_limite:
+            return "-"
+            
+        hoy = timezone.now().date()
+        dias_restantes = (obj.fecha_limite - hoy).days
+        
+        if dias_restantes < 0:
+            return format_html('<span style="color: white; background: #e74c3c; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px;">🚨 VENCIDO ({} días)</span>', abs(dias_restantes))
+        elif dias_restantes <= 3:
+            return format_html('<span style="color: #856404; background: #f1c40f; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px;">⏳ Crítico ({} días)</span>', dias_restantes)
+        else:
+            return format_html('<span style="color: white; background: #2ecc71; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px;">🟢 A tiempo ({} días)</span>', dias_restantes)
+    
+    semaforo_urgencia.short_description = 'Tiempo de Entrega'

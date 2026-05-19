@@ -9,7 +9,7 @@
     body { background-color: #f4f7f6; }
     .dash-container { padding: 20px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
     
-    .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px; }
+    .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 15px; }
     .chart-row { display: grid; grid-template-columns: 1fr 2fr; gap: 15px; margin-bottom: 20px; }
     .table-row { display: grid; grid-template-columns: 2fr 1fr; gap: 15px; }
     
@@ -36,6 +36,7 @@
     .c-green { background-color: #2ecc71; }
     .c-yellow { background-color: #f1c40f; }
     .c-red { background-color: #e74c3c; }
+    .c-purple { background-color: #8e44ad; }
 
     /* Tablas súper compactas */
     .table-custom { width: 100%; border-collapse: collapse; margin-top: 0px; }
@@ -100,7 +101,30 @@
         <div class="card-exe">
             <div class="card-title"><span class="dot c-red"></span> MONTO PERDIDO</div>
             <div class="card-value">{{ monto_perdido_str }}</div>
-            <div class="card-subtitle">Por precio o técnica</div>
+            <div class="card-subtitle">Pérdida General</div>
+        </div>
+    </div>
+
+    <div class="kpi-row" style="margin-bottom: 20px;">
+        <div class="card-exe">
+            <div class="card-title"><span class="dot c-purple"></span> HIT RATE (FINANCIERO)</div>
+            <div class="card-value">{{ hit_rate_dinero }}</div>
+            <div class="card-subtitle"><i class="fas fa-chart-line" style="color: #8e44ad;"></i> Tasa de conversión real</div>
+        </div>
+        <div class="card-exe">
+            <div class="card-title"><span class="dot c-purple"></span> HIT RATE (CLAVES)</div>
+            <div class="card-value">{{ hit_rate_claves }}</div>
+            <div class="card-subtitle"><i class="fas fa-pills" style="color: #8e44ad;"></i> Eficiencia por partida</div>
+        </div>
+        <div class="card-exe">
+            <div class="card-title"><span class="dot c-red"></span> PERDIDO POR PRECIO</div>
+            <div class="card-value">{{ monto_perdido_precio_str }}</div>
+            <div class="card-subtitle"><i class="fas fa-arrow-down" style="color: #e74c3c;"></i> Fuimos más caros</div>
+        </div>
+        <div class="card-exe">
+            <div class="card-title"><span class="dot c-yellow"></span> PERDIDO TÉCNICAMENTE</div>
+            <div class="card-value">{{ monto_perdido_tecnica_str }}</div>
+            <div class="card-subtitle"><i class="fas fa-exclamation-triangle" style="color: #f1c40f;"></i> Fallas documentales</div>
         </div>
     </div>
 
@@ -242,17 +266,17 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // 🔥 ELIMINAMOS EL CÓDIGO JAVASCRIPT DEL BUSCADOR VIEJO 🔥
-        
-        // --- GRÁFICAS ---
+        // 🔥 MAGIA DE LA GRÁFICA DE DONA RECARGADA 🔥
+        const datosDistribucion = JSON.parse('{{ grafica_distribucion_json|escapejs }}');
         const ctxDonut = document.getElementById('donutChart').getContext('2d');
+        
         new Chart(ctxDonut, {
             type: 'doughnut',
             data: {
-                labels: ['Ganado', 'En Proceso', 'Perdido'],
+                labels: datosDistribucion.labels,
                 datasets: [{
-                    data: [{{ monto_ganado_raw }}, {{ monto_en_proceso_raw }}, {{ monto_perdido_raw }}],
-                    backgroundColor: ['#2ecc71', '#f1c40f', '#e74c3c'],
+                    data: datosDistribucion.data,
+                    backgroundColor: datosDistribucion.colors,
                     borderWidth: 0,
                     hoverOffset: 4
                 }]
@@ -267,6 +291,7 @@
             }
         });
 
+        // 🔥 GRÁFICA DE BARRAS DE TOP CLAVES 🔥
         const ctxBar = document.getElementById('barChart').getContext('2d');
         const etiquetasClaves = JSON.parse('{{ nombres_top_json|safe }}');
         const datosMontos = JSON.parse('{{ montos_top_json|safe }}');
