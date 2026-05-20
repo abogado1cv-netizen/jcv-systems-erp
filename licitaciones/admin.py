@@ -621,7 +621,7 @@ class LicitacionAdmin(admin.ModelAdmin):
                 empleados = [c.strip() for c in empresa_emisora.correos_notificacion.split(',') if c.strip()]
                 lista_respuesta.extend(empleados)
 
-            remitente = empresa_emisora.correo_remitente if empresa_emisora.correo_remitente else settings.DEFAULT_FROM_EMAIL
+            remitente = empresa_emisora.correo_remitente if empresa_emisora.correo_remitente else "notificaciones@jcv-sistemas.lat"
             from_email_str = f'"{empresa_emisora.nombre}" <{remitente}>'
             
             conexion_dinamica = get_connection()
@@ -721,7 +721,7 @@ class LicitacionAdmin(admin.ModelAdmin):
                 empleados = [c.strip() for c in empresa_emisora.correos_notificacion.split(',') if c.strip()]
                 lista_respuesta.extend(empleados)
 
-            remitente = empresa_emisora.correo_remitente if empresa_emisora.correo_remitente else settings.DEFAULT_FROM_EMAIL
+            remitente = empresa_emisora.correo_remitente if empresa_emisora.correo_remitente else "notificaciones@jcv-sistemas.lat"
             from_email_str = f'"{empresa_emisora.nombre}" <{remitente}>'
 
             conexion_dinamica = get_connection()
@@ -1457,7 +1457,7 @@ class CotizacionAdmin(admin.ModelAdmin):
             lista_respuesta = ["sagomedical.licitaciones@gmail.com"] if "SAGO" in nombre_empresa_up else (["gsm.licitaciones@gmail.com"] if "GSM" in nombre_empresa_up else ["licitaciones2@gpharma.com"])
             if empresa_emisora.correos_notificacion: lista_respuesta.extend([c.strip() for c in empresa_emisora.correos_notificacion.split(',') if c.strip()])
 
-            remitente = empresa_emisora.correo_remitente if empresa_emisora.correo_remitente else settings.DEFAULT_FROM_EMAIL
+            remitente = empresa_emisora.correo_remitente if empresa_emisora.correo_remitente else "notificaciones@jcv-sistemas.lat"
             from_email_str = f'"{empresa_emisora.nombre}" <{remitente}>'
             conexion_dinamica = get_connection()
             correos_enviados = 0
@@ -1517,7 +1517,7 @@ class CotizacionAdmin(admin.ModelAdmin):
             lista_respuesta = ["sagomedical.licitaciones@gmail.com"] if "SAGO" in nombre_empresa_up else (["gsm.licitaciones@gmail.com"] if "GSM" in nombre_empresa_up else ["licitaciones2@gpharma.com"])
             if empresa_emisora.correos_notificacion: lista_respuesta.extend([c.strip() for c in empresa_emisora.correos_notificacion.split(',') if c.strip()])
 
-            remitente = empresa_emisora.correo_remitente if empresa_emisora.correo_remitente else settings.DEFAULT_FROM_EMAIL
+            remitente = empresa_emisora.correo_remitente if empresa_emisora.correo_remitente else "notificaciones@jcv-sistemas.lat"
             from_email_str = f'"{empresa_emisora.nombre}" <{remitente}>'
             conexion_dinamica = get_connection()
             correos_enviados = 0
