@@ -1,5 +1,7 @@
 import os
 from pathlib import Path
+from dotenv import load_dotenv
+load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -249,7 +251,7 @@ EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.resend.com'
 EMAIL_PORT = 587
 EMAIL_HOST_USER = 'resend' 
-EMAIL_HOST_PASSWORD = os.getenv('RESEND_API_KEY')
+EMAIL_HOST_PASSWORD = 're_TU_NUEVA_LLAVE_DE_RESEND_AQUI'
 EMAIL_USE_SSL = False 
 EMAIL_USE_TLS = True 
 DEFAULT_FROM_EMAIL = 'notificaciones@jcv-sistemas.lat'
