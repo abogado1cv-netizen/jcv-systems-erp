@@ -377,7 +377,6 @@ class CatalogoMedicamentoResource(resources.ModelResource):
             row['fecha_vigencia'] = None
 
 
-# 👇 1. CREAMOS EL FILTRO INTELIGENTE PARA EL SEMÁFORO 👇
 class SemaforoVigenciaFilter(admin.SimpleListFilter):
     title = 'Vigencia de Registro (Semáforo)'
     parameter_name = 'semaforo_vigencia'
@@ -402,13 +401,10 @@ class SemaforoVigenciaFilter(admin.SimpleListFilter):
             return queryset.filter(fecha_vigencia__gt=limite_90)
         return queryset
 
-# 👇 2. ACTUALIZAMOS EL CATÁLOGO DE CLAVES 👇
 class CatalogoMedicamentoAdmin(ImportExportModelAdmin): 
     resource_class = CatalogoMedicamentoResource
     list_per_page = 30
     search_fields = ['clave_sector', 'denominacion_distintiva', 'denominacion_generica', 'socio_contacto__nombre', 'fabricante']
-    
-    # Agregamos el filtro personalizado que acabamos de crear
     list_filter = ('socio_contacto', 'fabricante', SemaforoVigenciaFilter)
     
     list_display = (
@@ -433,11 +429,7 @@ class CatalogoMedicamentoAdmin(ImportExportModelAdmin):
         return obj.descripcion
     descripcion_corta.short_description = "Descripción"
 
-# 👇 3. LA LÓGICA DE PINTADO (COLORES) CORREGIDA 👇
     def semaforo_vigencia_display(self, obj):
-        from django.utils.html import format_html
-        from django.utils.safestring import mark_safe 
-        
         if not obj.fecha_vigencia:
             return mark_safe('<span style="color: #999;">Sin Fecha</span>') 
             
@@ -548,11 +540,9 @@ class LicitacionAdmin(admin.ModelAdmin):
         return custom_urls + urls
 
     def exportar_analisis_view(self, request, object_id):
-        from .models import Licitacion
         return exportar_analisis_unificado(self, request, Licitacion.objects.filter(id=object_id))
 
     def exportar_reporte_laboratorios_view(self, request, object_id):
-        from .models import Licitacion
         return exportar_socios_unificado(self, request, Licitacion.objects.filter(id=object_id))
 
     def save_model(self, request, obj, form, change):
@@ -599,10 +589,8 @@ class LicitacionAdmin(admin.ModelAdmin):
         return redirect('admin:licitaciones_licitacion_change', object_id)
 
     def notificar_socios_view(self, request, object_id):
-        from django.core.mail import EmailMultiAlternatives
         from django.template.loader import render_to_string
         from django.utils.html import strip_tags
-        from django.utils import timezone
         from django.conf import settings
         
         licitacion = self.get_object(request, object_id)
@@ -621,7 +609,8 @@ class LicitacionAdmin(admin.ModelAdmin):
         if request.method == 'POST':
             socios_seleccionados = request.POST.getlist('socios')
             archivos_adjuntos = request.FILES.getlist('adjuntos') 
-            empresa_emisora = Empresa.objects.get(id=request.POST.get('empresa_emisora'))
+            empresa_id = request.POST.get('empresa_emisora')
+            empresa_emisora = Empresa.objects.get(id=empresa_id)
             
             nombre_empresa_up = empresa_emisora.nombre.upper()
             if "SAGO" in nombre_empresa_up: lista_respuesta = ["sagomedical.licitaciones@gmail.com"]
@@ -629,12 +618,13 @@ class LicitacionAdmin(admin.ModelAdmin):
             else: lista_respuesta = ["licitaciones2@gpharma.com"]
 
             if empresa_emisora.correos_notificacion:
-                lista_respuesta.extend([c.strip() for c in empresa_emisora.correos_notificacion.split(',') if c.strip()])
+                empleados = [c.strip() for c in empresa_emisora.correos_notificacion.split(',') if c.strip()]
+                lista_respuesta.extend(empleados)
 
-            # Validar correo remitente para que el servidor no lo rebote
             remitente = empresa_emisora.correo_remitente if empresa_emisora.correo_remitente else settings.DEFAULT_FROM_EMAIL
             from_email_str = f'"{empresa_emisora.nombre}" <{remitente}>'
             
+            conexion_dinamica = get_connection()
             correos_enviados = 0
             
             for socio_id in socios_seleccionados:
@@ -642,7 +632,6 @@ class LicitacionAdmin(admin.ModelAdmin):
                 if not data: continue
                 socio = data['socio']
                 
-                # Validación si no tiene correo
                 correos_raw = socio.correos if socio.correos else ""
                 destinatarios = [c.strip() for c in correos_raw.split(',') if c.strip()]
                 if not destinatarios:
@@ -650,7 +639,15 @@ class LicitacionAdmin(admin.ModelAdmin):
                     continue
 
                 asunto = f"Requerimiento de Cotización - Evento {licitacion.num_procedimiento}"
-                partidas_html = [{'partida': p.numero_partida, 'clave': p.medicamento.clave_sector, 'descripcion': p.medicamento.descripcion, 'cantidad': f"{p.cantidad_maxima:,}"} for p in data['partidas']]
+                
+                partidas_html = []
+                for p in data['partidas']:
+                    partidas_html.append({
+                        'partida': p.numero_partida,
+                        'clave': p.medicamento.clave_sector,
+                        'descripcion': p.medicamento.descripcion,
+                        'cantidad': f"{p.cantidad_maxima:,}" 
+                    })
                 
                 if "SAGO" in nombre_empresa_up: color_empresa = "#8B0000"
                 elif "GAMS" in nombre_empresa_up: color_empresa = "#005b96"
@@ -658,41 +655,42 @@ class LicitacionAdmin(admin.ModelAdmin):
                 else: color_empresa = "#333333"
                 
                 contexto_email = {
-                    'socio_nombre': socio.nombre, 'evento_num': licitacion.num_procedimiento,
-                    'dependencia': licitacion.dependencia, 'empresa_emisora': empresa_emisora.nombre,
-                    'url_logo': empresa_emisora.url_logo if hasattr(empresa_emisora, 'url_logo') else None,
-                    'color_empresa': color_empresa, 'fecha_actual': timezone.now().strftime('%d/%m/%Y'), 'items': partidas_html,
+                    'socio_nombre': socio.nombre,
+                    'evento_num': licitacion.num_procedimiento,
+                    'dependencia': licitacion.dependencia,
+                    'empresa_emisora': empresa_emisora.nombre,
+                    'url_logo': empresa_emisora.url_logo if hasattr(empresa_emisora, 'url_logo') and empresa_emisora.url_logo else None,
+                    'color_empresa': color_empresa,
+                    'fecha_actual': timezone.now().strftime('%d/%m/%Y'),
+                    'items': partidas_html,
                 }
                 
                 html_content = render_to_string('admin/licitaciones/licitacion/emails/cotizacion_email.html', contexto_email)
                 text_content = strip_tags(html_content) 
 
                 try:
-                    correo = EmailMultiAlternatives(subject=asunto, body=text_content, from_email=from_email_str, to=destinatarios, bcc=lista_respuesta, reply_to=lista_respuesta)
+                    correo = EmailMultiAlternatives(
+                        subject=asunto, body=text_content, from_email=from_email_str, 
+                        to=destinatarios, connection=conexion_dinamica, bcc=lista_respuesta, reply_to=lista_respuesta
+                    )
                     correo.attach_alternative(html_content, "text/html")
-                    
-                    # 💡 SOLUCIÓN DE ARCHIVOS: Resetear el puntero para que no se envíe vacío
                     for archivo in archivos_adjuntos: 
                         archivo.seek(0)
                         correo.attach(archivo.name, archivo.read(), archivo.content_type)
-                    
                     correo.send(fail_silently=False)
                     correos_enviados += 1
                 except Exception as e: 
-                    messages.error(request, f"❌ Error SMTP con {socio.nombre}: {str(e)}")
+                    messages.error(request, f"Error al enviar a {socio.nombre}: {e}")
             
-            if correos_enviados > 0: messages.success(request, f"✅ ¡Éxito! Se enviaron {correos_enviados} requerimientos.")
+            if correos_enviados > 0: messages.success(request, f"¡Se enviaron {correos_enviados} requerimientos!")
             return redirect('admin:licitaciones_licitacion_change', object_id)
 
         context = {'title': f'Notificar Socios: {licitacion.num_procedimiento}', 'licitacion': licitacion, 'socios_data': socios_dict.values(), 'opts': self.model._meta, 'empresas_grupo': Empresa.objects.all(), 'has_view_permission': self.has_view_permission(request, licitacion)}
         return render(request, 'admin/licitaciones/licitacion/notificar_socios.html', context)
 
-
     def notificar_resultados_view(self, request, object_id):
-        from django.core.mail import EmailMultiAlternatives
         from django.template.loader import render_to_string
         from django.utils.html import strip_tags
-        from django.utils import timezone
         from django.conf import settings
         
         licitacion = self.get_object(request, object_id)
@@ -711,7 +709,8 @@ class LicitacionAdmin(admin.ModelAdmin):
         if request.method == 'POST':
             socios_seleccionados = request.POST.getlist('socios')
             archivos_adjuntos = request.FILES.getlist('adjuntos') 
-            empresa_emisora = Empresa.objects.get(id=request.POST.get('empresa_emisora'))
+            empresa_id = request.POST.get('empresa_emisora')
+            empresa_emisora = Empresa.objects.get(id=empresa_id)
             
             nombre_empresa_up = empresa_emisora.nombre.upper()
             if "SAGO" in nombre_empresa_up: lista_respuesta = ["sagomedical.licitaciones@gmail.com"]
@@ -719,11 +718,13 @@ class LicitacionAdmin(admin.ModelAdmin):
             else: lista_respuesta = ["licitaciones2@gpharma.com"]
 
             if empresa_emisora.correos_notificacion:
-                lista_respuesta.extend([c.strip() for c in empresa_emisora.correos_notificacion.split(',') if c.strip()])
+                empleados = [c.strip() for c in empresa_emisora.correos_notificacion.split(',') if c.strip()]
+                lista_respuesta.extend(empleados)
 
             remitente = empresa_emisora.correo_remitente if empresa_emisora.correo_remitente else settings.DEFAULT_FROM_EMAIL
             from_email_str = f'"{empresa_emisora.nombre}" <{remitente}>'
-            
+
+            conexion_dinamica = get_connection()
             correos_enviados = 0
             
             for socio_id in socios_seleccionados:
@@ -744,13 +745,22 @@ class LicitacionAdmin(admin.ModelAdmin):
                 else: color_empresa = "#333333"
 
                 def formato_item(p):
-                    return {'partida': p.numero_partida, 'clave': p.medicamento.clave_sector, 'descripcion': p.medicamento.descripcion, 'cantidad': f"{p.cantidad_maxima:,}", 'motivo': p.motivo_perdida if p.motivo_perdida else "No especificado"}
+                    return {
+                        'partida': p.numero_partida,
+                        'clave': p.medicamento.clave_sector,
+                        'descripcion': p.medicamento.descripcion,
+                        'cantidad': f"{p.cantidad_maxima:,}",
+                        'motivo': p.motivo_perdida if p.motivo_perdida else "No especificado en el sistema."
+                    }
 
                 contexto_email = {
-                    'socio_nombre': socio.nombre, 'evento_num': licitacion.num_procedimiento,
-                    'empresa_emisora': empresa_emisora.nombre, 'url_logo': empresa_emisora.url_logo if hasattr(empresa_emisora, 'url_logo') else None,
-                    'color_empresa': color_empresa, 'fecha_actual': timezone.now().strftime('%d/%m/%Y'),
-                    'url_drive': licitacion.url_carpeta_drive if hasattr(licitacion, 'url_drive') else None,
+                    'socio_nombre': socio.nombre,
+                    'evento_num': licitacion.num_procedimiento,
+                    'empresa_emisora': empresa_emisora.nombre,
+                    'url_logo': empresa_emisora.url_logo if hasattr(empresa_emisora, 'url_logo') and empresa_emisora.url_logo else None,
+                    'color_empresa': color_empresa,
+                    'fecha_actual': timezone.now().strftime('%d/%m/%Y'),
+                    'url_drive': licitacion.url_carpeta_drive if hasattr(licitacion, 'url_drive') and licitacion.url_carpeta_drive else None,
                     'asignadas': [formato_item(p) for p in data['asignadas']],
                     'perdidas_precio': [formato_item(p) for p in data['perdidas_precio']],
                     'perdidas_tecnica': [formato_item(p) for p in data['perdidas_tecnica']],
@@ -760,26 +770,26 @@ class LicitacionAdmin(admin.ModelAdmin):
                 text_content = strip_tags(html_content)
 
                 try:
-                    correo = EmailMultiAlternatives(subject=asunto, body=text_content, from_email=from_email_str, to=destinatarios, bcc=lista_respuesta, reply_to=lista_respuesta)
+                    correo = EmailMultiAlternatives(
+                        subject=asunto, body=text_content, from_email=from_email_str, 
+                        to=destinatarios, connection=conexion_dinamica, bcc=lista_respuesta, reply_to=lista_respuesta
+                    )
                     correo.attach_alternative(html_content, "text/html")
-                    for archivo in archivos_adjuntos: 
+                    for archivo in archivos_adjuntos:
                         archivo.seek(0)
                         correo.attach(archivo.name, archivo.read(), archivo.content_type)
                     correo.send(fail_silently=False)
                     correos_enviados += 1
                 except Exception as e: 
-                    messages.error(request, f"❌ Error SMTP con {socio.nombre}: {str(e)}")
+                    messages.error(request, f"Error al enviar a {socio.nombre}: {e}")
             
-            if correos_enviados > 0: messages.success(request, f"✅ ¡Resultados enviados a {correos_enviados} laboratorios!")
+            if correos_enviados > 0: messages.success(request, f"Resultados enviados a {correos_enviados} socios.")
             return redirect('admin:licitaciones_licitacion_change', object_id)
 
         context = {'title': f'Notificar Resultados: {licitacion.num_procedimiento}', 'licitacion': licitacion, 'socios_data': socios_dict.values(), 'opts': self.model._meta, 'empresas_grupo': Empresa.objects.all(), 'has_view_permission': self.has_view_permission(request, licitacion)}
         return render(request, 'admin/licitaciones/licitacion/notificar_resultados.html', context)
     
-    # 🔒 GATILLO WHATSAPP (ÚNICO Y CORRECTO)
     def notificar_whatsapp_btn(self, obj):
-        from django.utils.html import format_html
-        from django.utils.safestring import mark_safe 
         tiene_resultados = obj.partidas.exclude(resultado='Pendiente').exists()
         if not tiene_resultados:
             return mark_safe('<span style="color: #94a3b8; background: #f1f5f9; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;"><i class="fas fa-lock"></i> Capturar Resultados</span>')
@@ -788,15 +798,7 @@ class LicitacionAdmin(admin.ModelAdmin):
     notificar_whatsapp_btn.short_description = "WhatsApp"
 
     def notificar_whatsapp_view(self, request, object_id):
-        from django.shortcuts import render
-        from django.http import HttpResponse
-        from .models import PerfilEquipo
-        from django.conf import settings
-        try:
-            from twilio.rest import Client
-        except ImportError:
-            return HttpResponse("<html><body><h3 style='color:red;'>Falta la librería Twilio. Instálala en tu servidor.</h3></body></html>")
-
+        from twilio.rest import Client
         licitacion = self.get_object(request, object_id)
         equipo = PerfilEquipo.objects.select_related('user').filter(activo=True)
 
@@ -820,6 +822,7 @@ class LicitacionAdmin(admin.ModelAdmin):
 
         context = {'licitacion': licitacion, 'equipo': equipo, 'opts': self.model._meta}
         return render(request, 'admin/licitaciones/licitacion/notificar_whatsapp_popup.html', context)
+
 @admin.register(Empresa)
 class EmpresaAdmin(ImportExportModelAdmin):
     list_per_page = 30
@@ -831,7 +834,6 @@ class EmpresaAdmin(ImportExportModelAdmin):
         
     def has_view_permission(self, request, obj=None):
         return request.user.is_superuser
-
 
 @admin.register(SocioComercial)
 class SocioComercialAdmin(admin.ModelAdmin):
@@ -862,14 +864,12 @@ class PartidaRequerimientoAdmin(admin.ModelAdmin):
     importe_total.short_description = "Importe Máximo"
     importe_total.admin_order_field = 'cantidad_maxima'
 
-
 admin.site.register(CatalogoMedicamento, CatalogoMedicamentoAdmin)
 admin.site.register(RegistroUbicacion, RegistroUbicacionAdmin)
 
 # ==========================================
 # --- FASE 2: MÓDULO DE CONTRATOS Y LOGÍSTICA ---
 # ==========================================
-
 class FianzaContratoInline(admin.TabularInline):
     model = FianzaContrato
     extra = 1
@@ -884,14 +884,9 @@ class ClaveContratoInline(admin.TabularInline):
     def importe_maximo(self, obj):
         if obj.cantidad_maxima and obj.precio_neto:
             total = obj.cantidad_maxima * obj.precio_neto
-            total_formateado = f"{total:,.2f}"
-            return format_html('<b>${}</b>', total_formateado)
+            return format_html('<b>${}</b>', f"{total:,.2f}")
         return "$0.00"
     importe_maximo.short_description = "Importe Máx."
-
-# ==========================================
-# RECURSO PARA IMPORTAR CONTRATOS MASIVAMENTE
-# ==========================================
 
 class EmpresaSeguraWidget(ForeignKeyWidget):
     def clean(self, value, row=None, **kwargs):
@@ -1006,73 +1001,47 @@ class CargaMaestraContratoResource(resources.ModelResource):
                     }
                 )
 
-# ==========================================
-# 2. PANTALLA PRINCIPAL: Contratos Maestros
-# ==========================================
 @admin.register(Contrato)
 class ContratoAdmin(ImportExportModelAdmin): 
     resource_class = CargaMaestraContratoResource 
     
     list_per_page = 30
     list_display = ('numero_contrato',  'licitacion_origen', 'dependencia', 'empresa', 'fecha_inicio', 'fecha_fin', 'fianzas_badges', 'mostrar_monto', 'mostrar_avance', 'mostrar_abasto', 'boton_expediente', 'monto_penalizado')
-    
     search_fields = ('numero_contrato', 'dependencia', 'fianzas__numero_fianza', 'licitacion_origen__num_procedimiento') 
     list_filter = ('empresa', 'fecha_fin', 'licitacion_origen')
-    
     inlines = [FianzaContratoInline, ClaveContratoInline]
     autocomplete_fields = ['licitacion_origen']
-    
     change_form_template = "admin/licitaciones/licitacion/boton_contrato.html"
 
     fieldsets = (
-        ('🏢 Datos Generales del Contrato', {
-            'fields': ('empresa', 'numero_contrato', 'dependencia')
-        }),
-        ('📅 Vigencia', {
-            'fields': ('fecha_inicio', 'fecha_fin') 
-        }),
-        ('🤖 Vinculación', {
-            'fields': ('licitacion_origen',),
-            'description': 'Selecciona la Licitación de origen.'
-        }),
-        ('📂 Expediente Físico/Servidor', {
-            'fields': ('ruta_carpeta_servidor',),
-            'description': 'Pega la ruta de la carpeta compartida de tu red (Ej: V:\\REPORTES CONTRATOS...).'
-        }),
+        ('🏢 Datos Generales del Contrato', {'fields': ('empresa', 'numero_contrato', 'dependencia')}),
+        ('📅 Vigencia', {'fields': ('fecha_inicio', 'fecha_fin') }),
+        ('🤖 Vinculación', {'fields': ('licitacion_origen',), 'description': 'Selecciona la Licitación de origen.'}),
+        ('📂 Expediente Físico/Servidor', {'fields': ('ruta_carpeta_servidor',), 'description': 'Pega la ruta de la carpeta compartida de tu red.'}),
     )
 
     def fianzas_badges(self, obj):
         fianzas = obj.fianzas.all()
-        if not fianzas:
-            return format_html('<span style="color: #ccc;">{}</span>', 'Sin Fianzas')
-        
+        if not fianzas: return format_html('<span style="color: #ccc;">{}</span>', 'Sin Fianzas')
         badges = []
         for f in fianzas:
             badges.append(f'<span style="background-color: #17a2b8; color: white; padding: 3px 8px; border-radius: 10px; font-size: 10px; display: inline-block; margin-bottom: 3px;">{f.get_tipo_display()}: {f.numero_fianza}</span>')
-        
         return format_html(''.join(badges))
     fianzas_badges.short_description = "Pólizas / Fianzas"
 
     def mostrar_monto(self, obj):
-        monto = obj.monto_total_contrato
-        monto_formateado = f"{monto:,.2f}"
-        return format_html('<b style="color: #28a745;">${}</b>', monto_formateado)
+        return format_html('<b style="color: #28a745;">${}</b>', f"{obj.monto_total_contrato:,.2f}")
     mostrar_monto.short_description = "Monto Total Máximo"
 
     def get_urls(self):
         urls = super().get_urls()
-        custom_urls = [
-            path('<path:object_id>/seleccionar-claves/', self.admin_site.admin_view(self.seleccionar_claves_view), name='seleccionar_claves_contrato'),
-        ]
+        custom_urls = [path('<path:object_id>/seleccionar-claves/', self.admin_site.admin_view(self.seleccionar_claves_view), name='seleccionar_claves_contrato')]
         return custom_urls + urls
     
     def boton_expediente(self, obj):
         if hasattr(obj, 'ruta_carpeta_servidor') and obj.ruta_carpeta_servidor:
             ruta_segura = obj.ruta_carpeta_servidor.replace('\\', '\\\\')
-            return format_html(
-                '<button type="button" onclick="navigator.clipboard.writeText(\'{}\'); alert(\'¡Ruta copiada! Abre tu explorador de archivos y pégala.\');" style="background-color: #6c757d; color: white; padding: 4px 10px; border: none; border-radius: 4px; font-size: 11px; font-weight: bold; cursor: pointer;">📋 Copiar Ruta</button>',
-                ruta_segura
-            )
+            return format_html('<button type="button" onclick="navigator.clipboard.writeText(\'{}\'); alert(\'¡Ruta copiada!\');" style="background-color: #6c757d; color: white; padding: 4px 10px; border: none; border-radius: 4px; font-size: 11px; font-weight: bold; cursor: pointer;">📋 Copiar Ruta</button>', ruta_segura)
         return mark_safe('<span style="color: #ccc;">-</span>')
     boton_expediente.short_description = "Expediente"
 
@@ -1102,99 +1071,56 @@ class ContratoAdmin(ImportExportModelAdmin):
             claves_creadas = 0
             for partida_id in partidas_seleccionadas:
                 partida = PartidaRequerimiento.objects.get(id=partida_id)
-                cant_min = partida.cantidad_minima if partida.cantidad_minima else 0
-                cant_max = partida.cantidad_maxima if partida.cantidad_maxima else 0
-                precio = partida.precio if partida.precio else 0
-
                 ClaveContrato.objects.create(
-                    contrato=contrato,
-                    medicamento=partida.medicamento,
-                    precio_neto=precio,
-                    cantidad_minima=cant_min,
-                    cantidad_maxima=cant_max
+                    contrato=contrato, medicamento=partida.medicamento,
+                    precio_neto=partida.precio if partida.precio else 0,
+                    cantidad_minima=partida.cantidad_minima if partida.cantidad_minima else 0,
+                    cantidad_maxima=partida.cantidad_maxima if partida.cantidad_maxima else 0
                 )
                 claves_creadas += 1
-            
-            if claves_creadas > 0:
-                messages.success(request, f"¡Éxito! Se agregaron {claves_creadas} claves al contrato {contrato.numero_contrato}.")
+            if claves_creadas > 0: messages.success(request, f"¡Éxito! Se agregaron {claves_creadas} claves al contrato.")
             return redirect('admin:licitaciones_contrato_change', object_id)
 
-        context = {
-            'title': f'Elegir Claves Ganadas: {contrato.numero_contrato}',
-            'contrato': contrato,
-            'partidas': partidas_ganadas,
-            'opts': self.model._meta,
-            'has_view_permission': self.has_view_permission(request, contrato)
-        }
+        context = {'title': f'Elegir Claves Ganadas: {contrato.numero_contrato}', 'contrato': contrato, 'partidas': partidas_ganadas, 'opts': self.model._meta, 'has_view_permission': self.has_view_permission(request, contrato)}
         return render(request, 'admin/licitaciones/licitacion/seleccionar_claves_contrato.html', context)
 
     def monto_penalizado(self, obj):
         ordenes = OrdenSuministro.objects.filter(partidas__clave_contrato__contrato=obj).distinct()
-        try:
-            total_multas = sum(float(orden.penalizacion_estimada) for orden in ordenes)
-        except (ValueError, TypeError):
-            total_multas = 0.0
+        try: total_multas = sum(float(orden.penalizacion_estimada) for orden in ordenes)
+        except (ValueError, TypeError): total_multas = 0.0
             
-        if total_multas > 0:
-            monto_formateado = f"${total_multas:,.2f}"
-            return format_html('<span style="color: #dc3545; font-weight: bold;">- {}</span>', monto_formateado)
-            
+        if total_multas > 0: return format_html('<span style="color: #dc3545; font-weight: bold;">- ${:,.2f}</span>', total_multas)
         return mark_safe('<span style="color: #28a745; font-weight: bold;">$0.00</span>')
-    monto_penalizado.short_description = "Penalizaciones (Est.)"
+    monto_penalizado.short_description = "Penalizaciones"
 
 # ==========================================
-# RECURSO PARA IMPORTAR ÓRDENES MASIVAMENTE
+# RECURSOS LOGÍSTICOS
 # ==========================================
 class ClaveContratoWidget(ForeignKeyWidget):
     def clean(self, value, row=None, **kwargs):
         num_contrato = str(row.get('numero_contrato', '')).strip()
         clave_sec = str(row.get('clave_medicamento', '')).strip()
-        
         if num_contrato and clave_sec:
-            return ClaveContrato.objects.filter(
-                contrato__numero_contrato__iexact=num_contrato,
-                medicamento__clave_sector__iexact=clave_sec
-            ).first()
-            
+            return ClaveContrato.objects.filter(contrato__numero_contrato__iexact=num_contrato, medicamento__clave_sector__iexact=clave_sec).first()
         return None
 
 class OrdenSuministroResource(resources.ModelResource):
     actions = ['marcar_como_canceladas']
-    clave_contrato = fields.Field(
-        column_name='clave_medicamento', 
-        attribute='clave_contrato',
-        widget=ClaveContratoWidget(ClaveContrato, field='id')
-    )
-    
-    clave_medicamento_historico = fields.Field(
-        column_name='clave_medicamento',
-        attribute='clave_medicamento_historico'
-    )
-    numero_contrato_historico = fields.Field(
-        column_name='numero_contrato',
-        attribute='numero_contrato_historico'
-    )
-
+    clave_contrato = fields.Field(column_name='clave_medicamento', attribute='clave_contrato', widget=ClaveContratoWidget(ClaveContrato, field='id'))
+    clave_medicamento_historico = fields.Field(column_name='clave_medicamento', attribute='clave_medicamento_historico')
+    numero_contrato_historico = fields.Field(column_name='numero_contrato', attribute='numero_contrato_historico')
     fecha_recepcion = fields.Field(column_name='fecha_recepcion', attribute='fecha_recepcion', widget=DateWidget(format='%Y-%m-%d'))
     fecha_limite = fields.Field(column_name='fecha_limite', attribute='fecha_limite', widget=DateWidget(format='%Y-%m-%d'))
     fecha_entrega_real = fields.Field(column_name='fecha_entrega_real', attribute='fecha_entrega_real', widget=DateWidget(format='%Y-%m-%d'))
 
     class Meta:
         model = OrdenSuministro
-        fields = (
-            'razon_social', 'numero_orden_suministro', 'numero_procedimiento_extra', 
-            'numero_contrato_historico', 'clave_medicamento_historico', 'descripcion_medicamento', 
-            'cantidad_solicitada', 'cantidad_entregada', 'precio_unitario', 'clues_destino', 
-            'entidad_destino', 'nombre_unidad', 'fecha_recepcion', 'fecha_limite', 
-            'fecha_entrega_real', 'clave_contrato', 'estatus' 
-        )
+        fields = ('razon_social', 'numero_orden_suministro', 'numero_procedimiento_extra', 'numero_contrato_historico', 'clave_medicamento_historico', 'descripcion_medicamento', 'cantidad_solicitada', 'cantidad_entregada', 'precio_unitario', 'clues_destino', 'entidad_destino', 'nombre_unidad', 'fecha_recepcion', 'fecha_limite', 'fecha_entrega_real', 'clave_contrato', 'estatus')
         import_id_fields = ('numero_orden_suministro', 'clave_medicamento_historico')
 
     def before_import_row(self, row, **kwargs):
         for key in list(row.keys()):
-            if isinstance(row[key], str):
-                row[key] = row[key].strip()
-        
+            if isinstance(row[key], str): row[key] = row[key].strip()
         row['numero_contrato_historico'] = str(row.get('numero_contrato', '')).strip()
         row['clave_medicamento_historico'] = str(row.get('clave_medicamento', '')).strip()
 
@@ -1202,20 +1128,12 @@ class OrdenSuministroResource(resources.ModelResource):
             solicitada = int(float(row.get('cantidad_solicitada', 0) or 0))
             entregada = int(float(row.get('cantidad_entregada', 0) or 0))
         except (ValueError, TypeError):
-            solicitada = 0
-            entregada = 0
+            solicitada, entregada = 0, 0
 
         if entregada > 0:
-            if entregada >= solicitada:
-                row['estatus'] = 'ENTREGADA'
-            else:
-                row['estatus'] = 'PARCIAL'
-        else:
-            row['estatus'] = 'PENDIENTE'
-
-# ==========================================
-# 3. PANTALLA DE LOGÍSTICA: Órdenes de Suministro (OPMs)
-# ==========================================
+            if entregada >= solicitada: row['estatus'] = 'ENTREGADA'
+            else: row['estatus'] = 'PARCIAL'
+        else: row['estatus'] = 'PENDIENTE'
 
 class PartidaOrdenInline(admin.TabularInline):
     model = PartidaOrden
@@ -1227,65 +1145,42 @@ class PartidaOrdenInline(admin.TabularInline):
 class OrdenSuministroAdmin(ImportExportModelAdmin):
     resource_class = OrdenSuministroResource
     inlines = [PartidaOrdenInline]
-    
     list_per_page = 50
-    list_display = (
-        'razon_social', 'numero_orden_suministro', 'dependencia', 'nombre_unidad',
-        'piezas_solicitadas', 'piezas_entregadas', 'piezas_pendientes', 
-        'estatus_logistico', 'monto_penalizacion', 'estatus', 'btn_surtir'
-    )
-    
+    list_display = ('razon_social', 'numero_orden_suministro', 'dependencia', 'nombre_unidad', 'piezas_solicitadas', 'piezas_entregadas', 'piezas_pendientes', 'estatus_logistico', 'monto_penalizacion', 'estatus', 'btn_surtir')
     search_fields = ('numero_orden_suministro', 'dependencia', 'razon_social', 'nombre_unidad')
     list_filter = ('razon_social', 'dependencia', 'estatus')
-    
     list_editable = ('estatus',)
 
     fieldsets = (
-        ('1. Datos del Documento', {
-            'fields': ('tipo_documento', 'numero_orden_suministro', 'fecha_recepcion', 'fecha_limite')
-        }),
-        ('2. Cliente / Dependencia', {
-            'fields': ('razon_social', 'dependencia', 'entidad_destino', 'clues_destino', 'nombre_unidad')
-        }),
-        ('3. Logística y Estatus', {
-            'fields': ('estatus', 'fecha_entrega_real', 'motivo_incidencia')
-        }),
+        ('1. Datos del Documento', {'fields': ('tipo_documento', 'numero_orden_suministro', 'fecha_recepcion', 'fecha_limite')}),
+        ('2. Cliente / Dependencia', {'fields': ('razon_social', 'dependencia', 'entidad_destino', 'clues_destino', 'nombre_unidad')}),
+        ('3. Logística y Estatus', {'fields': ('estatus', 'fecha_entrega_real', 'motivo_incidencia')}),
     )
 
     def get_queryset(self, request):
-        qs = super().get_queryset(request)
-        return qs.filter(tipo_documento='SUMINISTRO')
+        return super().get_queryset(request).filter(tipo_documento='SUMINISTRO')
 
-    def piezas_solicitadas(self, obj):
-        return sum(p.cantidad_solicitada for p in obj.partidas.all())
+    def piezas_solicitadas(self, obj): return sum(p.cantidad_solicitada for p in obj.partidas.all())
     piezas_solicitadas.short_description = "Cant. Solicitada"
 
     def piezas_entregadas(self, obj):
         enviadas = sum((r.cantidad_entregada or 0) for r in obj.remisiones.exclude(estatus_viaje='RECHAZO'))
         total_solicitado = sum(p.cantidad_solicitada for p in obj.partidas.all())
-        enviadas_texto = f"{enviadas:,}"
-        
-        if enviadas >= total_solicitado and total_solicitado > 0:
-            return format_html('<b style="color: #28a745;">{}</b>', enviadas_texto) 
-        else:
-            return format_html('<b style="color: #007bff;">{}</b>', enviadas_texto)
+        if enviadas >= total_solicitado and total_solicitado > 0: return format_html('<b style="color: #28a745;">{:,}</b>', enviadas) 
+        return format_html('<b style="color: #007bff;">{:,}</b>', enviadas)
     piezas_entregadas.short_description = "Cant. Entregada"
 
     def piezas_pendientes(self, obj):
         enviadas = sum((r.cantidad_entregada or 0) for r in obj.remisiones.exclude(estatus_viaje='RECHAZO'))
         total_solicitado = sum(p.cantidad_solicitada for p in obj.partidas.all())
         pendientes = total_solicitado - enviadas
-        
-        if pendientes <= 0:
-            return mark_safe('<b style="color: #28a745;">0</b>') 
-        else:
-            return format_html('<b style="color: #dc3545;">{}</b>', f"{pendientes:,}")
+        if pendientes <= 0: return mark_safe('<b style="color: #28a745;">0</b>') 
+        return format_html('<b style="color: #dc3545;">{:,}</b>', pendientes)
     piezas_pendientes.short_description = "Cant. Pendiente"
 
     def estatus_logistico(self, obj):
         color = "#6c757d"
         texto = obj.get_estatus_display()
-        
         if obj.estatus == 'ENTREGADA': color = "#28a745"
         elif obj.estatus == 'PENDIENTE': color = "#ffc107"
         elif obj.estatus == 'DEVUELTA': color = "#dc3545"
@@ -1295,14 +1190,8 @@ class OrdenSuministroAdmin(ImportExportModelAdmin):
         if obj.estatus in ['CANCELADA', 'CANCELADA_EVIDENCIA']:
             piezas_entregadas = sum((r.cantidad_entregada or 0) for r in obj.remisiones.exclude(estatus_viaje='RECHAZO'))
             if piezas_entregadas > 0:
-                return format_html(
-                    '<div style="text-align: center; line-height: 1.2;">'
-                    '<span style="background-color: #000000; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 10px; display: block; margin-bottom: 2px;">🚨 CANCELADA (TIENE EVIDENCIA)</span>'
-                    '<span style="font-size: 10px; color: #dc3545; font-weight: bold;">Se entregaron {:,} pzas</span>'
-                    '</div>', piezas_entregadas
-                )
-            else:
-                return format_html('<span style="background-color: #6f42c1; color: white; padding: 5px 10px; border-radius: 4px; font-weight: bold; font-size: 11px;">🚫 CANCELADA (Sin entregas)</span>')
+                return format_html('<div style="text-align: center; line-height: 1.2;"><span style="background-color: #000; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 10px; display: block; margin-bottom: 2px;">🚨 CANCELADA (TIENE EVIDENCIA)</span><span style="font-size: 10px; color: #dc3545; font-weight: bold;">Se entregaron {:,} pzas</span></div>', piezas_entregadas)
+            return format_html('<span style="background-color: #6f42c1; color: white; padding: 5px 10px; border-radius: 4px; font-weight: bold; font-size: 11px;">🚫 CANCELADA (Sin entregas)</span>')
 
         if obj.estatus in ['PENDIENTE', 'PARCIAL'] and obj.dias_atraso > 0:
             return format_html('<span style="background-color: #dc3545; color: white; padding: 5px 10px; border-radius: 4px; font-weight: bold; font-size: 11px;">⚠️ ATRASADA ({} DÍAS)</span>', obj.dias_atraso)
@@ -1311,122 +1200,76 @@ class OrdenSuministroAdmin(ImportExportModelAdmin):
     estatus_logistico.short_description = "Semáforo"
 
     def monto_penalizacion(self, obj):
-        try:
-            penalizacion = float(obj.penalizacion_estimada)
-        except (ValueError, TypeError):
-            penalizacion = 0.0
-
-        if penalizacion > 0:
-            monto_formateado = f"${penalizacion:,.2f}"
-            return format_html('<span style="color: #dc3545; font-weight: bold;">- {}</span>', monto_formateado)
-            
+        try: penalizacion = float(obj.penalizacion_estimada)
+        except (ValueError, TypeError): penalizacion = 0.0
+        if penalizacion > 0: return format_html('<span style="color: #dc3545; font-weight: bold;">- ${:,.2f}</span>', penalizacion)
         return mark_safe('<span style="color: #ccc;">$0.00</span>')
     monto_penalizacion.short_description = "Penalización Acumulada"
     
     def btn_surtir(self, obj):
-        if obj.estatus == 'ENTREGADA':
-            return mark_safe('<span style="color: green; font-weight:bold;">✔ Completada</span>')
-            
-        return format_html(
-            '<a class="button" href="{}/surtir/" style="background-color: #007bff; color:white; padding: 5px 10px; border-radius: 4px; text-decoration: none; font-weight:bold;">🚚 Surtir</a>',
-            obj.id
-        )
+        if obj.estatus == 'ENTREGADA': return mark_safe('<span style="color: green; font-weight:bold;">✔ Completada</span>')
+        return format_html('<a class="button" href="{}/surtir/" style="background-color: #007bff; color:white; padding: 5px 10px; border-radius: 4px; text-decoration: none; font-weight:bold;">🚚 Surtir</a>', obj.id)
     btn_surtir.short_description = "Logística"
     
     def get_urls(self):
         urls = super().get_urls()
-        custom_urls = [
-            path('<path:object_id>/surtir/', self.admin_site.admin_view(self.surtir_orden_view), name='surtir_orden_logistica'),
-        ]
+        custom_urls = [path('<path:object_id>/surtir/', self.admin_site.admin_view(self.surtir_orden_view), name='surtir_orden_logistica')]
         return custom_urls + urls
 
     def surtir_orden_view(self, request, object_id):
         orden = self.get_object(request, object_id)
-        
         claves_buscar = [p.clave_contrato.medicamento.clave_sector for p in orden.partidas.all() if p.clave_contrato and p.clave_contrato.medicamento]
         lotes_disponibles = Inventario.objects.filter(medicamento__clave_sector__in=claves_buscar, cantidad_disponible__gt=0).order_by('fecha_caducidad')
-        
         total_solicitado = sum(p.cantidad_solicitada for p in orden.partidas.all())
         ya_enviado = sum(r.cantidad_entregada for r in orden.remisiones.all())
         falta_enviar = total_solicitado - ya_enviado
 
         if request.method == 'POST':
-            lote_id = request.POST.get('lote_id')
-            cantidad_a_enviar = int(request.POST.get('cantidad', 0))
-            folio_remision = request.POST.get('folio_remision')
-            
+            lote_id, cantidad_a_enviar, folio_remision = request.POST.get('lote_id'), int(request.POST.get('cantidad', 0)), request.POST.get('folio_remision')
             if cantidad_a_enviar > 0 and lote_id and folio_remision:
                 lote_seleccionado = Inventario.objects.get(id=lote_id)
-                
                 if cantidad_a_enviar > lote_seleccionado.cantidad_disponible:
                     messages.error(request, "No puedes enviar más piezas de las que hay en ese lote.")
                 else:
                     lote_seleccionado.cantidad_disponible -= cantidad_a_enviar
                     lote_seleccionado.save()
-                    
-                    RemisionEntrega.objects.create(
-                        orden=orden,
-                        folio_remision_factura=folio_remision,
-                        cantidad_entregada=cantidad_a_enviar,
-                        lote=lote_seleccionado.lote,
-                        caducidad=lote_seleccionado.fecha_caducidad
-                    )
-                    
+                    RemisionEntrega.objects.create(orden=orden, folio_remision_factura=folio_remision, cantidad_entregada=cantidad_a_enviar, lote=lote_seleccionado.lote, caducidad=lote_seleccionado.fecha_caducidad)
                     orden.estatus = 'EN_RUTA'
                     orden.save()
-                    
                     messages.success(request, f"¡Camión en ruta! Se despacharon {cantidad_a_enviar} piezas con la remisión {folio_remision}.")
                     return redirect('admin:licitaciones_ordensuministro_changelist')
 
-        context = {
-            'title': f'Surtir Orden: {orden.numero_orden_suministro}',
-            'orden': orden,
-            'lotes': lotes_disponibles,
-            'falta_enviar': falta_enviar,
-            'opts': self.model._meta,
-        }
+        context = {'title': f'Surtir Orden: {orden.numero_orden_suministro}', 'orden': orden, 'lotes': lotes_disponibles, 'falta_enviar': falta_enviar, 'opts': self.model._meta}
         return render(request, 'admin/licitaciones/ordensuministro/surtir_orden.html', context)
 
-    @admin.action(description='🚫 Marcar seleccionadas como CANCELADAS (Audita evidencia automático)')
+    @admin.action(description='🚫 Marcar seleccionadas como CANCELADAS')
     def marcar_como_canceladas(self, request, queryset):
-        ordenes_procesadas = 0
-        con_evidencia = 0
-        
+        ordenes_procesadas, con_evidencia = 0, 0
         for orden in queryset:
             piezas_entregadas = sum((r.cantidad_entregada or 0) for r in orden.remisiones.exclude(estatus_viaje='RECHAZO'))
-            
             if piezas_entregadas > 0:
                 orden.estatus = 'CANCELADA_EVIDENCIA'
                 con_evidencia += 1
             else:
                 orden.estatus = 'CANCELADA'
-            
             orden.save()
             ordenes_procesadas += 1
-            
-        if con_evidencia > 0:
-            messages.warning(request, f"¡Atención! Se cancelaron {ordenes_procesadas} órdenes, pero {con_evidencia} se marcaron CON EVIDENCIA para protección legal porque ya se habían entregado piezas.")
-        else:
-            messages.success(request, f"Se cancelaron {ordenes_procesadas} órdenes correctamente.")
+        if con_evidencia > 0: messages.warning(request, f"¡Atención! Se cancelaron {ordenes_procesadas} órdenes, {con_evidencia} CON EVIDENCIA.")
+        else: messages.success(request, f"Se cancelaron {ordenes_procesadas} órdenes correctamente.")
 
     def get_actions(self, request):
         actions = super().get_actions(request)
-        if not request.user.is_superuser:
-            if 'marcar_como_canceladas' in actions:
-                del actions['marcar_como_canceladas']
-                
+        if not request.user.is_superuser and 'marcar_como_canceladas' in actions: del actions['marcar_como_canceladas']
         return actions
 
 # ==========================================
-# REGISTRO DEL NUEVO MÓDULO DE INVENTARIO
+# INVENTARIO Y ALMACÉN
 # ==========================================
-
 class InventarioResource(resources.ModelResource):
     clave_sector = fields.Field(attribute='medicamento__clave_sector', column_name='CLAVE SECTOR')
     descripcion = fields.Field(attribute='medicamento__denominacion_generica', column_name='DESCRIPCIÓN')
     fabricante = fields.Field(attribute='medicamento__fabricante', column_name='FABRICANTE')
     socio_comercial = fields.Field(attribute='medicamento__socio_contacto__nombre', column_name='SOCIO COMERCIAL')
-
     class Meta:
         model = Inventario
         fields = ('almacen__nombre', 'clave_sector', 'descripcion', 'socio_comercial', 'fabricante', 'tipo_producto', 'lote', 'fecha_caducidad', 'cantidad_disponible')
@@ -1441,7 +1284,6 @@ class InventarioAdmin(ImportExportModelAdmin):
     list_filter = ('tipo_producto', 'almacen', 'fecha_caducidad',)
     autocomplete_fields = ['medicamento']
 
-# 4. PANTALLA FÍSICA: Remisiones de Almacén (Viajes)
 @admin.register(RemisionEntrega)
 class RemisionEntregaAdmin(admin.ModelAdmin):
     list_per_page = 50
@@ -1450,42 +1292,27 @@ class RemisionEntregaAdmin(admin.ModelAdmin):
     list_filter = ('estatus_viaje',)
 
     fieldsets = (
-        ('📦 Datos del Viaje', {
-            'fields': ('orden', 'folio_remision_factura', 'cantidad_entregada', 'lote', 'caducidad')
-        }),
-        ('🚚 Logística y Comprobación', {
-            'fields': ('estatus_viaje', 'archivo_evidencia')
-        }),
-        ('🔴 Incidencias: Rechazo', {
-            'fields': ('motivo_rechazo', 'evidencia_rechazo'),
-            'description': 'Llena esto si el Instituto rechazó las cajas por caducidad, maltrato, etc.'
-        }),
+        ('📦 Datos del Viaje', {'fields': ('orden', 'folio_remision_factura', 'cantidad_entregada', 'lote', 'caducidad')}),
+        ('🚚 Logística y Comprobación', {'fields': ('estatus_viaje', 'archivo_evidencia')}),
+        ('🔴 Incidencias: Rechazo', {'fields': ('motivo_rechazo', 'evidencia_rechazo')}),
     )
 
-    def orden_vinculada(self, obj):
-        return obj.orden.numero_orden_suministro
+    def orden_vinculada(self, obj): return obj.orden.numero_orden_suministro
     orden_vinculada.short_description = "OPM Vinculada"
 
     def imprimir_pdf(self, obj):
-        return format_html(
-            '<a class="button" href="{}/pdf/" style="background-color: #e74c3c; color:white; padding: 5px 10px; border-radius: 4px; text-decoration: none; font-weight:bold;"><i class="fas fa-file-pdf"></i> Generar PDF</a>',
-            obj.id
-        )
+        return format_html('<a class="button" href="{}/pdf/" style="background-color: #e74c3c; color:white; padding: 5px 10px; border-radius: 4px; text-decoration: none; font-weight:bold;"><i class="fas fa-file-pdf"></i> Generar PDF</a>', obj.id)
     imprimir_pdf.short_description = "Formato Oficial"
 
     def get_urls(self):
         urls = super().get_urls()
-        custom_urls = [
-            path('<path:object_id>/pdf/', self.admin_site.admin_view(self.generar_remision_pdf_view), name='generar_remision_pdf'),
-        ]
+        custom_urls = [path('<path:object_id>/pdf/', self.admin_site.admin_view(self.generar_remision_pdf_view), name='generar_remision_pdf')]
         return custom_urls + urls
 
     def generar_remision_pdf_view(self, request, object_id):
         from django.template.loader import render_to_string
         import io
-        
-        try:
-            from xhtml2pdf import pisa
+        try: from xhtml2pdf import pisa
         except ImportError:
             messages.error(request, "Falta instalar xhtml2pdf. Ejecuta: pip install xhtml2pdf")
             return redirect('admin:licitaciones_remisionentrega_changelist')
@@ -1493,46 +1320,29 @@ class RemisionEntregaAdmin(admin.ModelAdmin):
         remision = self.get_object(request, object_id)
         orden = remision.orden
         
-        num_contrato_hist = getattr(orden, 'numero_contrato_historico', None)
-        clave_hist = getattr(orden, 'clave_medicamento_historico', None)
-        desc_hist = getattr(orden, 'descripcion_medicamento', None)
-        precio_hist = getattr(orden, 'precio_unitario', "0.00")
+        num_contrato_hist, clave_hist, desc_hist, precio_hist = getattr(orden, 'numero_contrato_historico', None), getattr(orden, 'clave_medicamento_historico', None), getattr(orden, 'descripcion_medicamento', None), getattr(orden, 'precio_unitario', "0.00")
         
-        contrato_vinculado = None
-        empresa_emisora = None
-        
+        contrato_vinculado, empresa_emisora = None, None
         primera_partida = orden.partidas.first()
         if primera_partida and hasattr(primera_partida, 'clave_contrato') and primera_partida.clave_contrato:
             contrato_vinculado = primera_partida.clave_contrato.contrato
-            
         if not contrato_vinculado and num_contrato_hist:
-            from .models import Contrato
             contrato_vinculado = Contrato.objects.filter(numero_contrato__iexact=num_contrato_hist).first()
 
         if contrato_vinculado:
-            empresa_emisora = contrato_vinculado.empresa
-            numero_contrato_final = contrato_vinculado.numero_contrato
-        else:
-            numero_contrato_final = num_contrato_hist or "S/D"
+            empresa_emisora, numero_contrato_final = contrato_vinculado.empresa, contrato_vinculado.numero_contrato
+        else: numero_contrato_final = num_contrato_hist or "S/D"
 
         cliente_final = getattr(orden, 'dependencia', '') or getattr(orden, 'razon_social', '') or "S/D"
         cliente_upper = cliente_final.upper()
         if "SAGO" in cliente_upper or "GAMS" in cliente_upper or "GSM" in cliente_upper:
             cliente_final = getattr(orden, 'entidad_destino', '') or getattr(orden, 'nombre_unidad', '') or "DEPENDENCIA NO ESPECIFICADA"
-
         dependencia_str = (getattr(orden, 'dependencia', '') or '').upper()
 
         contexto = {
-            'remision': remision,
-            'orden': orden,
-            'empresa': empresa_emisora,
-            'numero_contrato_final': numero_contrato_final,
-            'cliente_final': cliente_final,
-            'dependencia_str': dependencia_str,
-            'clave_hist': clave_hist,
-            'desc_hist': desc_hist,
-            'precio_hist': precio_hist,
-            'fecha_actual': getattr(remision, 'fecha_despacho', timezone.now().date()),
+            'remision': remision, 'orden': orden, 'empresa': empresa_emisora, 'numero_contrato_final': numero_contrato_final,
+            'cliente_final': cliente_final, 'dependencia_str': dependencia_str, 'clave_hist': clave_hist, 'desc_hist': desc_hist,
+            'precio_hist': precio_hist, 'fecha_actual': getattr(remision, 'fecha_despacho', timezone.now().date()),
         }
 
         html_string = render_to_string('admin/licitaciones/remisionentrega/pdf/formato_remision.html', contexto)
@@ -1541,473 +1351,17 @@ class RemisionEntregaAdmin(admin.ModelAdmin):
         
         if not pisa_status.err:
             response = HttpResponse(result_file.getvalue(), content_type='application/pdf')
-            nombre_archivo = f"Remision_{dependencia_str}_{remision.folio_remision_factura}.pdf".replace(' ', '_')
-            response['Content-Disposition'] = f'inline; filename="{nombre_archivo}"'
+            response['Content-Disposition'] = f'inline; filename="Remision_{dependencia_str}_{remision.folio_remision_factura}.pdf".replace(" ", "_")'
             return response
-        else:
-            messages.error(request, "Error al procesar el documento PDF.")
-            return redirect('admin:licitaciones_remisionentrega_changelist')
+        messages.error(request, "Error al procesar el documento PDF.")
+        return redirect('admin:licitaciones_remisionentrega_changelist')
 
-# ==========================================
-# RECURSO PARA IMPORTAR CLAVES A LOS CONTRATOS (CARGA HISTÓRICA)
-# ==========================================
-class ClaveContratoResource(resources.ModelResource):
-    contrato = fields.Field(
-        column_name='numero_contrato',
-        attribute='contrato',
-        widget=ForeignKeyWidget(Contrato, field='numero_contrato')
-    )
-    medicamento = fields.Field(
-        column_name='clave_sector',
-        attribute='medicamento',
-        widget=ForeignKeyWidget(CatalogoMedicamento, field='clave_sector')
-    )
-
-    class Meta:
-        model = ClaveContrato
-        fields = ('contrato', 'medicamento', 'cantidad_minima', 'cantidad_maxima', 'precio_neto')
-        import_id_fields = ('contrato', 'medicamento')
-
-# ==========================================
-# 🛒 MÓDULO DE COMPRAS Y RECEPCIÓN
-# ==========================================
-class PartidaCompraInline(admin.TabularInline):
-    model = PartidaCompra
-    extra = 1
-    autocomplete_fields = ['medicamento']
-    fields = ('medicamento', 'cantidad', 'precio_referencia', 'precio_unitario', 'importe_visual', 'cantidad_recibida', 'piezas_rechazadas')
-    readonly_fields = ('importe_visual',)
-
-    def importe_visual(self, obj):
-        if obj.cantidad and obj.precio_unitario:
-            total = float(obj.cantidad) * float(obj.precio_unitario)
-            return format_html('<b>${}</b>', f"{total:,.2f}")
-        return "$0.00"
-    importe_visual.short_description = "Importe"
-
-    def formfield_for_foreignkey(self, db_field, request, **kwargs):
-        formfield = super().formfield_for_foreignkey(db_field, request, **kwargs)
-        if db_field.name == "medicamento":
-            formfield.widget.attrs.update({'style': 'width: 450px; min-width: 450px;'})
-        return formfield
-
-class DocumentoOrdenCompraInline(admin.TabularInline):
-    model = DocumentoOrdenCompra
-    extra = 1
-    fields = ('descripcion', 'archivo')
-
-@admin.register(OrdenCompra)
-class OrdenCompraAdmin(admin.ModelAdmin):
-    list_display = ('folio', 'proveedor', 'fecha_entrega_esperada', 'mostrar_total', 'penalizacion_calculada', 'auditoria_ciega', 'estatus_badge', 'enviar_oc_link')
-    list_filter = ('estatus', 'empresa_compradora', 'proveedor')
-    search_fields = ('folio', 'proveedor__nombre', 'destino') 
-    inlines = [PartidaCompraInline, DocumentoOrdenCompraInline]
-    autocomplete_fields = ['proveedor'] 
-    list_per_page = 30
-    actions = ['marcar_recibida_y_crear_inventario', 'notificar_proveedor_masivo']
-
-    def penalizacion_calculada(self, obj):
-        return f"${obj.penalizacion_calculada:,.2f}"
-    penalizacion_calculada.short_description = "📉 Penalización por Atraso"
-
-    def enviar_oc_link(self, obj):
-        return format_html(
-            '<a class="button" href="{}" style="background-color: #5e35b1; color:white; padding: 5px 10px; border-radius: 4px; text-decoration: none;">✉️ Enviar OC</a>',
-            f"{obj.id}/notificar-proveedor/"
-        )
-    enviar_oc_link.short_description = "Notificar"
-
-    def get_urls(self):
-        urls = super().get_urls()
-        custom_urls = [
-            path('<path:object_id>/notificar-proveedor/', self.admin_site.admin_view(self.notificar_proveedor_view), name='notificar_proveedor_oc'),
-            path('<path:object_id>/vista-previa-pdf/', self.admin_site.admin_view(self.vista_previa_pdf_view), name='vista_previa_pdf_oc'),
-        ]
-        return custom_urls + urls
-
-    def vista_previa_pdf_view(self, request, object_id):
-        from django.template.loader import render_to_string
-        from io import BytesIO
-        
-        try:
-            from xhtml2pdf import pisa
-        except ImportError:
-            self.message_user(request, "⚠️ Falta instalar xhtml2pdf. Ejecuta: pip install xhtml2pdf", level='error')
-            return redirect('admin:licitaciones_ordencompra_changelist')
-
-        oc = self.get_object(request, object_id)
-        empresa = oc.empresa_compradora
-
-        nombre_empresa = empresa.nombre.upper()
-        if "SAGO" in nombre_empresa: color_empresa = "#8B0000"
-        elif "GAMS" in nombre_empresa: color_empresa = "#005b96"
-        elif "GSM" in nombre_empresa: color_empresa = "#218838"
-        else: color_empresa = "#333333"
-
-        contexto = {
-            'oc': oc,
-            'proveedor': oc.proveedor,
-            'empresa': empresa,
-            'partidas': oc.partidas_compra.all(),
-            'color_empresa': color_empresa,
-            'url_logo': empresa.url_logo if hasattr(empresa, 'url_logo') else None,
-        }
-
-        html_pdf = render_to_string('admin/licitaciones/ordencompra/pdf/orden_compra_pdf.html', contexto)
-        result_file = BytesIO()
-        pisa_status = pisa.CreatePDF(html_pdf, dest=result_file)
-        
-        if not pisa_status.err:
-            response = HttpResponse(result_file.getvalue(), content_type='application/pdf')
-            response['Content-Disposition'] = f'inline; filename="Borrador_OC_{oc.folio}.pdf"'
-            return response
-        else:
-            self.message_user(request, "⚠️ Hubo un error al procesar el PDF de vista previa.", level='error')
-            return redirect('admin:licitaciones_ordencompra_changelist')
-
-    def notificar_proveedor_view(self, request, object_id):
-        from django.template.loader import render_to_string
-        from django.utils.html import strip_tags
-        import mimetypes
-        from io import BytesIO
-        
-        try:
-            from xhtml2pdf import pisa
-        except ImportError:
-            messages.error(request, "❌ ERROR: No tienes instalado 'xhtml2pdf'. Corre 'pip install xhtml2pdf' en la terminal.")
-            return redirect('admin:licitaciones_ordencompra_changelist')
-
-        oc = self.get_object(request, object_id)
-        proveedor = oc.proveedor
-        
-        if request.method == 'POST':
-            empresa = oc.empresa_compradora
-            if not empresa.correo_remitente:
-                messages.error(request, f"❌ ERROR DE CONFIGURACIÓN: La empresa '{empresa.nombre}' necesita un correo remitente registrado.")
-                return redirect(request.path)
-
-            try:
-                nombre_empresa_up = empresa.nombre.upper()
-                if "SAGO" in nombre_empresa_up: lista_respuesta = ["sagomedical.licitaciones@gmail.com"]
-                elif "GSM" in nombre_empresa_up: lista_respuesta = ["gsm.licitaciones@gmail.com"]
-                else: lista_respuesta = ["licitaciones2@gpharma.com"]
-
-                if empresa.correos_notificacion:
-                    empleados = [c.strip() for c in empresa.correos_notificacion.split(',') if c.strip()]
-                    lista_respuesta.extend(empleados)
-
-                conexion_dinamica = get_connection()
-                asunto = f"ORDEN DE COMPRA OFICIAL: {oc.folio} - {empresa.nombre}"
-                partidas = oc.partidas_compra.all()
-                
-                color_empresa = "#5e35b1" 
-                if "SAGO" in nombre_empresa_up: color_empresa = "#8B0000"
-                elif "GAMS" in nombre_empresa_up: color_empresa = "#005b96"
-                elif "GSM" in nombre_empresa_up: color_empresa = "#218838"
-
-                contexto = {
-                    'oc': oc, 'proveedor': proveedor, 'empresa': empresa,
-                    'partidas': partidas, 'total': f"{oc.total_compra:,.2f}",
-                    'color_empresa': color_empresa,
-                }
-                
-                html_content = render_to_string('admin/licitaciones/ordencompra/emails/orden_compra_email.html', contexto)
-                text_content = strip_tags(html_content)
-                destinatarios = [c.strip() for c in proveedor.correos.split(',') if c.strip()]
-                
-                msg = EmailMultiAlternatives(
-                    subject=asunto, 
-                    body=text_content, 
-                    from_email=f'"{empresa.nombre}" <{empresa.correo_remitente}>', 
-                    to=destinatarios, 
-                    connection=conexion_dinamica,
-                    bcc=lista_respuesta,
-                    reply_to=lista_respuesta
-                )
-                msg.attach_alternative(html_content, "text/html")
-                
-                html_pdf = render_to_string('admin/licitaciones/ordencompra/pdf/orden_compra_pdf.html', contexto)
-                result_file = BytesIO()
-                pisa_status = pisa.CreatePDF(html_pdf, dest=result_file)
-                
-                if not pisa_status.err:
-                    msg.attach(f"Orden_de_Compra_{oc.folio}.pdf", result_file.getvalue(), 'application/pdf')
-
-                for documento in oc.documentos.all():
-                    if documento.archivo:
-                        content_type, _ = mimetypes.guess_type(documento.archivo.name)
-                        msg.attach(documento.archivo.name.split('/')[-1], documento.archivo.read(), content_type or 'application/octet-stream')
-
-                msg.send()
-                
-                if oc.estatus == 'BORRADOR':
-                    oc.estatus = 'AUTORIZADA'
-                    oc.save()
-                
-                messages.success(request, f"🚀 ¡ENVIADO! La OC {oc.folio} ya va en camino a {proveedor.nombre}.")
-                return redirect('admin:licitaciones_ordencompra_changelist')
-            
-            except Exception as e:
-                messages.error(request, f"❌ ERROR DE RED/RESEND: {str(e)}")
-
-        context = {
-            'title': f'Enviar Orden de Compra: {oc.folio}',
-            'oc': oc, 'proveedor': proveedor, 'opts': self.model._meta,
-        }
-        return render(request, 'admin/licitaciones/ordencompra/confirmar_envio_oc.html', context)
-
-    @admin.action(description='✉️ Enviar OC seleccionadas a Proveedores')
-    def notificar_proveedor_masivo(self, request, queryset):
-        self.message_user(request, "Las órdenes seleccionadas han sido procesadas.")
-
-    def estatus_badge(self, obj):
-        colores = {
-            'BORRADOR': '#6c757d',   
-            'AUTORIZADA': '#007bff', 
-            'TRANSITO': '#fd7e14',   
-            'RECIBIDA': '#28a745',   
-            'CANCELADA': '#dc3545'   
-        }
-        color = colores.get(obj.estatus, '#000')
-        return format_html(
-            '<span style="background-color: {}; color: white; padding: 4px 10px; border-radius: 6px; font-weight: bold; font-size: 11px;">{}</span>',
-            color, obj.get_estatus_display()
-        )
-    estatus_badge.short_description = "Estatus"
-
-    def mostrar_total(self, obj):
-        return format_html('<b style="color: #5e35b1;">${}</b>', f"{obj.total_compra:,.2f}")
-    mostrar_total.short_description = "Total OC"
-
-    @admin.action(description='📦 Marcar como RECIBIDA e Ingresar al Inventario')
-    def marcar_recibida_y_crear_inventario(self, request, queryset):
-        import datetime
-        ordenes_procesadas = 0
-        for orden in queryset:
-            if orden.estatus == 'RECIBIDA':
-                continue 
-                
-            orden.estatus = 'RECIBIDA'
-            orden.save()
-            
-            for partida in orden.partidas_compra.all():
-                partida.cantidad_recibida = partida.cantidad
-                partida.save()
-                
-                Inventario.objects.create(
-                    medicamento=partida.medicamento,
-                    cantidad_disponible=partida.cantidad,
-                    lote=f"LOT-{orden.folio}", 
-                    fecha_ingreso=datetime.date.today(),
-                    fecha_caducidad=datetime.date.today() + datetime.timedelta(days=730) 
-                )
-            ordenes_procesadas += 1
-            
-        if ordenes_procesadas > 0:
-            messages.success(request, f"¡Éxito! Se recibieron {ordenes_procesadas} órdenes de compra y el STOCK SE ACTUALIZÓ en el Almacén.")
-        else:
-            messages.warning(request, "Las órdenes seleccionadas ya estaban recibidas previamente.")
-
-    def auditoria_ciega(self, obj):
-        reclamado_compras = sum(p.cantidad_recibida for p in obj.partidas_compra.all() if p.cantidad_recibida)
-        recibido_almacen = sum(e.cantidad_recibida for e in obj.entradaalmacen_set.all() if e.cantidad_recibida)
-        
-        if reclamado_compras == 0 and recibido_almacen == 0:
-            return mark_safe('<span style="color: #95a5a6; font-weight: bold;">➖ Pendiente</span>')
-            
-        if reclamado_compras == recibido_almacen:
-            return format_html('<span style="color: #28a745; font-weight: bold;">✅ CUADRA PERFECTO ({})</span>', recibido_almacen)
-        else:
-            diferencia = recibido_almacen - reclamado_compras
-            texto_dif = f"Faltan {-diferencia}" if diferencia < 0 else f"Sobran {diferencia}"
-            return format_html(
-                '<div style="line-height: 1.2;">'
-                '<span style="color: #dc3545; font-weight: bold;">❌ DISCREPANCIA</span><br>'
-                '<span style="font-size: 10px; color: #6c757d;">Compras: <b>{}</b> | Almacén: <b>{}</b></span><br>'
-                '<span style="font-size: 10px; color: #dc3545; font-weight: bold;">{}</span>'
-                '</div>', 
-                reclamado_compras, recibido_almacen, texto_dif
-            )
-    auditoria_ciega.short_description = "Auditoría de Recepción"
-
-# ==========================================
-# 📦 FORMULARIO INTELIGENTE DE ALMACÉN (AJAX)
-# ==========================================
-class EntradaAlmacenForm(forms.ModelForm):
-    class Meta:
-        model = EntradaAlmacen
-        fields = '__all__'
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        
-        if self.instance and self.instance.pk and self.instance.orden_id:
-            self.fields['medicamento'].queryset = CatalogoMedicamento.objects.filter(
-                id__in=PartidaCompra.objects.filter(orden=self.instance.orden).values('medicamento')
-            )
-        elif self.data.get('orden'):
-            self.fields['medicamento'].queryset = CatalogoMedicamento.objects.filter(
-                id__in=PartidaCompra.objects.filter(orden_id=self.data.get('orden')).values('medicamento')
-            )
-        else:
-            self.fields['medicamento'].queryset = CatalogoMedicamento.objects.none()
-
-        if 'orden' in self.fields:
-            js = """
-            <script type="text/javascript">
-                document.addEventListener('DOMContentLoaded', function() {
-                    var $ = django.jQuery || window.jQuery;
-                    $('#id_orden').on('change', function() {
-                        var ordenId = $(this).val();
-                        var $medSelect = $('#id_medicamento');
-                        if (!ordenId) {
-                            $medSelect.empty();
-                            $medSelect.append('<option value="">--- Primero selecciona una Orden ---</option>');
-                            $medSelect.trigger('change');
-                            return;
-                        }
-                        $medSelect.html('<option value="">🔄 Buscando claves en la OC...</option>');
-                        var url = '/admin/licitaciones/entradaalmacen/ajax/load-medicamentos/?orden_id=' + ordenId;
-                        $.ajax({
-                            url: url,
-                            success: function(data) {
-                                $medSelect.empty();
-                                if(data.length === 0){
-                                    $medSelect.append('<option value="">⚠️ Esta Orden no tiene partidas guardadas</option>');
-                                } else {
-                                    $medSelect.append('<option value="">--- Selecciona la clave recibida ---</option>');
-                                    $.each(data, function(index, item) {
-                                        $medSelect.append('<option value="' + item.id + '">' + item.text + '</option>');
-                                    });
-                                }
-                                $medSelect.trigger('change');
-                            },
-                            error: function() {
-                                alert("Error al conectar. Revisa tu internet.");
-                            }
-                        });
-                    });
-                });
-            </script>
-            """
-            self.fields['orden'].help_text = mark_safe((self.fields['orden'].help_text or '') + js)
-
-# ==========================================
-# 📦 MÓDULO DE ADUANA / RECEPCIÓN ALMACÉN
-# ==========================================
-@admin.register(EntradaAlmacen)
-class EntradaAlmacenAdmin(admin.ModelAdmin):
-    form = EntradaAlmacenForm 
-    list_per_page = 30
-    list_display = ('orden', 'almacen_destino', 'medicamento', 'cantidad_recibida', 'piezas_rechazadas_badge', 'lote', 'ver_acuse', 'ver_factura', 'documentacion_ok', 'fecha_ingreso')
-    search_fields = ('orden__folio', 'medicamento__clave_sector', 'lote', 'ubicacion')
-    list_filter = ('almacen_destino', 'documentacion_completa', 'fecha_ingreso')
-    autocomplete_fields = ['orden']
-
-    fieldsets = (
-        ('🔗 Vinculación', {
-            'fields': ('almacen_destino', 'orden', 'medicamento')
-        }),
-        ('📦 Datos Físicos', {
-            'fields': ('cantidad_recibida', 'piezas_rechazadas', 'lote', 'fecha_caducidad')
-        }),
-        ('📋 Calidad y Logística', {
-            'fields': ('documentacion_completa', 'ubicacion', 'observaciones_calidad', 'acuse_recibo', 'factura_proveedor')
-        }),
-    )
-
-    def piezas_rechazadas_badge(self, obj):
-        if obj.piezas_rechazadas > 0:
-            return format_html('<span style="color: #dc3545; font-weight: bold;">⚠️ {} pzas</span>', obj.piezas_rechazadas)
-        return mark_safe('<span style="color: #ccc;">0</span>')
-    piezas_rechazadas_badge.short_description = "Rechazos"
-
-    def get_urls(self):
-        urls = super().get_urls()
-        custom_urls = [
-            path('ajax/load-medicamentos/', self.admin_site.admin_view(self.load_medicamentos), name='ajax_load_medicamentos_almacen'),
-        ]
-        return custom_urls + urls
-
-    def load_medicamentos(self, request):
-        from django.http import JsonResponse
-        orden_id = request.GET.get('orden_id')
-        if not orden_id:
-            return JsonResponse([])
-            
-        partidas = PartidaCompra.objects.filter(orden_id=orden_id).select_related('medicamento')
-        data = []
-        for p in partidas:
-            faltantes = (p.cantidad or 0) - (p.cantidad_recibida or 0)
-            texto = f"Clave: {p.medicamento.clave_sector} | {p.medicamento.denominacion_generica[:40]}... (Esperando: {faltantes} pz)"
-            data.append({'id': p.medicamento.id, 'text': texto})
-            
-        return JsonResponse(data, safe=False)
-
-    def ver_acuse(self, obj):
-        if obj.acuse_recibo:
-            return format_html('<a href="{}" target="_blank" style="background-color: #17a2b8; color: white; padding: 4px 8px; border-radius: 4px; text-decoration: none; font-size: 11px; font-weight: bold;">📄 Acuse</a>', obj.acuse_recibo.url)
-        return "-"
-    ver_acuse.short_description = "Acuse"
-
-    def ver_factura(self, obj):
-        if obj.factura_proveedor:
-            return format_html('<a href="{}" target="_blank" style="background-color: #6c757d; color: white; padding: 4px 8px; border-radius: 4px; text-decoration: none; font-size: 11px; font-weight: bold;">🧾 Factura</a>', obj.factura_proveedor.url)
-        return "-"
-    ver_factura.short_description = "Factura"
-
-    def documentacion_ok(self, obj):
-        if obj.documentacion_completa:
-            return mark_safe('<span style="color: #28a745; font-weight: bold;">✔ Completa</span>')
-        return mark_safe('<span style="color: #dc3545; font-weight: bold;">❌ Faltante</span>')
-    documentacion_ok.short_description = "Documentación"
-
-# ==========================================
-# PANTALLA DE TRASPASOS ENTRE ALMACENES
-# ==========================================
-@admin.register(TraspasoIntercompany)
-class TraspasoIntercompanyAdmin(admin.ModelAdmin):
-    list_display = ('folio_factura', 'almacen_origen', 'almacen_destino', 'medicamento', 'lote', 'cantidad', 'mostrar_importe', 'estatus')
-    search_fields = ('folio_factura', 'medicamento__clave_sector', 'lote')
-    list_filter = ('estatus', 'almacen_origen', 'almacen_destino', 'fecha_operacion')
-    autocomplete_fields = ['medicamento']
-    
-    def get_readonly_fields(self, request, obj=None):
-        if obj and obj.procesado:
-            return ('almacen_origen', 'almacen_destino', 'medicamento', 'lote', 'cantidad', 'precio_unitario', 'folio_factura', 'estatus')
-        return ()
-
-    def mostrar_importe(self, obj):
-        total = obj.cantidad * obj.precio_unitario
-        return format_html('<b>${}</b>', f"{total:,.2f}")
-    mostrar_importe.short_description = "Valor Fiscal Total"
-
-from django.http import HttpResponseRedirect
-from django.urls import reverse
-from .models import EscanerKardex 
-
-@admin.register(EscanerKardex)
-class EscanerKardexAdmin(admin.ModelAdmin):
-    def changelist_view(self, request, extra_context=None):
-        return HttpResponseRedirect(reverse('buscar_kardex'))
-    
 # ==========================================
 # 🚀 MÓDULO: COTIZACIONES Y VENTAS DIRECTAS
 # ==========================================
-import io, csv
-import openpyxl
-from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
-
 class CotizacionForm(forms.ModelForm):
-    pegar_excel = forms.CharField(
-        label="📥 Carga Masiva (Pegar desde Excel)", 
-        required=False, 
-        widget=forms.Textarea(attrs={'rows': 6, 'placeholder': 'Ejemplo:\n1\t010.000.4434.00\tPARACETAMOL 500MG\t500\t1000'}), 
-        help_text="Copia de Excel 4 o 5 columnas juntas: PARTIDA | CLAVE | DESCRIPCIÓN | (OPCIONAL: MIN) | MAX. Los precios quedarán en $0.00 para llenarlos a mano."
-    )
-    class Meta:
-        model = Cotizacion
-        fields = '__all__'
+    pegar_excel = forms.CharField(label="📥 Carga Masiva (Pegar desde Excel)", required=False, widget=forms.Textarea(attrs={'rows': 6, 'placeholder': 'Ejemplo:\n1\t010.000.4434.00\tPARACETAMOL 500MG\t500\t1000'}))
+    class Meta: model = Cotizacion; fields = '__all__'
 
 class PartidaCotizacionInline(admin.TabularInline):
     model = PartidaCotizacion
@@ -2017,9 +1371,7 @@ class PartidaCotizacionInline(admin.TabularInline):
     readonly_fields = ('importe_visual',)
 
     def importe_visual(self, obj):
-        if obj.cantidad and obj.precio_unitario:
-            total = float(obj.cantidad) * float(obj.precio_unitario)
-            return format_html('<b>${}</b>', "{:,.2f}".format(total))
+        if obj.cantidad and obj.precio_unitario: return format_html('<b>${}</b>', "{:,.2f}".format(float(obj.cantidad) * float(obj.precio_unitario)))
         return "$0.00"
     importe_visual.short_description = "Importe"
 
@@ -2029,13 +1381,11 @@ class CotizacionAdmin(admin.ModelAdmin):
     form = CotizacionForm
     inlines = [PartidaCotizacionInline]
     change_form_template = "admin/licitaciones/cotizacion/change_form.html"
-    
     list_display = ('folio', 'tipo_procedimiento', 'cliente_visual', 'fecha_emision', 'total_cotizado', 'estatus_badge', 'btn_convertir')
     search_fields = ('folio', 'razon_social', 'dependencia')
     list_filter = ('tipo_procedimiento', 'estatus', 'fecha_emision')
-    
     actions = [exportar_analisis_unificado, exportar_socios_unificado]
-    
+
     fieldsets = (
         ('📄 Datos del Evento', {'fields': ('tipo_procedimiento', 'empresa', 'folio', 'fecha_emision', 'vigencia_dias')}),
         ('🏢 Cliente', {'fields': ('razon_social', 'dependencia')}),
@@ -2046,40 +1396,24 @@ class CotizacionAdmin(admin.ModelAdmin):
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change) 
         datos_excel = form.cleaned_data.get('pegar_excel')
-        
         if datos_excel:
+            import io, csv
             from django.db import transaction
             importes_agregados, claves_nuevas = 0, []
-            texto_seguro = datos_excel.replace('\r\n', '\n').replace('\r', '\n')
-            f = io.StringIO(texto_seguro)
-            lector = csv.reader(f, dialect='excel-tab')
-            
-            for columnas in lector:
-                if not columnas or not "".join(columnas).strip(): continue
-                if len(columnas) >= 4:
-                    try:
-                        with transaction.atomic():
-                            clave_val = columnas[1].strip()
-                            descripcion_val = columnas[2].strip().replace('\n', ' ') 
-                            
-                            if len(columnas) >= 5 and columnas[4].strip():
-                                max_str = columnas[4].strip().replace(',', '').replace(' ', '')
-                            else:
-                                max_str = columnas[3].strip().replace(',', '').replace(' ', '')
-                                
-                            if not clave_val or not max_str: continue
-                            cantidad_final = int(float(max_str))
-
-                            medicamento_db = CatalogoMedicamento.objects.filter(clave_sector=clave_val).first()
-                            if not medicamento_db:
-                                medicamento_db = CatalogoMedicamento(clave_sector=clave_val, descripcion=descripcion_val, denominacion_generica=descripcion_val, fabricante='')
-                                medicamento_db.save()
-                                claves_nuevas.append(clave_val)
-
-                            PartidaCotizacion.objects.create(cotizacion=obj, medicamento=medicamento_db, cantidad=cantidad_final, precio_unitario=0.00)
-                            importes_agregados += 1
-                    except Exception: continue 
-            
+            f = io.StringIO(datos_excel.replace('\r\n', '\n').replace('\r', '\n'))
+            for columnas in csv.reader(f, dialect='excel-tab'):
+                if not columnas or not "".join(columnas).strip() or len(columnas) < 4: continue
+                try:
+                    with transaction.atomic():
+                        clave_val, descripcion_val = columnas[1].strip(), columnas[2].strip().replace('\n', ' ') 
+                        max_str = columnas[4].strip().replace(',', '').replace(' ', '') if len(columnas) >= 5 and columnas[4].strip() else columnas[3].strip().replace(',', '').replace(' ', '')
+                        if not clave_val or not max_str: continue
+                        cantidad_final = int(float(max_str))
+                        medicamento_db, created = CatalogoMedicamento.objects.get_or_create(clave_sector=clave_val, defaults={'descripcion': descripcion_val, 'denominacion_generica': descripcion_val, 'fabricante': ''})
+                        if created: claves_nuevas.append(clave_val)
+                        PartidaCotizacion.objects.create(cotizacion=obj, medicamento=medicamento_db, cantidad=cantidad_final, precio_unitario=0.00)
+                        importes_agregados += 1
+                except Exception: continue 
             if importes_agregados > 0: messages.success(request, f"¡Éxito! Se cargaron {importes_agregados} partidas.")
             if claves_nuevas: messages.warning(request, f"🔔 Se crearon {len(claves_nuevas)} CLAVES NUEVAS.")
 
@@ -2101,21 +1435,14 @@ class CotizacionAdmin(admin.ModelAdmin):
         return exportar_socios_unificado(self, request, Cotizacion.objects.filter(id=object_id))
 
     def notificar_socios_view(self, request, object_id):
-        from django.core.mail import EmailMultiAlternatives
         from django.template.loader import render_to_string
         from django.utils.html import strip_tags
-        from django.utils import timezone
-        from django.conf import settings
-        from .models import Cotizacion
         
-        try:
-            cotizacion = Cotizacion.objects.get(id=object_id)
-        except Cotizacion.DoesNotExist:
-            return redirect('admin:licitaciones_cotizacion_changelist')
+        try: cotizacion = Cotizacion.objects.get(id=object_id)
+        except Cotizacion.DoesNotExist: return redirect('admin:licitaciones_cotizacion_changelist')
             
-        partidas = cotizacion.partidas_cotizacion.all()
         socios_dict = {}
-        for p in partidas:
+        for p in cotizacion.partidas_cotizacion.all():
             socio = p.medicamento.socio_contacto if p.medicamento else None
             if socio:
                 if socio.id not in socios_dict: socios_dict[socio.id] = {'socio': socio, 'partidas': []}
@@ -2127,45 +1454,31 @@ class CotizacionAdmin(admin.ModelAdmin):
             empresa_emisora = Empresa.objects.get(id=request.POST.get('empresa_emisora'))
             
             nombre_empresa_up = empresa_emisora.nombre.upper()
-            if "SAGO" in nombre_empresa_up: lista_respuesta = ["sagomedical.licitaciones@gmail.com"]
-            elif "GSM" in nombre_empresa_up: lista_respuesta = ["gsm.licitaciones@gmail.com"]
-            else: lista_respuesta = ["licitaciones2@gpharma.com"]
-            
-            if empresa_emisora.correos_notificacion:
-                lista_respuesta.extend([c.strip() for c in empresa_emisora.correos_notificacion.split(',') if c.strip()])
+            lista_respuesta = ["sagomedical.licitaciones@gmail.com"] if "SAGO" in nombre_empresa_up else (["gsm.licitaciones@gmail.com"] if "GSM" in nombre_empresa_up else ["licitaciones2@gpharma.com"])
+            if empresa_emisora.correos_notificacion: lista_respuesta.extend([c.strip() for c in empresa_emisora.correos_notificacion.split(',') if c.strip()])
 
             remitente = empresa_emisora.correo_remitente if empresa_emisora.correo_remitente else settings.DEFAULT_FROM_EMAIL
             from_email_str = f'"{empresa_emisora.nombre}" <{remitente}>'
+            conexion_dinamica = get_connection()
             correos_enviados = 0
             
             for s_id in socios_seleccionados:
                 data = socios_dict.get(int(s_id))
                 if not data: continue
                 socio = data['socio']
-                
-                correos_raw = socio.correos if socio.correos else ""
-                destinatarios = [c.strip() for c in correos_raw.split(',') if c.strip()]
+                destinatarios = [c.strip() for c in (socio.correos or "").split(',') if c.strip()]
                 if not destinatarios: continue
                 
+                color_empresa = "#8B0000" if "SAGO" in nombre_empresa_up else ("#005b96" if "GAMS" in nombre_empresa_up else ("#218838" if "GSM" in nombre_empresa_up else "#3498db"))
                 items = [{'partida': i+1, 'clave': p.medicamento.clave_sector, 'descripcion': p.medicamento.denominacion_generica, 'cantidad': f"{p.cantidad:,}"} for i, p in enumerate(data['partidas'])]
-                
-                color_empresa = "#3498db"
-                if "SAGO" in nombre_empresa_up: color_empresa = "#8B0000"
-                elif "GAMS" in nombre_empresa_up: color_empresa = "#005b96"
-                elif "GSM" in nombre_empresa_up: color_empresa = "#218838"
-                
                 ctx = {
-                    'socio_nombre': socio.nombre, 'evento_num': cotizacion.folio,
-                    'dependencia': self.cliente_visual(cotizacion), 'empresa_emisora': empresa_emisora.nombre,
-                    'url_logo': empresa_emisora.url_logo if hasattr(empresa_emisora, 'url_logo') else None,
-                    'color_empresa': color_empresa, 'fecha_actual': timezone.now().strftime('%d/%m/%Y'), 'items': items
+                    'socio_nombre': socio.nombre, 'evento_num': cotizacion.folio, 'dependencia': self.cliente_visual(cotizacion), 'empresa_emisora': empresa_emisora.nombre,
+                    'url_logo': empresa_emisora.url_logo if hasattr(empresa_emisora, 'url_logo') else None, 'color_empresa': color_empresa, 'fecha_actual': timezone.now().strftime('%d/%m/%Y'), 'items': items
                 }
                 
                 html_content = render_to_string('admin/licitaciones/licitacion/emails/cotizacion_email.html', ctx)
-                text_content = strip_tags(html_content) 
-                
                 try: 
-                    msg = EmailMultiAlternatives(subject=f"Requerimiento de Cotización - Evento {cotizacion.folio}", body=text_content, from_email=from_email_str, to=destinatarios, bcc=lista_respuesta, reply_to=lista_respuesta)
+                    msg = EmailMultiAlternatives(subject=f"Requerimiento de Cotización - Evento {cotizacion.folio}", body=strip_tags(html_content), from_email=from_email_str, to=destinatarios, connection=conexion_dinamica, bcc=lista_respuesta, reply_to=lista_respuesta)
                     msg.attach_alternative(html_content, "text/html")
                     for archivo in archivos_adjuntos: 
                         archivo.seek(0)
@@ -2180,23 +1493,14 @@ class CotizacionAdmin(admin.ModelAdmin):
         context = {'title': f'Notificar Socios: {cotizacion.folio}', 'evento': cotizacion, 'socios_data': socios_dict.values(), 'opts': self.model._meta, 'empresas_grupo': Empresa.objects.all(), 'has_view_permission': True}
         return render(request, 'admin/licitaciones/cotizacion/notificar_socios_cot.html', context)
 
-
     def notificar_resultados_view(self, request, object_id):
-        from django.core.mail import EmailMultiAlternatives
         from django.template.loader import render_to_string
         from django.utils.html import strip_tags
-        from django.utils import timezone
-        from django.conf import settings
-        from .models import Cotizacion
-        
-        try:
-            cotizacion = Cotizacion.objects.get(id=object_id)
-        except Cotizacion.DoesNotExist:
-            return redirect('admin:licitaciones_cotizacion_changelist')
+        try: cotizacion = Cotizacion.objects.get(id=object_id)
+        except Cotizacion.DoesNotExist: return redirect('admin:licitaciones_cotizacion_changelist')
             
-        partidas = cotizacion.partidas_cotizacion.all()
         socios_dict = {}
-        for p in partidas:
+        for p in cotizacion.partidas_cotizacion.all():
             socio = p.medicamento.socio_contacto if p.medicamento else None
             if socio:
                 if socio.id not in socios_dict: socios_dict[socio.id] = {'socio': socio, 'asignadas': [], 'perdidas_precio': [], 'perdidas_tecnica': [], 'pendientes': []}
@@ -2210,14 +1514,12 @@ class CotizacionAdmin(admin.ModelAdmin):
             empresa_emisora = Empresa.objects.get(id=request.POST.get('empresa_emisora'))
             
             nombre_empresa_up = empresa_emisora.nombre.upper()
-            if "SAGO" in nombre_empresa_up: lista_respuesta = ["sagomedical.licitaciones@gmail.com"]
-            elif "GSM" in nombre_empresa_up: lista_respuesta = ["gsm.licitaciones@gmail.com"]
-            else: lista_respuesta = ["licitaciones2@gpharma.com"]
-            if empresa_emisora.correos_notificacion:
-                lista_respuesta.extend([c.strip() for c in empresa_emisora.correos_notificacion.split(',') if c.strip()])
+            lista_respuesta = ["sagomedical.licitaciones@gmail.com"] if "SAGO" in nombre_empresa_up else (["gsm.licitaciones@gmail.com"] if "GSM" in nombre_empresa_up else ["licitaciones2@gpharma.com"])
+            if empresa_emisora.correos_notificacion: lista_respuesta.extend([c.strip() for c in empresa_emisora.correos_notificacion.split(',') if c.strip()])
 
             remitente = empresa_emisora.correo_remitente if empresa_emisora.correo_remitente else settings.DEFAULT_FROM_EMAIL
             from_email_str = f'"{empresa_emisora.nombre}" <{remitente}>'
+            conexion_dinamica = get_connection()
             correos_enviados = 0
             
             for s_id in socios_seleccionados:
@@ -2225,30 +1527,21 @@ class CotizacionAdmin(admin.ModelAdmin):
                 if not data: continue
                 socio = data['socio']
                 
-                correos_raw = socio.correos if socio.correos else ""
-                destinatarios = [c.strip() for c in correos_raw.split(',') if c.strip()]
+                destinatarios = [c.strip() for c in (socio.correos or "").split(',') if c.strip()]
                 if not destinatarios: continue
                 
-                color_empresa = "#3498db"
-                if "SAGO" in nombre_empresa_up: color_empresa = "#8B0000"
-                elif "GAMS" in nombre_empresa_up: color_empresa = "#005b96"
-                elif "GSM" in nombre_empresa_up: color_empresa = "#218838"
-
-                def formato_item(p):
-                    return {'partida': '-', 'clave': p.medicamento.clave_sector, 'descripcion': p.medicamento.denominacion_generica, 'cantidad': f"{p.cantidad:,}", 'motivo': f"Cotización global: {cotizacion.get_estatus_display()}"}
+                color_empresa = "#8B0000" if "SAGO" in nombre_empresa_up else ("#005b96" if "GAMS" in nombre_empresa_up else ("#218838" if "GSM" in nombre_empresa_up else "#3498db"))
+                def formato_item(p): return {'partida': '-', 'clave': p.medicamento.clave_sector, 'descripcion': p.medicamento.denominacion_generica, 'cantidad': f"{p.cantidad:,}", 'motivo': f"Cotización global: {cotizacion.get_estatus_display()}"}
 
                 ctx = {
-                    'socio_nombre': socio.nombre, 'evento_num': cotizacion.folio,
-                    'empresa_emisora': empresa_emisora.nombre, 'url_logo': empresa_emisora.url_logo if hasattr(empresa_emisora, 'url_logo') else None,
+                    'socio_nombre': socio.nombre, 'evento_num': cotizacion.folio, 'empresa_emisora': empresa_emisora.nombre, 'url_logo': empresa_emisora.url_logo if hasattr(empresa_emisora, 'url_logo') else None,
                     'color_empresa': color_empresa, 'fecha_actual': timezone.now().strftime('%d/%m/%Y'), 'url_drive': None, 
                     'asignadas': [formato_item(p) for p in data['asignadas']], 'perdidas_precio': [formato_item(p) for p in data['perdidas_precio']], 'perdidas_tecnica': [formato_item(p) for p in data['perdidas_tecnica']],
                 }
                 
                 html_content = render_to_string('admin/licitaciones/licitacion/emails/resultados_email.html', ctx)
-                text_content = strip_tags(html_content)
-
                 try: 
-                    msg = EmailMultiAlternatives(subject=f"Resultados de Cotización (Evento {cotizacion.folio}) - {empresa_emisora.nombre}", body=text_content, from_email=from_email_str, to=destinatarios, bcc=lista_respuesta, reply_to=lista_respuesta)
+                    msg = EmailMultiAlternatives(subject=f"Resultados de Cotización (Evento {cotizacion.folio}) - {empresa_emisora.nombre}", body=strip_tags(html_content), from_email=from_email_str, to=destinatarios, connection=conexion_dinamica, bcc=lista_respuesta, reply_to=lista_respuesta)
                     msg.attach_alternative(html_content, "text/html")
                     for archivo in archivos_adjuntos:
                         archivo.seek(0)
@@ -2266,8 +1559,7 @@ class CotizacionAdmin(admin.ModelAdmin):
     def cliente_visual(self, obj): return obj.razon_social if obj.tipo_procedimiento == 'COTIZACION_PRIVADA' else obj.get_dependencia_display()
     cliente_visual.short_description = "Cliente / Dependencia"
 
-    def total_cotizado(self, obj):
-        return format_html('<b style="color: #5e35b1;">${}</b>', "{:,.2f}".format(float(obj.total_cotizacion)))
+    def total_cotizado(self, obj): return format_html('<b style="color: #5e35b1;">${}</b>', "{:,.2f}".format(float(obj.total_cotizacion)))
     total_cotizado.short_description = "Monto Total"
 
     def estatus_badge(self, obj):
@@ -2292,7 +1584,7 @@ class CotizacionAdmin(admin.ModelAdmin):
         cotizacion.save()
         messages.success(request, "Se generó el Pedido Directo.")
         return redirect('admin:licitaciones_pedidodirecto_change', nueva_orden.id)
-    
+
 # ==========================================
 # 🛑 PANEL DE CUARENTENA, MERMAS Y DEVOLUCIONES
 # ==========================================
@@ -2306,45 +1598,23 @@ class IncidenciaInventarioAdmin(ImportExportModelAdmin):
     autocomplete_fields = ['inventario_origen', 'medicamento', 'socio_comercial']
     
     fieldsets = (
-        ('1. Origen del Problema (Descuento de Stock)', {
-            'fields': ('inventario_origen', 'cantidad_afectada', 'motivo', 'observaciones'),
-            'description': 'Al guardar, estas piezas se restarán del Inventario sano y pasarán a estado de cuarentena.'
-        }),
-        ('2. Resolución y Destino', {
-            'fields': ('resolucion',)
-        }),
-        ('3. Finanzas y Reclamaciones (Socio Comercial)', {
-            'fields': ('socio_comercial', 'genera_nota_credito', 'monto_nota_credito', 'aplica_penalizacion', 'monto_penalizacion'),
-            'description': 'Llena esto si el producto se devolverá al proveedor y se le cobrará mediante nota de crédito o multa.'
-        }),
+        ('1. Origen del Problema (Descuento de Stock)', {'fields': ('inventario_origen', 'cantidad_afectada', 'motivo', 'observaciones'), 'description': 'Al guardar, estas piezas se restarán del Inventario sano y pasarán a estado de cuarentena.'}),
+        ('2. Resolución y Destino', {'fields': ('resolucion',)}),
+        ('3. Finanzas y Reclamaciones (Socio Comercial)', {'fields': ('socio_comercial', 'genera_nota_credito', 'monto_nota_credito', 'aplica_penalizacion', 'monto_penalizacion'), 'description': 'Llena esto si el producto se devolverá al proveedor y se le cobrará mediante nota de crédito o multa.'}),
     )
 
-    def medicamento_clave(self, obj):
-        return obj.medicamento.clave_sector
+    def medicamento_clave(self, obj): return obj.medicamento.clave_sector
     medicamento_clave.short_description = "Clave"
 
     def resolucion_badge(self, obj):
-        from django.utils.html import format_html
-        colores = {
-            'EN_CUARENTENA': '#f39c12', # Naranja
-            'DONATIVO': '#17a2b8',      # Azul
-            'DEVOLUCION': '#28a745',    # Verde
-            'DESTRUCCION': '#dc3545',   # Rojo
-        }
-        color = colores.get(obj.resolucion, '#000')
-        return format_html('<span style="background-color: {}; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px;">{}</span>', color, obj.get_resolucion_display())
+        colores = {'EN_CUARENTENA': '#f39c12', 'DONATIVO': '#17a2b8', 'DEVOLUCION': '#28a745', 'DESTRUCCION': '#dc3545'}
+        return format_html('<span style="background-color: {}; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px;">{}</span>', colores.get(obj.resolucion, '#000'), obj.get_resolucion_display())
     resolucion_badge.short_description = "Estatus / Destino"
 
     def total_recuperado(self, obj):
-        from django.utils.html import format_html
-        from django.utils.safestring import mark_safe
-        
         total = float(obj.monto_nota_credito) + float(obj.monto_penalizacion)
-        if total > 0:
-            return format_html('<b style="color: #28a745;">+ ${:,.2f}</b>', total)
-            
+        if total > 0: return format_html('<b style="color: #28a745;">+ ${:,.2f}</b>', total)
         return mark_safe('<span style="color: #ccc;">$0.00</span>') 
-        
     total_recuperado.short_description = "Cobro a Proveedor"
 
 # ==========================================
@@ -2358,41 +1628,24 @@ class PerfilEquipoAdmin(admin.ModelAdmin):
 # ==========================================
 # 🚀 MÓDULO RÁPIDO: PEDIDOS DIRECTOS (10 DÍAS)
 # ==========================================
-from .models import PedidoDirecto
-from django.utils import timezone
-from django.utils.html import format_html
-
 @admin.register(PedidoDirecto)
 class PedidoDirectoAdmin(admin.ModelAdmin):
     list_display = ('numero_orden_suministro', 'cliente_info', 'fecha_recepcion', 'fecha_limite', 'semaforo_urgencia', 'estatus')
     list_filter = ('estatus', 'fecha_recepcion')
     search_fields = ('numero_orden_suministro', 'razon_social', 'dependencia')
-    
     exclude = ('tipo_documento',) 
 
     def get_queryset(self, request):
-        qs = super().get_queryset(request)
-        return qs.filter(tipo_documento='PEDIDO')
+        return super().get_queryset(request).filter(tipo_documento='PEDIDO')
 
-    def cliente_info(self, obj):
-        return obj.razon_social or obj.get_dependencia_display() or "Sin Cliente"
+    def cliente_info(self, obj): return obj.razon_social or obj.get_dependencia_display() or "Sin Cliente"
     cliente_info.short_description = 'Cliente / Dependencia'
 
     def semaforo_urgencia(self, obj):
-        if obj.estatus in ['ENTREGADA', 'CANCELADA', 'CANCELADA_EVIDENCIA', 'DEVUELTA']:
-            return format_html('<span style="color: #94a3b8; font-weight: bold;"><i class="fas fa-check-circle"></i> Cerrado</span>')
-            
-        if not obj.fecha_limite:
-            return "-"
-            
-        hoy = timezone.now().date()
-        dias_restantes = (obj.fecha_limite - hoy).days
-        
-        if dias_restantes < 0:
-            return format_html('<span style="color: white; background: #e74c3c; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px;">🚨 VENCIDO ({} días)</span>', abs(dias_restantes))
-        elif dias_restantes <= 3:
-            return format_html('<span style="color: #856404; background: #f1c40f; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px;">⏳ Crítico ({} días)</span>', dias_restantes)
-        else:
-            return format_html('<span style="color: white; background: #2ecc71; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px;">🟢 A tiempo ({} días)</span>', dias_restantes)
-    
+        if obj.estatus in ['ENTREGADA', 'CANCELADA', 'CANCELADA_EVIDENCIA', 'DEVUELTA']: return format_html('<span style="color: #94a3b8; font-weight: bold;"><i class="fas fa-check-circle"></i> Cerrado</span>')
+        if not obj.fecha_limite: return "-"
+        dias_restantes = (obj.fecha_limite - timezone.now().date()).days
+        if dias_restantes < 0: return format_html('<span style="color: white; background: #e74c3c; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px;">🚨 VENCIDO ({} días)</span>', abs(dias_restantes))
+        elif dias_restantes <= 3: return format_html('<span style="color: #856404; background: #f1c40f; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px;">⏳ Crítico ({} días)</span>', dias_restantes)
+        else: return format_html('<span style="color: white; background: #2ecc71; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px;">🟢 A tiempo ({} días)</span>', dias_restantes)
     semaforo_urgencia.short_description = 'Tiempo de Entrega'
