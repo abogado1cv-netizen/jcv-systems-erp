@@ -249,10 +249,10 @@ EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.resend.com'
 EMAIL_PORT = 587
 EMAIL_HOST_USER = 'resend' 
-EMAIL_HOST_PASSWORD = os.environ.get('RESEND_API_KEY', '')
+EMAIL_HOST_PASSWORD = os.environ.get('RESEND_API_KEY')
 EMAIL_USE_SSL = False 
 EMAIL_USE_TLS = True 
-DEFAULT_FROM_EMAIL = 'notificaciones@jcv-sistemas.lat' # 👈 Agregamos esta línea
+DEFAULT_FROM_EMAIL = 'notificaciones@jcv-sistemas.lat'
 
 # ==========================================
 # FORMATOS DE FECHA Y HORA
