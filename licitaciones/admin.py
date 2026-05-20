@@ -1,7 +1,7 @@
 import csv
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
-from django import forms 
+from django import forms
 from django.urls import path
 from django.contrib import admin
 from django.http import HttpResponse
@@ -13,7 +13,7 @@ from django.contrib import messages
 from django.shortcuts import redirect, render
 from django.core.mail import send_mail
 from django.conf import settings
-from django.utils import timezone 
+from django.utils import timezone
 from django.utils.safestring import mark_safe
 from .models import ConfiguracionEmail
 from django.core.mail import get_connection
@@ -22,18 +22,17 @@ from django.core.mail import EmailMultiAlternatives
 from .models import (
     OrdenCompra, PartidaCompra, Inventario, DocumentoOrdenCompra,
     CatalogoMedicamento, EstatusProcedimiento, Empresa, SocioComercial,
-    Licitacion, PartidaRequerimiento, RegistroUbicacion, Contrato, 
+    Licitacion, PartidaRequerimiento, RegistroUbicacion, Contrato,
     FianzaContrato, ClaveContrato, OrdenSuministro, RemisionEntrega,
     EntradaAlmacen, Almacen, TraspasoIntercompany, PartidaOrden,
     Cotizacion, PartidaCotizacion, PedidoDirecto, DEPENDENCIAS_MAESTRAS, PerfilEquipo
-    
 )
 
 @admin.action(description='📥 Descargar seleccionados a Excel (CSV)')
 def exportar_a_csv(modeladmin, request, queryset):
     response = HttpResponse(content_type='text/csv')
     response['Content-Disposition'] = 'attachment; filename="reporte_erp.csv"'
-    response.write(u'\ufeff'.encode('utf8')) 
+    response.write(u'\ufeff'.encode('utf8'))
     writer = csv.writer(response)
     campos = [field.name for field in modeladmin.model._meta.fields]
     writer.writerow(campos)
@@ -42,10 +41,10 @@ def exportar_a_csv(modeladmin, request, queryset):
     return response
 
 # ==========================================
-# --- ANÁLISIS COMERCIAL (EXCEL REAL .XLSX) ---
+# 📊 MOTOR UNIFICADO: ANÁLISIS COMERCIAL EJECUTIVO
 # ==========================================
-@admin.action(description='📊 Descargar Análisis Comercial (Ejecutivo / Sábana) (Excel)')
-def exportar_analisis_licitacion(modeladmin, request, queryset):
+@admin.action(description='📊 Descargar Análisis Comercial (Unificado)')
+def exportar_analisis_unificado(modeladmin, request, queryset):
     response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     es_individual = queryset.count() == 1
     wb = openpyxl.Workbook()
@@ -61,17 +60,21 @@ def exportar_analisis_licitacion(modeladmin, request, queryset):
     formato_moneda = '"$"#,##0.00'
 
     if es_individual:
-        licitacion = queryset.first()
-        response['Content-Disposition'] = f'attachment; filename="Análisis_Ejecutivo_{licitacion.num_procedimiento}.xlsx"'
+        obj = queryset.first()
+        es_licitacion = hasattr(obj, 'num_procedimiento')
         
-        f_pub = licitacion.fecha_publicacion.strftime('%d/%m/%Y %H:%M') if licitacion.fecha_publicacion else 'S/D'
-        f_ape = licitacion.fecha_apertura.strftime('%d/%m/%Y %H:%M') if licitacion.fecha_apertura else 'S/D'
-        f_jun = licitacion.fecha_junta.strftime('%d/%m/%Y %H:%M') if licitacion.fecha_junta else 'S/D'
-        f_fal = licitacion.fecha_fallo.strftime('%d/%m/%Y %H:%M') if licitacion.fecha_fallo else 'S/D'
-        estatus = licitacion.estatus.estado if licitacion.estatus else 'S/D'
+        folio = getattr(obj, 'num_procedimiento', getattr(obj, 'folio', 'S/D'))
+        cliente = obj.get_dependencia_display() if es_licitacion else (obj.razon_social or obj.get_dependencia_display() or "S/D")
+        
+        f_pub = obj.fecha_publicacion.strftime('%d/%m/%Y %H:%M') if es_licitacion and obj.fecha_publicacion else 'N/A'
+        f_ape = obj.fecha_apertura.strftime('%d/%m/%Y %H:%M') if es_licitacion and obj.fecha_apertura else 'N/A'
+        f_jun = obj.fecha_junta.strftime('%d/%m/%Y %H:%M') if es_licitacion and obj.fecha_junta else 'N/A'
+        f_fal = obj.fecha_fallo.strftime('%d/%m/%Y %H:%M') if es_licitacion and obj.fecha_fallo else 'N/A'
 
-        ws.append(['', 'NÚMERO DE EXPEDIENTE', 'DEPENDENCIA', 'ESTATUS'])
-        ws.append(['', licitacion.num_procedimiento, licitacion.dependencia, estatus])
+        response['Content-Disposition'] = f'attachment; filename="Analisis_Ejecutivo_{folio}.xlsx"'
+
+        ws.append(['', 'NÚMERO DE EXPEDIENTE', 'DEPENDENCIA', 'Observaciones '])
+        ws.append(['', folio, cliente, ''])
         ws.append([])
         ws.append(['', 'FECHA DE PUBLICACIÓN', 'JUNTA DE ACLARACIONES', 'APERTURA DE PROPUESTAS', 'ACTO DE FALLO'])
         ws.append(['', f_pub, f_jun, f_ape, f_fal])
@@ -90,152 +93,104 @@ def exportar_analisis_licitacion(modeladmin, request, queryset):
                 celda = ws.cell(row=r, column=c)
                 celda.alignment = alineacion_centro
                 celda.border = borde_delgado
-        
-        encabezados = ['PARTIDA', 'CLAVE', 'CANTIDAD MÍNIMA', 'CANTIDAD MÁXIMA', 'PRECIO UNITARIO', 'IMPORTE MÁXIMO', 'RESULTADO', 'FABRICANTE', 'MARCA', 'GENÉRICA']
+
+        encabezados = ['PARTIDA', 'CLAVE', 'Descripcion (completa) ', 'denominacion_generica', 'denominacion_distintiva', 'Socio Comercial', 'CANTIDAD MÍNIMA', 'CANTIDAD MÁXIMA', 'PRECIO UNITARIO', 'IMPORTE MÁXIMO', 'RESULTADO']
         ws.append(encabezados)
         fila_encabezados = ws.max_row
-        
-        for col_num, header in enumerate(encabezados, 1):
+
+        for col_num in range(1, len(encabezados) + 1):
             celda = ws.cell(row=fila_encabezados, column=col_num)
             celda.font = font_cabecera
             celda.fill = fill_cabecera
             celda.alignment = alineacion_centro
             celda.border = borde_delgado
-        
-        for partida in licitacion.partidas.all():
-            med = partida.medicamento
+
+        partidas = obj.partidas.all() if es_licitacion else obj.partidas_cotizacion.all()
+        for i, p in enumerate(partidas, 1):
+            med = p.medicamento
             clave = med.clave_sector if med else 'S/C'
-            cant_min = partida.cantidad_minima or 0
-            cant_max = partida.cantidad_maxima or 0
-            precio = float(partida.precio or 0)
+            desc_completa = med.descripcion if med else 'S/D'
+            generica = med.denominacion_generica if med else 'S/D'
+            distintiva = med.denominacion_distintiva if med and med.denominacion_distintiva else ''
+            socio = med.socio_contacto.nombre if med and med.socio_contacto else 'Sin Laboratorio'
+            
+            cant_min = getattr(p, 'cantidad_minima', 0)
+            cant_max = getattr(p, 'cantidad_maxima', getattr(p, 'cantidad', 0))
+            precio = float(getattr(p, 'precio', getattr(p, 'precio_unitario', 0)))
             importe_max = cant_max * precio
-            resultado_txt = partida.resultado if hasattr(partida, 'resultado') else 'Pendiente'
             
-            def escribir_fila(datos):
-                ws.append(datos)
-                r = ws.max_row
-                for c in range(1, 11):
-                    celda = ws.cell(row=r, column=c)
-                    celda.border = borde_delgado
-                    celda.alignment = alineacion_centro
-                    if c in [5, 6]:
-                        celda.number_format = formato_moneda
-                    if c in [8, 9, 10]:
-                        celda.alignment = alineacion_izq
-            
-            if med and clave != 'S/C':
-                medicamentos_similares = CatalogoMedicamento.objects.filter(clave_sector=clave)
-                if medicamentos_similares.exists():
-                    for m in medicamentos_similares:
-                        fab = m.fabricante if m.fabricante else 'Sin Laboratorio'
-                        marca = m.denominacion_distintiva if m.denominacion_distintiva else 'Genérico'
-                        generica = m.denominacion_generica if m.denominacion_generica else 'S/D'
-                        escribir_fila([partida.numero_partida, clave, cant_min, cant_max, precio, importe_max, resultado_txt, fab, marca, generica])
-                else:
-                    escribir_fila([partida.numero_partida, clave, cant_min, cant_max, precio, importe_max, resultado_txt, 'SIN REGISTRO', 'S/D', 'S/D'])
+            if es_licitacion:
+                resultado = getattr(p, 'resultado', 'Pendiente')
             else:
-                escribir_fila([partida.numero_partida, clave, cant_min, cant_max, precio, importe_max, resultado_txt, 'SIN CLAVE', 'S/D', 'S/D'])
-        
-        ws.column_dimensions['A'].width = 12 
-        ws.column_dimensions['B'].width = 20 
-        ws.column_dimensions['C'].width = 20 
-        ws.column_dimensions['D'].width = 20 
-        ws.column_dimensions['E'].width = 20 
-        ws.column_dimensions['F'].width = 22 
-        ws.column_dimensions['G'].width = 20 
-        ws.column_dimensions['H'].width = 35 
-        ws.column_dimensions['I'].width = 25 
-        ws.column_dimensions['J'].width = 40 
-        
+                resultado = obj.get_estatus_display() if hasattr(obj, 'get_estatus_display') else 'Pendiente'
+
+            ws.append([getattr(p, 'numero_partida', i), clave, desc_completa, generica, distintiva, socio, cant_min, cant_max, precio, importe_max, resultado])
+            
+            r = ws.max_row
+            for c in range(1, len(encabezados) + 1):
+                celda = ws.cell(row=r, column=c)
+                celda.border = borde_delgado
+                celda.alignment = alineacion_centro
+                if c in [9, 10]: celda.number_format = formato_moneda
+                if c in [3, 4, 5, 6]: celda.alignment = alineacion_izq
+
     else:
-        response['Content-Disposition'] = 'attachment; filename="Sabana_Comercial_Global.xlsx"'
-        encabezados = ['EVENTO', 'DEPENDENCIA', 'FECHA DE PUBLICACIÓN', 'FECHA DE JUNTA', 'FECHA DE APERTURA', 'FECHA DE FALLO', 'PARTIDA', 'CLAVE', 'CANTIDAD MÍNIMA', 'CANTIDAD MÁXIMA', 'PRECIO UNITARIO', 'IMPORTE MÁXIMO', 'RESULTADO', 'LABORATORIO FABRICANTE', 'MARCA (DISTINTIVA)', 'SUSTANCIA (GENÉRICA)']
+        response['Content-Disposition'] = 'attachment; filename="Analisis_Comercial_Global.xlsx"'
+        encabezados = ['FOLIO', 'PARTIDA', 'CLAVE', 'Descripcion (completa) ', 'denominacion_generica', 'denominacion_distintiva', 'Socio Comercial', 'CANTIDAD MÍNIMA', 'CANTIDAD MÁXIMA', 'PRECIO UNITARIO', 'IMPORTE MÁXIMO', 'RESULTADO']
         ws.append(encabezados)
-        
-        for col_num, header in enumerate(encabezados, 1):
+        for col_num in range(1, len(encabezados) + 1):
             celda = ws.cell(row=1, column=col_num)
             celda.font = font_cabecera
             celda.fill = fill_cabecera
             celda.alignment = alineacion_centro
             celda.border = borde_delgado
-            
-        for licitacion in queryset:
-            evento = licitacion.num_procedimiento
-            dependencia = licitacion.dependencia
-            f_pub = licitacion.fecha_publicacion.strftime('%d/%m/%Y %H:%M') if licitacion.fecha_publicacion else 'S/D'
-            f_ape = licitacion.fecha_apertura.strftime('%d/%m/%Y %H:%M') if licitacion.fecha_apertura else 'S/D'
-            f_jun = licitacion.fecha_junta.strftime('%d/%m/%Y %H:%M') if licitacion.fecha_junta else 'S/D'
-            f_fal = licitacion.fecha_fallo.strftime('%d/%m/%Y %H:%M') if licitacion.fecha_fallo else 'S/D'
-            
-            for partida in licitacion.partidas.all():
-                med = partida.medicamento
-                clave = med.clave_sector if med else 'S/C'
-                cant_min = partida.cantidad_minima or 0
-                cant_max = partida.cantidad_maxima or 0
-                precio = float(partida.precio or 0)
-                importe_max = cant_max * precio
-                resultado_txt = partida.resultado if hasattr(partida, 'resultado') else 'Pendiente'
-                
-                def escribir_fila_sabana(datos):
-                    ws.append(datos)
-                    r = ws.max_row
-                    for c in range(1, 17):
-                        celda = ws.cell(row=r, column=c)
-                        celda.border = borde_delgado
-                        celda.alignment = alineacion_centro
-                        if c in [11, 12]:
-                            celda.number_format = formato_moneda
-                        if c in [14, 15, 16]:
-                            celda.alignment = alineacion_izq
-                            
-                if med and clave != 'S/C':
-                    medicamentos_similares = CatalogoMedicamento.objects.filter(clave_sector=clave)
-                    if medicamentos_similares.exists():
-                        for m in medicamentos_similares:
-                            fab = m.fabricante if m.fabricante else 'Sin Laboratorio'
-                            marca = m.denominacion_distintiva if m.denominacion_distintiva else 'Genérico'
-                            generica = m.denominacion_generica if m.denominacion_generica else 'S/D'
-                            escribir_fila_sabana([evento, dependencia, f_pub, f_jun, f_ape, f_fal, partida.numero_partida, clave, cant_min, cant_max, precio, importe_max, resultado_txt, fab, marca, generica])
-                    else:
-                        escribir_fila_sabana([evento, dependencia, f_pub, f_jun, f_ape, f_fal, partida.numero_partida, clave, cant_min, cant_max, precio, importe_max, resultado_txt, 'SIN REGISTRO', 'S/D', 'S/D'])
-                else:
-                    escribir_fila_sabana([evento, dependencia, f_pub, f_jun, f_ape, f_fal, partida.numero_partida, clave, cant_min, cant_max, precio, importe_max, resultado_txt, 'SIN CLAVE', 'S/D', 'S/D'])
 
-        ws.column_dimensions['A'].width = 25
-        ws.column_dimensions['B'].width = 40
-        ws.column_dimensions['C'].width = 20
-        ws.column_dimensions['D'].width = 20
-        ws.column_dimensions['E'].width = 20
-        ws.column_dimensions['F'].width = 20
-        ws.column_dimensions['G'].width = 10
-        ws.column_dimensions['H'].width = 20
-        ws.column_dimensions['I'].width = 15
-        ws.column_dimensions['J'].width = 15
-        ws.column_dimensions['K'].width = 18
-        ws.column_dimensions['L'].width = 18
-        ws.column_dimensions['M'].width = 20
-        ws.column_dimensions['N'].width = 35
-        ws.column_dimensions['O'].width = 25
-        ws.column_dimensions['P'].width = 40
+        for obj in queryset:
+            es_licitacion = hasattr(obj, 'num_procedimiento')
+            folio = getattr(obj, 'num_procedimiento', getattr(obj, 'folio', 'S/D'))
+            partidas = obj.partidas.all() if hasattr(obj, 'num_procedimiento') else obj.partidas_cotizacion.all()
+            for i, p in enumerate(partidas, 1):
+                med = p.medicamento
+                clave = med.clave_sector if med else 'S/C'
+                desc_completa = med.descripcion if med else 'S/D'
+                generica = med.denominacion_generica if med else 'S/D'
+                distintiva = med.denominacion_distintiva if med and med.denominacion_distintiva else ''
+                socio = med.socio_contacto.nombre if med and med.socio_contacto else 'Sin Laboratorio'
+
+                cant_min = getattr(p, 'cantidad_minima', 0)
+                cant_max = getattr(p, 'cantidad_maxima', getattr(p, 'cantidad', 0))
+                precio = float(getattr(p, 'precio', getattr(p, 'precio_unitario', 0)))
+                importe_max = cant_max * precio
+                
+                if es_licitacion:
+                    resultado = getattr(p, 'resultado', 'Pendiente')
+                else:
+                    resultado = obj.get_estatus_display() if hasattr(obj, 'get_estatus_display') else 'Pendiente'
+
+                ws.append([folio, getattr(p, 'numero_partida', i), clave, desc_completa, generica, distintiva, socio, cant_min, cant_max, precio, importe_max, resultado])
+                r = ws.max_row
+                for c in range(1, len(encabezados) + 1):
+                    celda = ws.cell(row=r, column=c)
+                    celda.border = borde_delgado
+                    celda.alignment = alineacion_centro
+                    if c in [10, 11]: celda.number_format = formato_moneda
+                    if c in [4, 5, 6, 7]: celda.alignment = alineacion_izq
 
     wb.save(response)
     return response
 
 # ==========================================
-# --- REPORTE POR SOCIO COMERCIAL (EXCEL REAL .XLSX) ---
+# 🏭 MOTOR UNIFICADO: REPORTE POR SOCIO COMERCIAL
 # ==========================================
-@admin.action(description='🏭 Descargar Reporte Agrupado por Socios Comerciales (Excel)')
-def exportar_reporte_laboratorios(modeladmin, request, queryset):
+@admin.action(description='🏭 Descargar Reporte Agrupado por Socios (Unificado)')
+def exportar_socios_unificado(modeladmin, request, queryset):
+    from django.db.models import Sum
     response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-    if queryset.count() == 1:
-        num_evento = queryset.first().num_procedimiento
-        response['Content-Disposition'] = f'attachment; filename="Reporte_Socios_{num_evento}.xlsx"'
-    else:
-        response['Content-Disposition'] = 'attachment; filename="Reporte_Socios_Global.xlsx"'
+    es_individual = queryset.count() == 1
     
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = "Análisis Comercial"
+    ws.title = "Socios Comerciales"
 
     font_cabecera = Font(bold=True, color="000000")
     fill_cabecera = PatternFill("solid", fgColor="D9D9D9")
@@ -246,62 +201,85 @@ def exportar_reporte_laboratorios(modeladmin, request, queryset):
     borde_delgado = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
     formato_moneda = '"$"#,##0.00'
 
-    encabezados = ['Socio Comercial', 'Partida', 'Clave', 'Descripción', 'Cantidad solicitada', '# de apoyos', 'Cantidad de piezas', 'Ubicación del Inventario', '$ referencia', 'Importe']
+    if es_individual:
+        obj = queryset.first()
+        folio = getattr(obj, 'num_procedimiento', getattr(obj, 'folio', 'S/D'))
+        es_licitacion = hasattr(obj, 'num_procedimiento')
+        
+        f_pub = obj.fecha_publicacion.strftime('%d/%m/%Y %H:%M') if es_licitacion and obj.fecha_publicacion else 'N/A'
+        f_ape = obj.fecha_apertura.strftime('%d/%m/%Y %H:%M') if es_licitacion and obj.fecha_apertura else 'N/A'
+        f_jun = obj.fecha_junta.strftime('%d/%m/%Y %H:%M') if es_licitacion and obj.fecha_junta else 'N/A'
+        f_fal = obj.fecha_fallo.strftime('%d/%m/%Y %H:%M') if es_licitacion and obj.fecha_fallo else 'N/A'
+
+        response['Content-Disposition'] = f'attachment; filename="Reporte_Socios_{folio}.xlsx"'
+
+        ws.append(['', 'NÚMERO DE EXPEDIENTE', 'DEPENDENCIA', 'Observaciones '])
+        ws.append(['', folio, obj.get_dependencia_display() if es_licitacion else (obj.razon_social or "S/D"), ''])
+        ws.append([])
+        ws.append(['', 'FECHA DE PUBLICACIÓN', 'JUNTA DE ACLARACIONES', 'APERTURA DE PROPUESTAS', 'ACTO DE FALLO'])
+        ws.append(['', f_pub, f_jun, f_ape, f_fal])
+        ws.append([])
+        ws.append([])
+
+        for r in [1, 4]:
+            for c in [2, 3, 4, 5]:
+                celda = ws.cell(row=r, column=c)
+                celda.font = font_cabecera
+                celda.fill = PatternFill("solid", fgColor="EFEFEF")
+                celda.alignment = alineacion_centro
+                celda.border = borde_delgado
+        for r in [2, 5]:
+            for c in [2, 3, 4, 5]:
+                celda = ws.cell(row=r, column=c)
+                celda.alignment = alineacion_centro
+                celda.border = borde_delgado
+    else:
+        response['Content-Disposition'] = 'attachment; filename="Reporte_Socios_Global.xlsx"'
+
+    encabezados = ['Socio Comercial', 'Partida', 'Clave', 'Descripcion (completa) ', 'denominacion_generica', 'denominacion_distintiva', 'fabricante', 'rfc_fabricante', 'pais_fabricacion', 'num_registro_sanitario', 'num_prorroga', 'codigo_barras', 'fecha_expedicion', 'fecha_vigencia', 'Cantidad solicitada', 'Piezas en inventario', 'Ubicación del Inventario', '$ referencia', 'precio costo ', 'precio unitario', 'Importe']
     ws.append(encabezados)
+    fila_encabezados = ws.max_row
     
-    for col_num, header in enumerate(encabezados, 1):
-        celda = ws.cell(row=1, column=col_num)
+    for col_num in range(1, len(encabezados) + 1):
+        celda = ws.cell(row=fila_encabezados, column=col_num)
         celda.font = font_cabecera
         celda.fill = fill_cabecera
         celda.alignment = alineacion_centro
         celda.border = borde_delgado
 
     filas = []
-    for licitacion in queryset:
-        for partida in licitacion.partidas.all():
-            med = partida.medicamento
-            clave = med.clave_sector if med else 'S/C'
-            cant_max = partida.cantidad_maxima or 0
-            precio = float(partida.precio or 0)
-            importe_max = cant_max * precio
+    for obj in queryset:
+        es_licitacion = hasattr(obj, 'num_procedimiento')
+        partidas = obj.partidas.all() if es_licitacion else obj.partidas_cotizacion.all()
+        
+        for i, p in enumerate(partidas, 1):
+            med = p.medicamento
+            if not med: continue
             
-            total_piezas = 0
-            texto_ubicaciones = "Sin Inventario"
+            socio = med.socio_contacto.nombre if med.socio_contacto else 'Sin socio comercial'
+            clave = med.clave_sector
+            cant = getattr(p, 'cantidad_maxima', getattr(p, 'cantidad', 0))
+            precio = float(getattr(p, 'precio', getattr(p, 'precio_unitario', 0)))
+            costo = float(getattr(p, 'costo', 0))
+            importe = cant * precio
+            num_partida = getattr(p, 'numero_partida', i)
             
-            if med and clave != 'S/C':
-                stock_disponible = Inventario.objects.filter(
-                    medicamento__clave_sector=clave, 
-                    cantidad_disponible__gt=0
-                ).select_related('almacen')
-                
-                desglose_almacen = []
-                for item in stock_disponible:
-                    total_piezas += item.cantidad_disponible
-                    nombre_alm = item.almacen.nombre if item.almacen else "Bodega Central"
-                    desglose_almacen.append(f"{nombre_alm} ({item.cantidad_disponible})")
-                
-                if desglose_almacen:
-                    texto_ubicaciones = " | ".join(desglose_almacen)
+            stock_disp = Inventario.objects.filter(medicamento=med, cantidad_disponible__gt=0).select_related('almacen')
+            total_piezas = sum(item.cantidad_disponible for item in stock_disp)
+            texto_ubic = " | ".join([f"{item.almacen.nombre if item.almacen else 'Bodega'} ({item.cantidad_disponible})" for item in stock_disp]) if stock_disp else "Sin Inventario"
 
-                medicamentos_similares = CatalogoMedicamento.objects.filter(clave_sector=clave)
-                if medicamentos_similares.exists():
-                    for m in medicamentos_similares:
-                        if m.socio_contacto:
-                            nombre_socio = m.socio_contacto.nombre
-                        else:
-                            nombre_socio = 'SIN SOCIO ASIGNADO'
-                            
-                        desc = m.denominacion_generica if m.denominacion_generica else 'S/D'
-                        if m.denominacion_distintiva:
-                            desc += f" / Marca: {m.denominacion_distintiva}"
-                        
-                        filas.append([nombre_socio, partida.numero_partida, clave, desc, cant_max, 0, total_piezas, texto_ubicaciones, precio, importe_max])
-                else:
-                    filas.append(['SIN REGISTRO', partida.numero_partida, clave, 'S/D', cant_max, 0, total_piezas, texto_ubicaciones, precio, importe_max])
-            else:
-                filas.append(['SIN CLAVE', partida.numero_partida, clave, 'S/D', cant_max, 0, 0, 'N/A', precio, importe_max])
-                
-    filas.sort(key=lambda x: (str(x[0]), int(x[1]) if x[1] not in [None, ''] else 0))
+            f_exp = med.fecha_expedicion.strftime('%Y-%m-%d') if med.fecha_expedicion else ''
+            f_vig = med.fecha_vigencia.strftime('%Y-%m-%d') if med.fecha_vigencia else ''
+
+            filas.append([
+                socio, num_partida, clave, med.descripcion, med.denominacion_generica, 
+                med.denominacion_distintiva or '', med.fabricante or '', med.rfc_fabricante or '', 
+                med.pais_fabricacion or '', med.num_registro_sanitario or '', med.num_prorroga or '', 
+                med.codigo_barras or '', f_exp, f_vig, cant, total_piezas, texto_ubic, 
+                0, costo, precio, importe
+            ])
+            
+    filas.sort(key=lambda x: str(x[0])) 
     
     current_fab = None
     subtotal_importe = 0
@@ -310,13 +288,16 @@ def exportar_reporte_laboratorios(modeladmin, request, queryset):
         fab = fila[0]
         if current_fab != fab:
             if current_fab is not None:
-                ws.append(['', f'Total {current_fab}', '', '', '', '', '', '', '', subtotal_importe])
+                r = ['' for _ in range(21)]
+                r[0] = f'Total {current_fab}'
+                r[20] = subtotal_importe
+                ws.append(r)
                 fila_subtotal = ws.max_row
-                for c in range(1, 11): 
+                for c in range(1, 22): 
                     ws.cell(row=fila_subtotal, column=c).fill = fill_subtotal
                     ws.cell(row=fila_subtotal, column=c).font = font_subtotal
                     ws.cell(row=fila_subtotal, column=c).border = borde_delgado
-                ws.cell(row=fila_subtotal, column=10).number_format = formato_moneda
+                ws.cell(row=fila_subtotal, column=21).number_format = formato_moneda
             
             current_fab = fab
             subtotal_importe = 0
@@ -324,113 +305,27 @@ def exportar_reporte_laboratorios(modeladmin, request, queryset):
         else:
             mostrar_fab = ''
             
-        subtotal_importe += fila[9] 
-        
-        ws.append([mostrar_fab, fila[1], fila[2], fila[3], fila[4], fila[5], fila[6], fila[7], fila[8], fila[9]])
+        subtotal_importe += fila[20] 
+        fila[0] = mostrar_fab
+        ws.append(fila)
         fila_actual = ws.max_row
         
-        for c in range(1, 11):
+        for c in range(1, 22):
             celda = ws.cell(row=fila_actual, column=c)
             celda.border = borde_delgado
-            if c in [9, 10]: 
-                celda.number_format = formato_moneda
-            if c in [2, 5, 6, 7]: 
-                celda.alignment = alineacion_centro
-            if c in [4, 8]: 
-                celda.alignment = alineacion_izq
+            if c in [18, 19, 20, 21]: celda.number_format = formato_moneda
 
     if current_fab is not None:
-        ws.append(['', f'Total {current_fab}', '', '', '', '', '', '', '', subtotal_importe])
+        r = ['' for _ in range(21)]
+        r[0] = f'Total {current_fab}'
+        r[20] = subtotal_importe
+        ws.append(r)
         fila_subtotal = ws.max_row
-        for c in range(1, 11):
+        for c in range(1, 22):
             ws.cell(row=fila_subtotal, column=c).fill = fill_subtotal
             ws.cell(row=fila_subtotal, column=c).font = font_subtotal
             ws.cell(row=fila_subtotal, column=c).border = borde_delgado
-        ws.cell(row=fila_subtotal, column=10).number_format = formato_moneda
-
-    ws.column_dimensions['A'].width = 35 
-    ws.column_dimensions['B'].width = 10 
-    ws.column_dimensions['C'].width = 18 
-    ws.column_dimensions['D'].width = 45 
-    ws.column_dimensions['E'].width = 15 
-    ws.column_dimensions['F'].width = 12 
-    ws.column_dimensions['G'].width = 18 
-    ws.column_dimensions['H'].width = 35 
-    ws.column_dimensions['I'].width = 15 
-    ws.column_dimensions['J'].width = 18 
-
-    wb.save(response)
-    return response
-
-# ==========================================
-# --- REPORTE DE INVENTARIO "CHULO" ---
-# ==========================================
-@admin.action(description='📊 Descargar Inventario Ejecutivo (Excel Especial)')
-def exportar_inventario_personalizado(modeladmin, request, queryset):
-    response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-    response['Content-Disposition'] = 'attachment; filename="Inventario_Detallado_Gpharma.xlsx"'
-    
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Inventario Actual"
-
-    # Estilos (usando el mismo diseño de tus otros reportes)
-    font_cabecera = Font(bold=True, color="000000")
-    fill_cabecera = PatternFill("solid", fgColor="D9D9D9")
-    alineacion_centro = Alignment(horizontal="center", vertical="center", wrap_text=True)
-    alineacion_izq = Alignment(horizontal="left", vertical="center", wrap_text=True)
-    borde_delgado = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
-
-    # Encabezados solicitados
-    encabezados = [
-        'ALMACÉN', 'CLAVE SECTOR', 'DESCRIPCIÓN', 'SOCIO COMERCIAL', 
-        'FABRICANTE', 'TIPO', 'LOTE', 'CADUCIDAD', 'EXISTENCIA'
-    ]
-    ws.append(encabezados)
-
-    for col_num, header in enumerate(encabezados, 1):
-        celda = ws.cell(row=1, column=col_num)
-        celda.font = font_cabecera
-        celda.fill = fill_cabecera
-        celda.alignment = alineacion_centro
-        celda.border = borde_delgado
-
-    # Datos
-    for item in queryset:
-        med = item.medicamento
-        # Traemos al socio comercial desde el catálogo
-        socio = med.socio_contacto.nombre if med.socio_contacto else "SIN ASIGNAR"
-        
-        fila = [
-            item.almacen.nombre if item.almacen else "BODEGA CENTRAL",
-            med.clave_sector,
-            med.denominacion_generica,
-            socio,
-            med.fabricante,
-            item.get_tipo_producto_display(),
-            item.lote,
-            item.fecha_caducidad.strftime('%d/%m/%Y') if item.fecha_caducidad else "S/F",
-            item.cantidad_disponible
-        ]
-        ws.append(fila)
-        
-        # Aplicar bordes y formato a la fila
-        r = ws.max_row
-        for c in range(1, 10):
-            celda = ws.cell(row=r, column=c)
-            celda.border = borde_delgado
-            celda.alignment = alineacion_centro if c != 3 else alineacion_izq
-
-    # Ajustar anchos de columnas
-    ws.column_dimensions['A'].width = 20
-    ws.column_dimensions['B'].width = 18
-    ws.column_dimensions['C'].width = 45
-    ws.column_dimensions['D'].width = 25
-    ws.column_dimensions['E'].width = 25
-    ws.column_dimensions['F'].width = 15
-    ws.column_dimensions['G'].width = 15
-    ws.column_dimensions['H'].width = 15
-    ws.column_dimensions['I'].width = 12
+        ws.cell(row=fila_subtotal, column=21).number_format = formato_moneda
 
     wb.save(response)
     return response
@@ -541,10 +436,9 @@ class CatalogoMedicamentoAdmin(ImportExportModelAdmin):
 # 👇 3. LA LÓGICA DE PINTADO (COLORES) CORREGIDA 👇
     def semaforo_vigencia_display(self, obj):
         from django.utils.html import format_html
-        from django.utils.safestring import mark_safe  # 👈 1. Importamos mark_safe
+        from django.utils.safestring import mark_safe 
         
         if not obj.fecha_vigencia:
-            # 👈 2. Usamos mark_safe para texto fijo sin variables
             return mark_safe('<span style="color: #999;">Sin Fecha</span>') 
             
         hoy = timezone.now().date()
@@ -609,7 +503,7 @@ class LicitacionAdmin(admin.ModelAdmin):
     search_fields = ['num_procedimiento', 'dependencia']
     inlines = [PartidaRequerimientoInline]
     
-    actions = [exportar_a_csv, exportar_analisis_licitacion, exportar_reporte_laboratorios]
+    actions = [exportar_a_csv, exportar_analisis_unificado, exportar_socios_unificado]
     
     change_form_template = "admin/licitaciones/licitacion/change_form.html"
 
@@ -654,10 +548,12 @@ class LicitacionAdmin(admin.ModelAdmin):
         return custom_urls + urls
 
     def exportar_analisis_view(self, request, object_id):
-        return exportar_analisis_licitacion(self, request, Licitacion.objects.filter(id=object_id))
+        from .models import Licitacion
+        return exportar_analisis_unificado(self, request, Licitacion.objects.filter(id=object_id))
 
     def exportar_reporte_laboratorios_view(self, request, object_id):
-        return exportar_reporte_laboratorios(self, request, Licitacion.objects.filter(id=object_id))
+        from .models import Licitacion
+        return exportar_socios_unificado(self, request, Licitacion.objects.filter(id=object_id))
 
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change) 
@@ -727,10 +623,8 @@ class LicitacionAdmin(admin.ModelAdmin):
             empresa_id = request.POST.get('empresa_emisora')
             empresa_emisora = Empresa.objects.get(id=empresa_id)
             
-            # --- LÓGICA DE RUTEO MÚLTIPLE (REPLY-TO) ---
             nombre_empresa_up = empresa_emisora.nombre.upper()
             
-            # 1. Metemos el correo principal en una caja (lista)
             if "SAGO" in nombre_empresa_up: 
                 lista_respuesta = ["sagomedical.licitaciones@gmail.com"]
             elif "GSM" in nombre_empresa_up: 
@@ -738,7 +632,6 @@ class LicitacionAdmin(admin.ModelAdmin):
             else: 
                 lista_respuesta = ["licitaciones2@gpharma.com"]
 
-            # 2. Revisamos si en el panel escribiste correos de empleados
             if empresa_emisora.correos_notificacion:
                 empleados = [c.strip() for c in empresa_emisora.correos_notificacion.split(',') if c.strip()]
                 lista_respuesta.extend(empleados)
@@ -792,7 +685,7 @@ class LicitacionAdmin(admin.ModelAdmin):
                         to=destinatarios,
                         connection=conexion_dinamica,
                         bcc=lista_respuesta,
-                        reply_to=lista_respuesta # AQUI VA LA LISTA MAESTRA
+                        reply_to=lista_respuesta 
                     )
                     correo.attach_alternative(html_content, "text/html")
                     for archivo in archivos_adjuntos: 
@@ -833,7 +726,6 @@ class LicitacionAdmin(admin.ModelAdmin):
             empresa_id = request.POST.get('empresa_emisora')
             empresa_emisora = Empresa.objects.get(id=empresa_id)
             
-            # --- LÓGICA DE RUTEO MÚLTIPLE (REPLY-TO) ---
             nombre_empresa_up = empresa_emisora.nombre.upper()
             
             if "SAGO" in nombre_empresa_up: 
@@ -898,7 +790,7 @@ class LicitacionAdmin(admin.ModelAdmin):
                         to=destinatarios, 
                         connection=conexion_dinamica,
                         bcc=lista_respuesta,
-                        reply_to=lista_respuesta # AQUI VA LA LISTA MAESTRA
+                        reply_to=lista_respuesta 
                     )
                     correo.attach_alternative(html_content, "text/html")
                     for archivo in archivos_adjuntos: correo.attach(archivo.name, archivo.read(), archivo.content_type)
@@ -913,41 +805,18 @@ class LicitacionAdmin(admin.ModelAdmin):
         context = {'title': f'Notificar Resultados: {licitacion.num_procedimiento}', 'licitacion': licitacion, 'socios_data': socios_dict.values(), 'opts': self.model._meta, 'empresas_grupo': Empresa.objects.all(), 'has_view_permission': self.has_view_permission(request, licitacion)}
         return render(request, 'admin/licitaciones/licitacion/notificar_resultados.html', context)
     
-# 🔒 EL GATILLO CON CANDADO DE SEGURIDAD
     def notificar_whatsapp_btn(self, obj):
-        # Validamos si existen partidas cuyo resultado ya no sea 'Pendiente'
         tiene_resultados = obj.partidas.exclude(resultado='Pendiente').exists()
         
         if not tiene_resultados:
-            return format_html('<span style="color: #94a3b8; background: #f1f5f9; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;"><i class="fas fa-lock"></i> Capturar Resultados</span>')
-            
-        # Si ya tiene resultados, activa el botón que abre la pestaña emergente (Popup)
-        return format_html(
-            '<a class="button" href="{}/notificar-whatsapp/" onclick="window.open(this.href, \'whatsapp_popup\', \'width=500,height=520,resizable=no,scrollbars=yes\'); return false;" style="background-color: #25D366; color:white; padding: 5px 10px; border-radius: 4px; text-decoration: none; font-weight:bold; font-size:11px;"><i class="fab fa-whatsapp"></i> Notificar WA</a>',
-            obj.id
-        )
-    notificar_whatsapp_btn.short_description = "WhatsApp"
-
-# 🔒 EL GATILLO CON CANDADO DE SEGURIDAD
-    def notificar_whatsapp_btn(self, obj):
-        from django.utils.html import format_html
-        from django.utils.safestring import mark_safe  # 👈 Importamos mark_safe para texto fijo
-
-        # Validamos si existen partidas cuyo resultado ya no sea 'Pendiente'
-        tiene_resultados = obj.partidas.exclude(resultado='Pendiente').exists()
-        
-        if not tiene_resultados:
-            # 👇 Usamos mark_safe en lugar de format_html porque no hay variables {} 👇
             return mark_safe('<span style="color: #94a3b8; background: #f1f5f9; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;"><i class="fas fa-lock"></i> Capturar Resultados</span>')
             
-        # Si ya tiene resultados, activa el botón que abre la pestaña emergente (Popup)
         return format_html(
             '<a class="button" href="{}/notificar-whatsapp/" onclick="window.open(this.href, \'whatsapp_popup\', \'width=500,height=520,resizable=no,scrollbars=yes\'); return false;" style="background-color: #25D366; color:white; padding: 5px 10px; border-radius: 4px; text-decoration: none; font-weight:bold; font-size:11px;"><i class="fab fa-whatsapp"></i> Notificar WA</a>',
             obj.id
         )
     notificar_whatsapp_btn.short_description = "WhatsApp"
 
-    # 🧠 LA VISTA QUE PROCESA EL ENVÍO DESDE LA VENTANA EMERGENTE
     def notificar_whatsapp_view(self, request, object_id):
         from django.shortcuts import render
         from django.http import HttpResponse
@@ -962,7 +831,6 @@ class LicitacionAdmin(admin.ModelAdmin):
             miembros_ids = request.POST.getlist('miembros')
             estatus_txt = licitacion.estatus.estado if licitacion.estatus else "Finalizado"
             
-            # Formato elegante para el mensaje de WhatsApp corporativo
             mensaje_texto = f"📋 *GPHARMA ERP - Alerta de Fallo*\n\n" \
                             f"El analista ha registrado los resultados del evento:\n" \
                             f"• *Procedimiento:* {licitacion.num_procedimiento}\n" \
@@ -972,7 +840,6 @@ class LicitacionAdmin(admin.ModelAdmin):
 
             if miembros_ids:
                 try:
-                    # Conexión directa a tu motor de Twilio
                     client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
                     enviados = 0
                     for m_id in miembros_ids:
@@ -984,7 +851,6 @@ class LicitacionAdmin(admin.ModelAdmin):
                                 to=f"whatsapp:{miembro.whatsapp}"
                             )
                             enviados += 1
-                    # Este script cierra la pestaña emergente solita al terminar
                     return HttpResponse(f"<html><body><script>alert('¡Éxito! Notificaciones enviadas correctamente a {enviados} integrantes.'); window.close();</script></body></html>")
                 except Exception as e:
                     return HttpResponse(f"<html><body><h3 style='color:#dc3545;'>Error al disparar Twilio: {str(e)}</h3><button onclick='window.close()'>Cerrar Ventana</button></body></html>")
@@ -1001,7 +867,6 @@ class EmpresaAdmin(ImportExportModelAdmin):
     list_display = ('nombre', 'rfc', 'representante', 'telefono')
     search_fields = ('nombre', 'rfc')
     
-    # --- CANDADO DE SEGURIDAD (Solo Superusuario) ---
     def has_module_permission(self, request):
         return request.user.is_superuser
         
@@ -1024,7 +889,6 @@ class PartidaRequerimientoAdmin(admin.ModelAdmin):
     ordering = ('licitacion', 'numero_partida')
     list_editable = ('precio', 'resultado')
 
-    # --- Ocultar del menú principal pero mantenerla funcional ---
     def has_module_permission(self, request):
         return False
 
@@ -1040,7 +904,6 @@ class PartidaRequerimientoAdmin(admin.ModelAdmin):
     importe_total.admin_order_field = 'cantidad_maxima'
 
 
-# admin.site.register(EstatusProcedimiento) # <-- Oculto del panel
 admin.site.register(CatalogoMedicamento, CatalogoMedicamentoAdmin)
 admin.site.register(RegistroUbicacion, RegistroUbicacionAdmin)
 
@@ -1317,7 +1180,6 @@ class ContratoAdmin(ImportExportModelAdmin):
             monto_formateado = f"${total_multas:,.2f}"
             return format_html('<span style="color: #dc3545; font-weight: bold;">- {}</span>', monto_formateado)
             
-        from django.utils.safestring import mark_safe
         return mark_safe('<span style="color: #28a745; font-weight: bold;">$0.00</span>')
     monto_penalizado.short_description = "Penalizaciones (Est.)"
 
@@ -1414,7 +1276,6 @@ class OrdenSuministroAdmin(ImportExportModelAdmin):
         'estatus_logistico', 'monto_penalizacion', 'estatus', 'btn_surtir'
     )
     
-    # 👇 AQUI ESTÁN TUS NUEVOS FILTROS LIMPIOS 👇
     search_fields = ('numero_orden_suministro', 'dependencia', 'razon_social', 'nombre_unidad')
     list_filter = ('razon_social', 'dependencia', 'estatus')
     
@@ -1441,7 +1302,6 @@ class OrdenSuministroAdmin(ImportExportModelAdmin):
     piezas_solicitadas.short_description = "Cant. Solicitada"
 
     def piezas_entregadas(self, obj):
-        from django.utils.html import format_html
         enviadas = sum((r.cantidad_entregada or 0) for r in obj.remisiones.exclude(estatus_viaje='RECHAZO'))
         total_solicitado = sum(p.cantidad_solicitada for p in obj.partidas.all())
         enviadas_texto = f"{enviadas:,}"
@@ -1453,9 +1313,6 @@ class OrdenSuministroAdmin(ImportExportModelAdmin):
     piezas_entregadas.short_description = "Cant. Entregada"
 
     def piezas_pendientes(self, obj):
-        from django.utils.html import format_html
-        from django.utils.safestring import mark_safe 
-        
         enviadas = sum((r.cantidad_entregada or 0) for r in obj.remisiones.exclude(estatus_viaje='RECHAZO'))
         total_solicitado = sum(p.cantidad_solicitada for p in obj.partidas.all())
         pendientes = total_solicitado - enviadas
@@ -1467,8 +1324,6 @@ class OrdenSuministroAdmin(ImportExportModelAdmin):
     piezas_pendientes.short_description = "Cant. Pendiente"
 
     def estatus_logistico(self, obj):
-        from django.utils.html import format_html
-        
         color = "#6c757d"
         texto = obj.get_estatus_display()
         
@@ -1506,14 +1361,10 @@ class OrdenSuministroAdmin(ImportExportModelAdmin):
             monto_formateado = f"${penalizacion:,.2f}"
             return format_html('<span style="color: #dc3545; font-weight: bold;">- {}</span>', monto_formateado)
             
-        from django.utils.safestring import mark_safe
         return mark_safe('<span style="color: #ccc;">$0.00</span>')
     monto_penalizacion.short_description = "Penalización Acumulada"
     
     def btn_surtir(self, obj):
-        from django.utils.html import format_html
-        from django.utils.safestring import mark_safe 
-        
         if obj.estatus == 'ENTREGADA':
             return mark_safe('<span style="color: green; font-weight:bold;">✔ Completada</span>')
             
@@ -1525,17 +1376,12 @@ class OrdenSuministroAdmin(ImportExportModelAdmin):
     
     def get_urls(self):
         urls = super().get_urls()
-        from django.urls import path
         custom_urls = [
             path('<path:object_id>/surtir/', self.admin_site.admin_view(self.surtir_orden_view), name='surtir_orden_logistica'),
         ]
         return custom_urls + urls
 
     def surtir_orden_view(self, request, object_id):
-        from django.shortcuts import render, redirect
-        from django.contrib import messages
-        from .models import Inventario, RemisionEntrega
-        
         orden = self.get_object(request, object_id)
         
         claves_buscar = [p.clave_contrato.medicamento.clave_sector for p in orden.partidas.all() if p.clave_contrato and p.clave_contrato.medicamento]
@@ -1599,7 +1445,6 @@ class OrdenSuministroAdmin(ImportExportModelAdmin):
             orden.save()
             ordenes_procesadas += 1
             
-        from django.contrib import messages
         if con_evidencia > 0:
             messages.warning(request, f"¡Atención! Se cancelaron {ordenes_procesadas} órdenes, pero {con_evidencia} se marcaron CON EVIDENCIA para protección legal porque ya se habían entregado piezas.")
         else:
@@ -1636,13 +1481,11 @@ class InventarioAdmin(ImportExportModelAdmin):
     search_fields = ('medicamento__clave_sector', 'medicamento__denominacion_generica', 'lote')
     list_filter = ('tipo_producto', 'almacen', 'fecha_caducidad',)
     autocomplete_fields = ['medicamento']
-    actions = [exportar_inventario_personalizado]
 
 # 4. PANTALLA FÍSICA: Remisiones de Almacén (Viajes)
 @admin.register(RemisionEntrega)
 class RemisionEntregaAdmin(admin.ModelAdmin):
     list_per_page = 50
-    # 👇 Agregamos el botón 'imprimir_pdf' a la vista 👇
     list_display = ('folio_remision_factura', 'orden_vinculada', 'cantidad_entregada', 'estatus_viaje', 'imprimir_pdf')
     search_fields = ('folio_remision_factura', 'lote', 'orden__numero_orden_suministro')
     list_filter = ('estatus_viaje',)
@@ -1664,31 +1507,22 @@ class RemisionEntregaAdmin(admin.ModelAdmin):
         return obj.orden.numero_orden_suministro
     orden_vinculada.short_description = "OPM Vinculada"
 
-    # 👇 1. EL BOTÓN ROJO DE PDF 👇
     def imprimir_pdf(self, obj):
-        from django.utils.html import format_html
         return format_html(
             '<a class="button" href="{}/pdf/" style="background-color: #e74c3c; color:white; padding: 5px 10px; border-radius: 4px; text-decoration: none; font-weight:bold;"><i class="fas fa-file-pdf"></i> Generar PDF</a>',
             obj.id
         )
     imprimir_pdf.short_description = "Formato Oficial"
 
-    # 👇 2. REGISTRAMOS LA URL DEL BOTÓN 👇
     def get_urls(self):
         urls = super().get_urls()
-        from django.urls import path
         custom_urls = [
             path('<path:object_id>/pdf/', self.admin_site.admin_view(self.generar_remision_pdf_view), name='generar_remision_pdf'),
         ]
         return custom_urls + urls
 
-    # 👇 3. LA LÓGICA QUE CONSTRUYE EL ARCHIVO 👇
     def generar_remision_pdf_view(self, request, object_id):
-        from django.http import HttpResponse
         from django.template.loader import render_to_string
-        from django.shortcuts import redirect
-        from django.contrib import messages
-        from django.utils import timezone
         import io
         
         try:
@@ -1700,10 +1534,6 @@ class RemisionEntregaAdmin(admin.ModelAdmin):
         remision = self.get_object(request, object_id)
         orden = remision.orden
         
-        # ==========================================
-        # EXTRACCIÓN SEGURA DE DATOS (Anti-Errores)
-        # Usamos getattr() para no romper si el campo no existe
-        # ==========================================
         num_contrato_hist = getattr(orden, 'numero_contrato_historico', None)
         clave_hist = getattr(orden, 'clave_medicamento_historico', None)
         desc_hist = getattr(orden, 'descripcion_medicamento', None)
@@ -1712,24 +1542,20 @@ class RemisionEntregaAdmin(admin.ModelAdmin):
         contrato_vinculado = None
         empresa_emisora = None
         
-        # Intento A: Por la partida moderna
         primera_partida = orden.partidas.first()
         if primera_partida and hasattr(primera_partida, 'clave_contrato') and primera_partida.clave_contrato:
             contrato_vinculado = primera_partida.clave_contrato.contrato
             
-        # Intento B: Por el número de contrato histórico
         if not contrato_vinculado and num_contrato_hist:
             from .models import Contrato
             contrato_vinculado = Contrato.objects.filter(numero_contrato__iexact=num_contrato_hist).first()
 
-        # Si encontramos contrato, sacamos la empresa y el número final
         if contrato_vinculado:
             empresa_emisora = contrato_vinculado.empresa
             numero_contrato_final = contrato_vinculado.numero_contrato
         else:
             numero_contrato_final = num_contrato_hist or "S/D"
 
-        # LIMPIEZA DEL CLIENTE (Evitar que diga SAGO)
         cliente_final = getattr(orden, 'dependencia', '') or getattr(orden, 'razon_social', '') or "S/D"
         cliente_upper = cliente_final.upper()
         if "SAGO" in cliente_upper or "GAMS" in cliente_upper or "GSM" in cliente_upper:
@@ -1744,17 +1570,13 @@ class RemisionEntregaAdmin(admin.ModelAdmin):
             'numero_contrato_final': numero_contrato_final,
             'cliente_final': cliente_final,
             'dependencia_str': dependencia_str,
-            
-            # Pasamos los datos históricos sueltos para que el HTML no se rompa buscando en la orden
             'clave_hist': clave_hist,
             'desc_hist': desc_hist,
             'precio_hist': precio_hist,
-            
             'fecha_actual': getattr(remision, 'fecha_despacho', timezone.now().date()),
         }
 
         html_string = render_to_string('admin/licitaciones/remisionentrega/pdf/formato_remision.html', contexto)
-        
         result_file = io.BytesIO()
         pisa_status = pisa.CreatePDF(html_string, dest=result_file)
         
@@ -1798,7 +1620,6 @@ class PartidaCompraInline(admin.TabularInline):
     readonly_fields = ('importe_visual',)
 
     def importe_visual(self, obj):
-        from django.utils.html import format_html
         if obj.cantidad and obj.precio_unitario:
             total = float(obj.cantidad) * float(obj.precio_unitario)
             return format_html('<b>${}</b>', f"{total:,.2f}")
@@ -1820,13 +1641,10 @@ class DocumentoOrdenCompraInline(admin.TabularInline):
 class OrdenCompraAdmin(admin.ModelAdmin):
     list_display = ('folio', 'proveedor', 'fecha_entrega_esperada', 'mostrar_total', 'penalizacion_calculada', 'auditoria_ciega', 'estatus_badge', 'enviar_oc_link')
     list_filter = ('estatus', 'empresa_compradora', 'proveedor')
-    
     search_fields = ('folio', 'proveedor__nombre', 'destino') 
-    
     inlines = [PartidaCompraInline, DocumentoOrdenCompraInline]
     autocomplete_fields = ['proveedor'] 
     list_per_page = 30
-    
     actions = ['marcar_recibida_y_crear_inventario', 'notificar_proveedor_masivo']
 
     def penalizacion_calculada(self, obj):
@@ -1842,7 +1660,6 @@ class OrdenCompraAdmin(admin.ModelAdmin):
 
     def get_urls(self):
         urls = super().get_urls()
-        from django.urls import path
         custom_urls = [
             path('<path:object_id>/notificar-proveedor/', self.admin_site.admin_view(self.notificar_proveedor_view), name='notificar_proveedor_oc'),
             path('<path:object_id>/vista-previa-pdf/', self.admin_site.admin_view(self.vista_previa_pdf_view), name='vista_previa_pdf_oc'),
@@ -1850,9 +1667,7 @@ class OrdenCompraAdmin(admin.ModelAdmin):
         return custom_urls + urls
 
     def vista_previa_pdf_view(self, request, object_id):
-        from django.http import HttpResponse
         from django.template.loader import render_to_string
-        from django.shortcuts import redirect
         from io import BytesIO
         
         try:
@@ -1881,7 +1696,6 @@ class OrdenCompraAdmin(admin.ModelAdmin):
 
         html_pdf = render_to_string('admin/licitaciones/ordencompra/pdf/orden_compra_pdf.html', contexto)
         result_file = BytesIO()
-        
         pisa_status = pisa.CreatePDF(html_pdf, dest=result_file)
         
         if not pisa_status.err:
@@ -1893,11 +1707,8 @@ class OrdenCompraAdmin(admin.ModelAdmin):
             return redirect('admin:licitaciones_ordencompra_changelist')
 
     def notificar_proveedor_view(self, request, object_id):
-        from django.core.mail import EmailMultiAlternatives, get_connection
         from django.template.loader import render_to_string
         from django.utils.html import strip_tags
-        from django.shortcuts import render, redirect
-        from django.contrib import messages 
         import mimetypes
         from io import BytesIO
         
@@ -1912,28 +1723,21 @@ class OrdenCompraAdmin(admin.ModelAdmin):
         
         if request.method == 'POST':
             empresa = oc.empresa_compradora
-            
             if not empresa.correo_remitente:
                 messages.error(request, f"❌ ERROR DE CONFIGURACIÓN: La empresa '{empresa.nombre}' necesita un correo remitente registrado.")
                 return redirect(request.path)
 
             try:
-                # --- LÓGICA DE RUTEO MÚLTIPLE (REPLY-TO) ---
                 nombre_empresa_up = empresa.nombre.upper()
-                
-                if "SAGO" in nombre_empresa_up: 
-                    lista_respuesta = ["sagomedical.licitaciones@gmail.com"]
-                elif "GSM" in nombre_empresa_up: 
-                    lista_respuesta = ["gsm.licitaciones@gmail.com"]
-                else: 
-                    lista_respuesta = ["licitaciones2@gpharma.com"]
+                if "SAGO" in nombre_empresa_up: lista_respuesta = ["sagomedical.licitaciones@gmail.com"]
+                elif "GSM" in nombre_empresa_up: lista_respuesta = ["gsm.licitaciones@gmail.com"]
+                else: lista_respuesta = ["licitaciones2@gpharma.com"]
 
                 if empresa.correos_notificacion:
                     empleados = [c.strip() for c in empresa.correos_notificacion.split(',') if c.strip()]
                     lista_respuesta.extend(empleados)
 
                 conexion_dinamica = get_connection()
-                
                 asunto = f"ORDEN DE COMPRA OFICIAL: {oc.folio} - {empresa.nombre}"
                 partidas = oc.partidas_compra.all()
                 
@@ -1950,7 +1754,6 @@ class OrdenCompraAdmin(admin.ModelAdmin):
                 
                 html_content = render_to_string('admin/licitaciones/ordencompra/emails/orden_compra_email.html', contexto)
                 text_content = strip_tags(html_content)
-                
                 destinatarios = [c.strip() for c in proveedor.correos.split(',') if c.strip()]
                 
                 msg = EmailMultiAlternatives(
@@ -1960,7 +1763,7 @@ class OrdenCompraAdmin(admin.ModelAdmin):
                     to=destinatarios, 
                     connection=conexion_dinamica,
                     bcc=lista_respuesta,
-                    reply_to=lista_respuesta # AQUI VA LA LISTA MAESTRA
+                    reply_to=lista_respuesta
                 )
                 msg.attach_alternative(html_content, "text/html")
                 
@@ -2014,12 +1817,12 @@ class OrdenCompraAdmin(admin.ModelAdmin):
     estatus_badge.short_description = "Estatus"
 
     def mostrar_total(self, obj):
-        total_formateado = f"{obj.total_compra:,.2f}"
-        return format_html('<b style="color: #5e35b1;">${}</b>', total_formateado)
+        return format_html('<b style="color: #5e35b1;">${}</b>', f"{obj.total_compra:,.2f}")
     mostrar_total.short_description = "Total OC"
 
     @admin.action(description='📦 Marcar como RECIBIDA e Ingresar al Inventario')
     def marcar_recibida_y_crear_inventario(self, request, queryset):
+        import datetime
         ordenes_procesadas = 0
         for orden in queryset:
             if orden.estatus == 'RECIBIDA':
@@ -2028,7 +1831,6 @@ class OrdenCompraAdmin(admin.ModelAdmin):
             orden.estatus = 'RECIBIDA'
             orden.save()
             
-            import datetime
             for partida in orden.partidas_compra.all():
                 partida.cantidad_recibida = partida.cantidad
                 partida.save()
@@ -2048,13 +1850,10 @@ class OrdenCompraAdmin(admin.ModelAdmin):
             messages.warning(request, "Las órdenes seleccionadas ya estaban recibidas previamente.")
 
     def auditoria_ciega(self, obj):
-        from django.utils.html import format_html
-        
         reclamado_compras = sum(p.cantidad_recibida for p in obj.partidas_compra.all() if p.cantidad_recibida)
         recibido_almacen = sum(e.cantidad_recibida for e in obj.entradaalmacen_set.all() if e.cantidad_recibida)
         
         if reclamado_compras == 0 and recibido_almacen == 0:
-            from django.utils.safestring import mark_safe
             return mark_safe('<span style="color: #95a5a6; font-weight: bold;">➖ Pendiente</span>')
             
         if reclamado_compras == recibido_almacen:
@@ -2099,22 +1898,17 @@ class EntradaAlmacenForm(forms.ModelForm):
             <script type="text/javascript">
                 document.addEventListener('DOMContentLoaded', function() {
                     var $ = django.jQuery || window.jQuery;
-                    
                     $('#id_orden').on('change', function() {
                         var ordenId = $(this).val();
                         var $medSelect = $('#id_medicamento');
-                        
                         if (!ordenId) {
                             $medSelect.empty();
                             $medSelect.append('<option value="">--- Primero selecciona una Orden ---</option>');
                             $medSelect.trigger('change');
                             return;
                         }
-                        
                         $medSelect.html('<option value="">🔄 Buscando claves en la OC...</option>');
-                        
                         var url = '/admin/licitaciones/entradaalmacen/ajax/load-medicamentos/?orden_id=' + ordenId;
-                        
                         $.ajax({
                             url: url,
                             success: function(data) {
@@ -2145,13 +1939,10 @@ class EntradaAlmacenForm(forms.ModelForm):
 @admin.register(EntradaAlmacen)
 class EntradaAlmacenAdmin(admin.ModelAdmin):
     form = EntradaAlmacenForm 
-    
     list_per_page = 30
-    # 👇 Se agregó piezas_rechazadas_badge 👇
     list_display = ('orden', 'almacen_destino', 'medicamento', 'cantidad_recibida', 'piezas_rechazadas_badge', 'lote', 'ver_acuse', 'ver_factura', 'documentacion_ok', 'fecha_ingreso')
     search_fields = ('orden__folio', 'medicamento__clave_sector', 'lote', 'ubicacion')
     list_filter = ('almacen_destino', 'documentacion_completa', 'fecha_ingreso')
-    
     autocomplete_fields = ['orden']
 
     fieldsets = (
@@ -2159,7 +1950,6 @@ class EntradaAlmacenAdmin(admin.ModelAdmin):
             'fields': ('almacen_destino', 'orden', 'medicamento')
         }),
         ('📦 Datos Físicos', {
-            # 👇 Se agregó piezas_rechazadas al formulario 👇
             'fields': ('cantidad_recibida', 'piezas_rechazadas', 'lote', 'fecha_caducidad')
         }),
         ('📋 Calidad y Logística', {
@@ -2168,16 +1958,13 @@ class EntradaAlmacenAdmin(admin.ModelAdmin):
     )
 
     def piezas_rechazadas_badge(self, obj):
-        from django.utils.html import format_html
         if obj.piezas_rechazadas > 0:
             return format_html('<span style="color: #dc3545; font-weight: bold;">⚠️ {} pzas</span>', obj.piezas_rechazadas)
-        from django.utils.safestring import mark_safe
         return mark_safe('<span style="color: #ccc;">0</span>')
     piezas_rechazadas_badge.short_description = "Rechazos"
 
     def get_urls(self):
         urls = super().get_urls()
-        from django.urls import path
         custom_urls = [
             path('ajax/load-medicamentos/', self.admin_site.admin_view(self.load_medicamentos), name='ajax_load_medicamentos_almacen'),
         ]
@@ -2185,9 +1972,7 @@ class EntradaAlmacenAdmin(admin.ModelAdmin):
 
     def load_medicamentos(self, request):
         from django.http import JsonResponse
-        from .models import PartidaCompra
         orden_id = request.GET.get('orden_id')
-        
         if not orden_id:
             return JsonResponse([])
             
@@ -2201,21 +1986,18 @@ class EntradaAlmacenAdmin(admin.ModelAdmin):
         return JsonResponse(data, safe=False)
 
     def ver_acuse(self, obj):
-        from django.utils.html import format_html
         if obj.acuse_recibo:
             return format_html('<a href="{}" target="_blank" style="background-color: #17a2b8; color: white; padding: 4px 8px; border-radius: 4px; text-decoration: none; font-size: 11px; font-weight: bold;">📄 Acuse</a>', obj.acuse_recibo.url)
         return "-"
     ver_acuse.short_description = "Acuse"
 
     def ver_factura(self, obj):
-        from django.utils.html import format_html
         if obj.factura_proveedor:
             return format_html('<a href="{}" target="_blank" style="background-color: #6c757d; color: white; padding: 4px 8px; border-radius: 4px; text-decoration: none; font-size: 11px; font-weight: bold;">🧾 Factura</a>', obj.factura_proveedor.url)
         return "-"
     ver_factura.short_description = "Factura"
 
     def documentacion_ok(self, obj):
-        from django.utils.safestring import mark_safe 
         if obj.documentacion_completa:
             return mark_safe('<span style="color: #28a745; font-weight: bold;">✔ Completa</span>')
         return mark_safe('<span style="color: #dc3545; font-weight: bold;">❌ Faltante</span>')
@@ -2237,11 +2019,8 @@ class TraspasoIntercompanyAdmin(admin.ModelAdmin):
         return ()
 
     def mostrar_importe(self, obj):
-        from django.utils.html import format_html
         total = obj.cantidad * obj.precio_unitario
-        total_formateado = f"{total:,.2f}"
-        return format_html('<b>${}</b>', total_formateado)
-        
+        return format_html('<b>${}</b>', f"{total:,.2f}")
     mostrar_importe.short_description = "Valor Fiscal Total"
 
 from django.http import HttpResponseRedirect
@@ -2254,11 +2033,8 @@ class EscanerKardexAdmin(admin.ModelAdmin):
         return HttpResponseRedirect(reverse('buscar_kardex'))
     
 # ==========================================
-# 🚀 MÓDULO: COTIZACIONES Y VENTAS DIRECTAS (PARIDAD CON LICITACIONES)
+# 🚀 MÓDULO: COTIZACIONES Y VENTAS DIRECTAS
 # ==========================================
-from django import forms
-from django.shortcuts import redirect, render
-from django.contrib import messages
 import io, csv
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
@@ -2282,11 +2058,9 @@ class PartidaCotizacionInline(admin.TabularInline):
     readonly_fields = ('importe_visual',)
 
     def importe_visual(self, obj):
-        from django.utils.html import format_html
         if obj.cantidad and obj.precio_unitario:
             total = float(obj.cantidad) * float(obj.precio_unitario)
-            total_str = "{:,.2f}".format(total) # 👈 Formato seguro por fuera
-            return format_html('<b>${}</b>', total_str)
+            return format_html('<b>${}</b>', "{:,.2f}".format(total))
         return "$0.00"
     importe_visual.short_description = "Importe"
 
@@ -2300,6 +2074,8 @@ class CotizacionAdmin(admin.ModelAdmin):
     list_display = ('folio', 'tipo_procedimiento', 'cliente_visual', 'fecha_emision', 'total_cotizado', 'estatus_badge', 'btn_convertir')
     search_fields = ('folio', 'razon_social', 'dependencia')
     list_filter = ('tipo_procedimiento', 'estatus', 'fecha_emision')
+    
+    actions = [exportar_analisis_unificado, exportar_socios_unificado]
     
     fieldsets = (
         ('📄 Datos del Evento', {'fields': ('tipo_procedimiento', 'empresa', 'folio', 'fecha_emision', 'vigencia_dias')}),
@@ -2345,12 +2121,11 @@ class CotizacionAdmin(admin.ModelAdmin):
                             importes_agregados += 1
                     except Exception: continue 
             
-            if importes_agregados > 0: messages.success(request, f"¡Éxito! Se cargaron {importes_agregados} partidas. Recuerda capturar los precios.")
+            if importes_agregados > 0: messages.success(request, f"¡Éxito! Se cargaron {importes_agregados} partidas.")
             if claves_nuevas: messages.warning(request, f"🔔 Se crearon {len(claves_nuevas)} CLAVES NUEVAS.")
 
     def get_urls(self):
         urls = super().get_urls()
-        from django.urls import path
         custom_urls = [
             path('<path:object_id>/convertir-pedido/', self.admin_site.admin_view(self.convertir_pedido_view), name='convertir_cotizacion_pedido'),
             path('<path:object_id>/exportar-analisis/', self.admin_site.admin_view(self.exportar_analisis_view), name='exportar_analisis_cotizacion'),
@@ -2360,97 +2135,15 @@ class CotizacionAdmin(admin.ModelAdmin):
         ]
         return custom_urls + urls
 
-    # ==========================================
-    # LÓGICA DE LOS 4 BOTONES MÁGICOS BLINDADOS
-    # ==========================================
     def exportar_analisis_view(self, request, object_id):
-        from django.http import HttpResponse
-        from .models import Cotizacion
-        
-        try:
-            cotizacion = Cotizacion.objects.get(id=object_id)
-        except Cotizacion.DoesNotExist:
-            messages.error(request, "⚠️ Error: No se encontró la cotización solicitada.")
-            return redirect('admin:licitaciones_cotizacion_changelist')
-
-        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-        response['Content-Disposition'] = f'attachment; filename="Analisis_Comercial_{cotizacion.folio}.xlsx"'
-        
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "Análisis"
-        
-        encabezados = ['PARTIDA (N/A)', 'CLAVE', 'CANTIDAD SOLICITADA', 'PRECIO UNITARIO', 'IMPORTE TOTAL', 'ESTATUS GLOBAL', 'FABRICANTE', 'MARCA', 'GENÉRICA']
-        ws.append(['', 'FOLIO', 'CLIENTE/DEPENDENCIA', 'TIPO EVENTO'])
-        ws.append(['', cotizacion.folio, self.cliente_visual(cotizacion), cotizacion.get_tipo_procedimiento_display()])
-        ws.append([])
-        ws.append(encabezados)
-        
-        for c in range(1, 10):
-            ws.cell(row=4, column=c).font = Font(bold=True)
-            ws.cell(row=4, column=c).fill = PatternFill("solid", fgColor="D9D9D9")
-            
-        counter = 1
-        for p in cotizacion.partidas_cotizacion.all():
-            med = p.medicamento
-            clave = med.clave_sector if med else 'S/C'
-            precio = float(p.precio_unitario or 0)
-            importe = p.cantidad * precio
-            fab = med.fabricante if med else 'S/D'
-            marca = med.denominacion_distintiva if med and med.denominacion_distintiva else 'Genérico'
-            gen = med.denominacion_generica if med else 'S/D'
-            
-            ws.append([counter, clave, p.cantidad, precio, importe, cotizacion.get_estatus_display(), fab, marca, gen])
-            counter += 1
-            
-        wb.save(response)
-        return response
+        return exportar_analisis_unificado(self, request, Cotizacion.objects.filter(id=object_id))
 
     def exportar_reporte_laboratorios_view(self, request, object_id):
-        from django.http import HttpResponse
-        from django.db.models import Sum
-        from .models import Cotizacion, Inventario
-        
-        try:
-            cotizacion = Cotizacion.objects.get(id=object_id)
-        except Cotizacion.DoesNotExist:
-            messages.error(request, "⚠️ Error: No se encontró la cotización solicitada.")
-            return redirect('admin:licitaciones_cotizacion_changelist')
-
-        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-        response['Content-Disposition'] = f'attachment; filename="Socios_{cotizacion.folio}.xlsx"'
-        
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "Socios"
-        ws.append(['Socio Comercial', 'Clave', 'Descripción', 'Cantidad', 'Importe', 'Inventario Disponible'])
-        
-        for c in range(1, 7):
-            ws.cell(row=1, column=c).font = Font(bold=True)
-            ws.cell(row=1, column=c).fill = PatternFill("solid", fgColor="D9D9D9")
-            
-        filas = []
-        for p in cotizacion.partidas_cotizacion.all():
-            med = p.medicamento
-            socio = med.socio_contacto.nombre if med and med.socio_contacto else 'SIN SOCIO'
-            clave = med.clave_sector if med else 'S/C'
-            importe = p.cantidad * float(p.precio_unitario or 0)
-            
-            stock = Inventario.objects.filter(medicamento=med).aggregate(t=Sum('cantidad_disponible'))['t'] or 0
-            filas.append([socio, clave, med.denominacion_generica if med else 'S/D', p.cantidad, importe, stock])
-            
-        filas.sort(key=lambda x: str(x[0]))
-        for f in filas: ws.append(f)
-            
-        wb.save(response)
-        return response
+        return exportar_socios_unificado(self, request, Cotizacion.objects.filter(id=object_id))
 
     def notificar_socios_view(self, request, object_id):
-        from django.core.mail import EmailMultiAlternatives, get_connection
         from django.template.loader import render_to_string
         from django.utils.html import strip_tags
-        from django.utils import timezone
-        from .models import Cotizacion
         
         try:
             cotizacion = Cotizacion.objects.get(id=object_id)
@@ -2518,11 +2211,8 @@ class CotizacionAdmin(admin.ModelAdmin):
         return render(request, 'admin/licitaciones/cotizacion/notificar_socios_cot.html', context)
 
     def notificar_resultados_view(self, request, object_id):
-        from django.core.mail import EmailMultiAlternatives, get_connection
         from django.template.loader import render_to_string
         from django.utils.html import strip_tags
-        from django.utils import timezone
-        from .models import Cotizacion
         
         try:
             cotizacion = Cotizacion.objects.get(id=object_id)
@@ -2602,28 +2292,21 @@ class CotizacionAdmin(admin.ModelAdmin):
     cliente_visual.short_description = "Cliente / Dependencia"
 
     def total_cotizado(self, obj):
-        from django.utils.html import format_html
-        total_str = "{:,.2f}".format(float(obj.total_cotizacion))
-        return format_html('<b style="color: #5e35b1;">${}</b>', total_str)
+        return format_html('<b style="color: #5e35b1;">${}</b>', "{:,.2f}".format(float(obj.total_cotizacion)))
     total_cotizado.short_description = "Monto Total"
 
     def estatus_badge(self, obj):
-        from django.utils.html import format_html
         colores = {'BORRADOR': '#6c757d', 'ENVIADA': '#17a2b8', 'GANADA': '#28a745', 'PERDIDA': '#dc3545', 'CANCELADA': '#343a40'}
         return format_html('<span style="background-color: {}; color: white; padding: 4px 10px; border-radius: 6px; font-weight: bold; font-size: 11px;">{}</span>', colores.get(obj.estatus, '#000'), obj.get_estatus_display())
     estatus_badge.short_description = "Estatus"
 
     def btn_convertir(self, obj):
-        from django.utils.html import format_html
-        from django.utils.safestring import mark_safe
         if obj.estatus == 'GANADA': return mark_safe('<span style="color: #28a745; font-weight:bold;">✔ Ya es Pedido</span>')
         if obj.estatus in ['PERDIDA', 'CANCELADA']: return mark_safe('<span style="color: #dc3545; font-weight:bold;">🚫 Rechazada</span>')
         return format_html('<a class="button" href="{}/convertir-pedido/" style="background-color: #28a745; color:white; padding: 5px 10px; border-radius: 4px; text-decoration: none; font-weight:bold;">✨ Hacer Pedido</a>', obj.id)
     btn_convertir.short_description = "Acción"
 
     def convertir_pedido_view(self, request, object_id):
-        from django.utils import timezone
-        from .models import PartidaOrden, PedidoDirecto
         cotizacion = self.get_object(request, object_id)
         nueva_orden = PedidoDirecto.objects.create(numero_orden_suministro=f"PED-{cotizacion.folio}", razon_social=cotizacion.razon_social, dependencia=cotizacion.dependencia, fecha_recepcion=timezone.now().date(), estatus='PENDIENTE')
         for partida in cotizacion.partidas_cotizacion.all():
@@ -2635,7 +2318,7 @@ class CotizacionAdmin(admin.ModelAdmin):
         messages.success(request, "Se generó el Pedido Directo.")
         return redirect('admin:licitaciones_pedidodirecto_change', nueva_orden.id)
     
-    # ==========================================
+# ==========================================
 # 🛑 PANEL DE CUARENTENA, MERMAS Y DEVOLUCIONES
 # ==========================================
 from .models import IncidenciaInventario
@@ -2679,13 +2362,12 @@ class IncidenciaInventarioAdmin(ImportExportModelAdmin):
 
     def total_recuperado(self, obj):
         from django.utils.html import format_html
-        from django.utils.safestring import mark_safe # 👈 1. Agregamos esto
+        from django.utils.safestring import mark_safe
         
         total = float(obj.monto_nota_credito) + float(obj.monto_penalizacion)
         if total > 0:
             return format_html('<b style="color: #28a745;">+ ${:,.2f}</b>', total)
             
-        # 👈 2. Usamos mark_safe aquí porque es texto fijo
         return mark_safe('<span style="color: #ccc;">$0.00</span>') 
         
     total_recuperado.short_description = "Cobro a Proveedor"
@@ -2698,8 +2380,7 @@ class PerfilEquipoAdmin(admin.ModelAdmin):
     list_display = ('user', 'rol', 'whatsapp', 'activo')
     list_filter = ('rol', 'activo')
 
-
-    # ==========================================
+# ==========================================
 # 🚀 MÓDULO RÁPIDO: PEDIDOS DIRECTOS (10 DÍAS)
 # ==========================================
 from .models import PedidoDirecto
@@ -2712,11 +2393,9 @@ class PedidoDirectoAdmin(admin.ModelAdmin):
     list_filter = ('estatus', 'fecha_recepcion')
     search_fields = ('numero_orden_suministro', 'razon_social', 'dependencia')
     
-    # Ocultamos el campo tipo_documento porque por detrás siempre será 'PEDIDO'
     exclude = ('tipo_documento',) 
 
     def get_queryset(self, request):
-        # 🧠 MAGIA: Este panel filtra automáticamente y SOLO muestra las ventas rápidas, ocultando los contratos grandes.
         qs = super().get_queryset(request)
         return qs.filter(tipo_documento='PEDIDO')
 
@@ -2742,5 +2421,3 @@ class PedidoDirectoAdmin(admin.ModelAdmin):
             return format_html('<span style="color: white; background: #2ecc71; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px;">🟢 A tiempo ({} días)</span>', dias_restantes)
     
     semaforo_urgencia.short_description = 'Tiempo de Entrega'
-
-    
