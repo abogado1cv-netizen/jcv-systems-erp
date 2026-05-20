@@ -603,6 +603,7 @@ class LicitacionAdmin(admin.ModelAdmin):
         from django.template.loader import render_to_string
         from django.utils.html import strip_tags
         from django.utils import timezone
+        from django.conf import settings
         
         licitacion = self.get_object(request, object_id)
         partidas = licitacion.partidas.all()
@@ -620,24 +621,19 @@ class LicitacionAdmin(admin.ModelAdmin):
         if request.method == 'POST':
             socios_seleccionados = request.POST.getlist('socios')
             archivos_adjuntos = request.FILES.getlist('adjuntos') 
-            empresa_id = request.POST.get('empresa_emisora')
-            empresa_emisora = Empresa.objects.get(id=empresa_id)
+            empresa_emisora = Empresa.objects.get(id=request.POST.get('empresa_emisora'))
             
             nombre_empresa_up = empresa_emisora.nombre.upper()
-            
-            if "SAGO" in nombre_empresa_up: 
-                lista_respuesta = ["sagomedical.licitaciones@gmail.com"]
-            elif "GSM" in nombre_empresa_up: 
-                lista_respuesta = ["gsm.licitaciones@gmail.com"]
-            else: 
-                lista_respuesta = ["licitaciones2@gpharma.com"]
+            if "SAGO" in nombre_empresa_up: lista_respuesta = ["sagomedical.licitaciones@gmail.com"]
+            elif "GSM" in nombre_empresa_up: lista_respuesta = ["gsm.licitaciones@gmail.com"]
+            else: lista_respuesta = ["licitaciones2@gpharma.com"]
 
             if empresa_emisora.correos_notificacion:
-                empleados = [c.strip() for c in empresa_emisora.correos_notificacion.split(',') if c.strip()]
-                lista_respuesta.extend(empleados)
+                lista_respuesta.extend([c.strip() for c in empresa_emisora.correos_notificacion.split(',') if c.strip()])
 
-            from django.core.mail import get_connection
-            conexion_dinamica = get_connection()
+            # Validar correo remitente para que el servidor no lo rebote
+            remitente = empresa_emisora.correo_remitente if empresa_emisora.correo_remitente else settings.DEFAULT_FROM_EMAIL
+            from_email_str = f'"{empresa_emisora.nombre}" <{remitente}>'
             
             correos_enviados = 0
             
@@ -645,16 +641,16 @@ class LicitacionAdmin(admin.ModelAdmin):
                 data = socios_dict.get(int(socio_id))
                 if not data: continue
                 socio = data['socio']
-                asunto = f"Requerimiento de Cotización - Evento {licitacion.num_procedimiento}"
                 
-                partidas_html = []
-                for p in data['partidas']:
-                    partidas_html.append({
-                        'partida': p.numero_partida,
-                        'clave': p.medicamento.clave_sector,
-                        'descripcion': p.medicamento.descripcion,
-                        'cantidad': f"{p.cantidad_maxima:,}" 
-                    })
+                # Validación si no tiene correo
+                correos_raw = socio.correos if socio.correos else ""
+                destinatarios = [c.strip() for c in correos_raw.split(',') if c.strip()]
+                if not destinatarios:
+                    messages.warning(request, f"⚠️ Saltado: {socio.nombre} no tiene un correo válido.")
+                    continue
+
+                asunto = f"Requerimiento de Cotización - Evento {licitacion.num_procedimiento}"
+                partidas_html = [{'partida': p.numero_partida, 'clave': p.medicamento.clave_sector, 'descripcion': p.medicamento.descripcion, 'cantidad': f"{p.cantidad_maxima:,}"} for p in data['partidas']]
                 
                 if "SAGO" in nombre_empresa_up: color_empresa = "#8B0000"
                 elif "GAMS" in nombre_empresa_up: color_empresa = "#005b96"
@@ -662,50 +658,42 @@ class LicitacionAdmin(admin.ModelAdmin):
                 else: color_empresa = "#333333"
                 
                 contexto_email = {
-                    'socio_nombre': socio.nombre,
-                    'evento_num': licitacion.num_procedimiento,
-                    'dependencia': licitacion.dependencia,
-                    'empresa_emisora': empresa_emisora.nombre,
-                    'url_logo': empresa_emisora.url_logo if hasattr(empresa_emisora, 'url_logo') and empresa_emisora.url_logo else None,
-                    'color_empresa': color_empresa,
-                    'fecha_actual': timezone.now().strftime('%d/%m/%Y'),
-                    'items': partidas_html,
+                    'socio_nombre': socio.nombre, 'evento_num': licitacion.num_procedimiento,
+                    'dependencia': licitacion.dependencia, 'empresa_emisora': empresa_emisora.nombre,
+                    'url_logo': empresa_emisora.url_logo if hasattr(empresa_emisora, 'url_logo') else None,
+                    'color_empresa': color_empresa, 'fecha_actual': timezone.now().strftime('%d/%m/%Y'), 'items': partidas_html,
                 }
                 
                 html_content = render_to_string('admin/licitaciones/licitacion/emails/cotizacion_email.html', contexto_email)
                 text_content = strip_tags(html_content) 
 
-                destinatarios = [c.strip() for c in socio.correos.split(',') if c.strip()]
-                
                 try:
-                    correo = EmailMultiAlternatives(
-                        subject=asunto,
-                        body=text_content,
-                        from_email=f'"{empresa_emisora.nombre}" <{empresa_emisora.correo_remitente}>',
-                        to=destinatarios,
-                        connection=conexion_dinamica,
-                        bcc=lista_respuesta,
-                        reply_to=lista_respuesta 
-                    )
+                    correo = EmailMultiAlternatives(subject=asunto, body=text_content, from_email=from_email_str, to=destinatarios, bcc=lista_respuesta, reply_to=lista_respuesta)
                     correo.attach_alternative(html_content, "text/html")
+                    
+                    # 💡 SOLUCIÓN DE ARCHIVOS: Resetear el puntero para que no se envíe vacío
                     for archivo in archivos_adjuntos: 
+                        archivo.seek(0)
                         correo.attach(archivo.name, archivo.read(), archivo.content_type)
+                    
                     correo.send(fail_silently=False)
                     correos_enviados += 1
                 except Exception as e: 
-                    messages.error(request, f"Error al enviar a {socio.nombre}: {e}")
+                    messages.error(request, f"❌ Error SMTP con {socio.nombre}: {str(e)}")
             
-            if correos_enviados > 0: messages.success(request, f"¡Se enviaron {correos_enviados} requerimientos!")
+            if correos_enviados > 0: messages.success(request, f"✅ ¡Éxito! Se enviaron {correos_enviados} requerimientos.")
             return redirect('admin:licitaciones_licitacion_change', object_id)
 
         context = {'title': f'Notificar Socios: {licitacion.num_procedimiento}', 'licitacion': licitacion, 'socios_data': socios_dict.values(), 'opts': self.model._meta, 'empresas_grupo': Empresa.objects.all(), 'has_view_permission': self.has_view_permission(request, licitacion)}
         return render(request, 'admin/licitaciones/licitacion/notificar_socios.html', context)
+
 
     def notificar_resultados_view(self, request, object_id):
         from django.core.mail import EmailMultiAlternatives
         from django.template.loader import render_to_string
         from django.utils.html import strip_tags
         from django.utils import timezone
+        from django.conf import settings
         
         licitacion = self.get_object(request, object_id)
         partidas = licitacion.partidas.select_related('medicamento__socio_contacto')
@@ -723,24 +711,18 @@ class LicitacionAdmin(admin.ModelAdmin):
         if request.method == 'POST':
             socios_seleccionados = request.POST.getlist('socios')
             archivos_adjuntos = request.FILES.getlist('adjuntos') 
-            empresa_id = request.POST.get('empresa_emisora')
-            empresa_emisora = Empresa.objects.get(id=empresa_id)
+            empresa_emisora = Empresa.objects.get(id=request.POST.get('empresa_emisora'))
             
             nombre_empresa_up = empresa_emisora.nombre.upper()
-            
-            if "SAGO" in nombre_empresa_up: 
-                lista_respuesta = ["sagomedical.licitaciones@gmail.com"]
-            elif "GSM" in nombre_empresa_up: 
-                lista_respuesta = ["gsm.licitaciones@gmail.com"]
-            else: 
-                lista_respuesta = ["licitaciones2@gpharma.com"]
+            if "SAGO" in nombre_empresa_up: lista_respuesta = ["sagomedical.licitaciones@gmail.com"]
+            elif "GSM" in nombre_empresa_up: lista_respuesta = ["gsm.licitaciones@gmail.com"]
+            else: lista_respuesta = ["licitaciones2@gpharma.com"]
 
             if empresa_emisora.correos_notificacion:
-                empleados = [c.strip() for c in empresa_emisora.correos_notificacion.split(',') if c.strip()]
-                lista_respuesta.extend(empleados)
+                lista_respuesta.extend([c.strip() for c in empresa_emisora.correos_notificacion.split(',') if c.strip()])
 
-            from django.core.mail import get_connection
-            conexion_dinamica = get_connection()
+            remitente = empresa_emisora.correo_remitente if empresa_emisora.correo_remitente else settings.DEFAULT_FROM_EMAIL
+            from_email_str = f'"{empresa_emisora.nombre}" <{remitente}>'
             
             correos_enviados = 0
             
@@ -748,30 +730,27 @@ class LicitacionAdmin(admin.ModelAdmin):
                 data = socios_dict.get(int(socio_id))
                 if not data: continue
                 socio = data['socio']
-                asunto = f"Resultados Oficiales (Evento {licitacion.num_procedimiento}) - {empresa_emisora.nombre}"
                 
+                correos_raw = socio.correos if socio.correos else ""
+                destinatarios = [c.strip() for c in correos_raw.split(',') if c.strip()]
+                if not destinatarios:
+                    messages.warning(request, f"⚠️ Saltado: {socio.nombre} no tiene un correo válido.")
+                    continue
+
+                asunto = f"Resultados Oficiales (Evento {licitacion.num_procedimiento}) - {empresa_emisora.nombre}"
                 if "SAGO" in nombre_empresa_up: color_empresa = "#8B0000"
                 elif "GAMS" in nombre_empresa_up: color_empresa = "#005b96"
                 elif "GSM" in nombre_empresa_up: color_empresa = "#218838"
                 else: color_empresa = "#333333"
 
                 def formato_item(p):
-                    return {
-                        'partida': p.numero_partida,
-                        'clave': p.medicamento.clave_sector,
-                        'descripcion': p.medicamento.descripcion,
-                        'cantidad': f"{p.cantidad_maxima:,}",
-                        'motivo': p.motivo_perdida if p.motivo_perdida else "No especificado en el sistema."
-                    }
+                    return {'partida': p.numero_partida, 'clave': p.medicamento.clave_sector, 'descripcion': p.medicamento.descripcion, 'cantidad': f"{p.cantidad_maxima:,}", 'motivo': p.motivo_perdida if p.motivo_perdida else "No especificado"}
 
                 contexto_email = {
-                    'socio_nombre': socio.nombre,
-                    'evento_num': licitacion.num_procedimiento,
-                    'empresa_emisora': empresa_emisora.nombre,
-                    'url_logo': empresa_emisora.url_logo if hasattr(empresa_emisora, 'url_logo') and empresa_emisora.url_logo else None,
-                    'color_empresa': color_empresa,
-                    'fecha_actual': timezone.now().strftime('%d/%m/%Y'),
-                    'url_drive': licitacion.url_carpeta_drive if hasattr(licitacion, 'url_drive') and licitacion.url_carpeta_drive else None,
+                    'socio_nombre': socio.nombre, 'evento_num': licitacion.num_procedimiento,
+                    'empresa_emisora': empresa_emisora.nombre, 'url_logo': empresa_emisora.url_logo if hasattr(empresa_emisora, 'url_logo') else None,
+                    'color_empresa': color_empresa, 'fecha_actual': timezone.now().strftime('%d/%m/%Y'),
+                    'url_drive': licitacion.url_carpeta_drive if hasattr(licitacion, 'url_drive') else None,
                     'asignadas': [formato_item(p) for p in data['asignadas']],
                     'perdidas_precio': [formato_item(p) for p in data['perdidas_precio']],
                     'perdidas_tecnica': [formato_item(p) for p in data['perdidas_tecnica']],
@@ -780,49 +759,43 @@ class LicitacionAdmin(admin.ModelAdmin):
                 html_content = render_to_string('admin/licitaciones/licitacion/emails/resultados_email.html', contexto_email)
                 text_content = strip_tags(html_content)
 
-                destinatarios = [c.strip() for c in socio.correos.split(',') if c.strip()]
-                
                 try:
-                    correo = EmailMultiAlternatives(
-                        subject=asunto, 
-                        body=text_content, 
-                        from_email=f'"{empresa_emisora.nombre}" <{empresa_emisora.correo_remitente}>', 
-                        to=destinatarios, 
-                        connection=conexion_dinamica,
-                        bcc=lista_respuesta,
-                        reply_to=lista_respuesta 
-                    )
+                    correo = EmailMultiAlternatives(subject=asunto, body=text_content, from_email=from_email_str, to=destinatarios, bcc=lista_respuesta, reply_to=lista_respuesta)
                     correo.attach_alternative(html_content, "text/html")
-                    for archivo in archivos_adjuntos: correo.attach(archivo.name, archivo.read(), archivo.content_type)
+                    for archivo in archivos_adjuntos: 
+                        archivo.seek(0)
+                        correo.attach(archivo.name, archivo.read(), archivo.content_type)
                     correo.send(fail_silently=False)
                     correos_enviados += 1
                 except Exception as e: 
-                    messages.error(request, f"Error al enviar a {socio.nombre}: {e}")
+                    messages.error(request, f"❌ Error SMTP con {socio.nombre}: {str(e)}")
             
-            if correos_enviados > 0: messages.success(request, f"Resultados enviados.")
+            if correos_enviados > 0: messages.success(request, f"✅ ¡Resultados enviados a {correos_enviados} laboratorios!")
             return redirect('admin:licitaciones_licitacion_change', object_id)
 
         context = {'title': f'Notificar Resultados: {licitacion.num_procedimiento}', 'licitacion': licitacion, 'socios_data': socios_dict.values(), 'opts': self.model._meta, 'empresas_grupo': Empresa.objects.all(), 'has_view_permission': self.has_view_permission(request, licitacion)}
         return render(request, 'admin/licitaciones/licitacion/notificar_resultados.html', context)
     
+    # 🔒 GATILLO WHATSAPP (ÚNICO Y CORRECTO)
     def notificar_whatsapp_btn(self, obj):
+        from django.utils.html import format_html
+        from django.utils.safestring import mark_safe 
         tiene_resultados = obj.partidas.exclude(resultado='Pendiente').exists()
-        
         if not tiene_resultados:
             return mark_safe('<span style="color: #94a3b8; background: #f1f5f9; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;"><i class="fas fa-lock"></i> Capturar Resultados</span>')
             
-        return format_html(
-            '<a class="button" href="{}/notificar-whatsapp/" onclick="window.open(this.href, \'whatsapp_popup\', \'width=500,height=520,resizable=no,scrollbars=yes\'); return false;" style="background-color: #25D366; color:white; padding: 5px 10px; border-radius: 4px; text-decoration: none; font-weight:bold; font-size:11px;"><i class="fab fa-whatsapp"></i> Notificar WA</a>',
-            obj.id
-        )
+        return format_html('<a class="button" href="{}/notificar-whatsapp/" onclick="window.open(this.href, \'whatsapp_popup\', \'width=500,height=520,resizable=no,scrollbars=yes\'); return false;" style="background-color: #25D366; color:white; padding: 5px 10px; border-radius: 4px; text-decoration: none; font-weight:bold; font-size:11px;"><i class="fab fa-whatsapp"></i> Notificar WA</a>', obj.id)
     notificar_whatsapp_btn.short_description = "WhatsApp"
 
     def notificar_whatsapp_view(self, request, object_id):
         from django.shortcuts import render
         from django.http import HttpResponse
-        from .models import PerfilEquipo, Licitacion
-        from twilio.rest import Client
+        from .models import PerfilEquipo
         from django.conf import settings
+        try:
+            from twilio.rest import Client
+        except ImportError:
+            return HttpResponse("<html><body><h3 style='color:red;'>Falta la librería Twilio. Instálala en tu servidor.</h3></body></html>")
 
         licitacion = self.get_object(request, object_id)
         equipo = PerfilEquipo.objects.select_related('user').filter(activo=True)
@@ -830,13 +803,7 @@ class LicitacionAdmin(admin.ModelAdmin):
         if request.method == 'POST':
             miembros_ids = request.POST.getlist('miembros')
             estatus_txt = licitacion.estatus.estado if licitacion.estatus else "Finalizado"
-            
-            mensaje_texto = f"📋 *GPHARMA ERP - Alerta de Fallo*\n\n" \
-                            f"El analista ha registrado los resultados del evento:\n" \
-                            f"• *Procedimiento:* {licitacion.num_procedimiento}\n" \
-                            f"• *Dependencia:* {licitacion.get_dependencia_display()}\n" \
-                            f"• *Resultado General:* {estatus_txt}\n\n" \
-                            f"Por favor ingresa al ERP para consultar el desglose de las claves asignadas."
+            mensaje_texto = f"📋 *GPHARMA ERP - Alerta de Fallo*\n\nEl analista ha registrado los resultados del evento:\n• *Procedimiento:* {licitacion.num_procedimiento}\n• *Dependencia:* {licitacion.get_dependencia_display()}\n• *Resultado General:* {estatus_txt}\n\nPor favor ingresa al ERP para consultar el desglose de las claves asignadas."
 
             if miembros_ids:
                 try:
@@ -845,21 +812,13 @@ class LicitacionAdmin(admin.ModelAdmin):
                     for m_id in miembros_ids:
                         miembro = PerfilEquipo.objects.get(id=m_id)
                         if miembro.whatsapp:
-                            client.messages.create(
-                                from_=settings.TWILIO_PHONE_NUMBER,
-                                body=mensaje_texto,
-                                to=f"whatsapp:{miembro.whatsapp}"
-                            )
+                            client.messages.create(from_=settings.TWILIO_PHONE_NUMBER, body=mensaje_texto, to=f"whatsapp:{miembro.whatsapp}")
                             enviados += 1
                     return HttpResponse(f"<html><body><script>alert('¡Éxito! Notificaciones enviadas correctamente a {enviados} integrantes.'); window.close();</script></body></html>")
                 except Exception as e:
                     return HttpResponse(f"<html><body><h3 style='color:#dc3545;'>Error al disparar Twilio: {str(e)}</h3><button onclick='window.close()'>Cerrar Ventana</button></body></html>")
 
-        context = {
-            'licitacion': licitacion,
-            'equipo': equipo,
-            'opts': self.model._meta,
-        }
+        context = {'licitacion': licitacion, 'equipo': equipo, 'opts': self.model._meta}
         return render(request, 'admin/licitaciones/licitacion/notificar_whatsapp_popup.html', context)
 @admin.register(Empresa)
 class EmpresaAdmin(ImportExportModelAdmin):
@@ -2142,18 +2101,20 @@ class CotizacionAdmin(admin.ModelAdmin):
         return exportar_socios_unificado(self, request, Cotizacion.objects.filter(id=object_id))
 
     def notificar_socios_view(self, request, object_id):
+        from django.core.mail import EmailMultiAlternatives
         from django.template.loader import render_to_string
         from django.utils.html import strip_tags
+        from django.utils import timezone
+        from django.conf import settings
+        from .models import Cotizacion
         
         try:
             cotizacion = Cotizacion.objects.get(id=object_id)
         except Cotizacion.DoesNotExist:
-            messages.error(request, "⚠️ Error: No se encontró la cotización solicitada.")
             return redirect('admin:licitaciones_cotizacion_changelist')
             
         partidas = cotizacion.partidas_cotizacion.all()
         socios_dict = {}
-        
         for p in partidas:
             socio = p.medicamento.socio_contacto if p.medicamento else None
             if socio:
@@ -2162,23 +2123,29 @@ class CotizacionAdmin(admin.ModelAdmin):
 
         if request.method == 'POST':
             socios_seleccionados = request.POST.getlist('socios')
-            empresa = Empresa.objects.get(id=request.POST.get('empresa_emisora'))
+            archivos_adjuntos = request.FILES.getlist('adjuntos')
+            empresa_emisora = Empresa.objects.get(id=request.POST.get('empresa_emisora'))
             
-            nombre_empresa_up = empresa.nombre.upper()
+            nombre_empresa_up = empresa_emisora.nombre.upper()
             if "SAGO" in nombre_empresa_up: lista_respuesta = ["sagomedical.licitaciones@gmail.com"]
             elif "GSM" in nombre_empresa_up: lista_respuesta = ["gsm.licitaciones@gmail.com"]
             else: lista_respuesta = ["licitaciones2@gpharma.com"]
             
-            if empresa.correos_notificacion:
-                lista_respuesta.extend([c.strip() for c in empresa.correos_notificacion.split(',') if c.strip()])
-                
-            conexion_dinamica = get_connection()
-            enviados = 0
+            if empresa_emisora.correos_notificacion:
+                lista_respuesta.extend([c.strip() for c in empresa_emisora.correos_notificacion.split(',') if c.strip()])
+
+            remitente = empresa_emisora.correo_remitente if empresa_emisora.correo_remitente else settings.DEFAULT_FROM_EMAIL
+            from_email_str = f'"{empresa_emisora.nombre}" <{remitente}>'
+            correos_enviados = 0
             
             for s_id in socios_seleccionados:
                 data = socios_dict.get(int(s_id))
                 if not data: continue
                 socio = data['socio']
+                
+                correos_raw = socio.correos if socio.correos else ""
+                destinatarios = [c.strip() for c in correos_raw.split(',') if c.strip()]
+                if not destinatarios: continue
                 
                 items = [{'partida': i+1, 'clave': p.medicamento.clave_sector, 'descripcion': p.medicamento.denominacion_generica, 'cantidad': f"{p.cantidad:,}"} for i, p in enumerate(data['partidas'])]
                 
@@ -2189,69 +2156,78 @@ class CotizacionAdmin(admin.ModelAdmin):
                 
                 ctx = {
                     'socio_nombre': socio.nombre, 'evento_num': cotizacion.folio,
-                    'dependencia': self.cliente_visual(cotizacion), 'empresa_emisora': empresa.nombre,
-                    'url_logo': empresa.url_logo if hasattr(empresa, 'url_logo') else None,
+                    'dependencia': self.cliente_visual(cotizacion), 'empresa_emisora': empresa_emisora.nombre,
+                    'url_logo': empresa_emisora.url_logo if hasattr(empresa_emisora, 'url_logo') else None,
                     'color_empresa': color_empresa, 'fecha_actual': timezone.now().strftime('%d/%m/%Y'), 'items': items
                 }
                 
                 html_content = render_to_string('admin/licitaciones/licitacion/emails/cotizacion_email.html', ctx)
-                msg = EmailMultiAlternatives(f"Requerimiento de Cotización - Evento {cotizacion.folio}", strip_tags(html_content), f'"{empresa.nombre}" <{empresa.correo_remitente}>', [c.strip() for c in socio.correos.split(',') if c.strip()], connection=conexion_dinamica, bcc=lista_respuesta, reply_to=lista_respuesta)
-                msg.attach_alternative(html_content, "text/html")
-                for archivo in request.FILES.getlist('adjuntos'): msg.attach(archivo.name, archivo.read(), archivo.content_type)
+                text_content = strip_tags(html_content) 
                 
                 try: 
+                    msg = EmailMultiAlternatives(subject=f"Requerimiento de Cotización - Evento {cotizacion.folio}", body=text_content, from_email=from_email_str, to=destinatarios, bcc=lista_respuesta, reply_to=lista_respuesta)
+                    msg.attach_alternative(html_content, "text/html")
+                    for archivo in archivos_adjuntos: 
+                        archivo.seek(0)
+                        msg.attach(archivo.name, archivo.read(), archivo.content_type)
                     msg.send(fail_silently=False)
-                    enviados += 1
-                except Exception as e: messages.error(request, f"Error con {socio.nombre}: {e}")
+                    correos_enviados += 1
+                except Exception as e: messages.error(request, f"Error SMTP con {socio.nombre}: {e}")
                 
-            if enviados > 0: messages.success(request, f"¡Se enviaron {enviados} requerimientos a laboratorios!")
+            if correos_enviados > 0: messages.success(request, f"¡Se enviaron {correos_enviados} requerimientos a laboratorios!")
             return redirect('admin:licitaciones_cotizacion_change', object_id)
 
         context = {'title': f'Notificar Socios: {cotizacion.folio}', 'evento': cotizacion, 'socios_data': socios_dict.values(), 'opts': self.model._meta, 'empresas_grupo': Empresa.objects.all(), 'has_view_permission': True}
         return render(request, 'admin/licitaciones/cotizacion/notificar_socios_cot.html', context)
 
+
     def notificar_resultados_view(self, request, object_id):
+        from django.core.mail import EmailMultiAlternatives
         from django.template.loader import render_to_string
         from django.utils.html import strip_tags
+        from django.utils import timezone
+        from django.conf import settings
+        from .models import Cotizacion
         
         try:
             cotizacion = Cotizacion.objects.get(id=object_id)
         except Cotizacion.DoesNotExist:
-            messages.error(request, "⚠️ Error: No se encontró la cotización solicitada.")
             return redirect('admin:licitaciones_cotizacion_changelist')
             
         partidas = cotizacion.partidas_cotizacion.all()
         socios_dict = {}
-        
         for p in partidas:
             socio = p.medicamento.socio_contacto if p.medicamento else None
             if socio:
-                if socio.id not in socios_dict: 
-                    socios_dict[socio.id] = {'socio': socio, 'asignadas': [], 'perdidas_precio': [], 'perdidas_tecnica': [], 'pendientes': []}
-                
+                if socio.id not in socios_dict: socios_dict[socio.id] = {'socio': socio, 'asignadas': [], 'perdidas_precio': [], 'perdidas_tecnica': [], 'pendientes': []}
                 if cotizacion.estatus == 'GANADA': socios_dict[socio.id]['asignadas'].append(p)
                 elif cotizacion.estatus in ['PERDIDA', 'CANCELADA']: socios_dict[socio.id]['perdidas_precio'].append(p)
                 else: socios_dict[socio.id]['pendientes'].append(p)
 
         if request.method == 'POST':
             socios_seleccionados = request.POST.getlist('socios')
-            empresa = Empresa.objects.get(id=request.POST.get('empresa_emisora'))
+            archivos_adjuntos = request.FILES.getlist('adjuntos')
+            empresa_emisora = Empresa.objects.get(id=request.POST.get('empresa_emisora'))
             
-            nombre_empresa_up = empresa.nombre.upper()
+            nombre_empresa_up = empresa_emisora.nombre.upper()
             if "SAGO" in nombre_empresa_up: lista_respuesta = ["sagomedical.licitaciones@gmail.com"]
             elif "GSM" in nombre_empresa_up: lista_respuesta = ["gsm.licitaciones@gmail.com"]
             else: lista_respuesta = ["licitaciones2@gpharma.com"]
-            
-            if empresa.correos_notificacion:
-                lista_respuesta.extend([c.strip() for c in empresa.correos_notificacion.split(',') if c.strip()])
+            if empresa_emisora.correos_notificacion:
+                lista_respuesta.extend([c.strip() for c in empresa_emisora.correos_notificacion.split(',') if c.strip()])
 
-            conexion_dinamica = get_connection()
-            enviados = 0
+            remitente = empresa_emisora.correo_remitente if empresa_emisora.correo_remitente else settings.DEFAULT_FROM_EMAIL
+            from_email_str = f'"{empresa_emisora.nombre}" <{remitente}>'
+            correos_enviados = 0
             
             for s_id in socios_seleccionados:
                 data = socios_dict.get(int(s_id))
                 if not data: continue
                 socio = data['socio']
+                
+                correos_raw = socio.correos if socio.correos else ""
+                destinatarios = [c.strip() for c in correos_raw.split(',') if c.strip()]
+                if not destinatarios: continue
                 
                 color_empresa = "#3498db"
                 if "SAGO" in nombre_empresa_up: color_empresa = "#8B0000"
@@ -2263,26 +2239,25 @@ class CotizacionAdmin(admin.ModelAdmin):
 
                 ctx = {
                     'socio_nombre': socio.nombre, 'evento_num': cotizacion.folio,
-                    'empresa_emisora': empresa.nombre,
-                    'url_logo': empresa.url_logo if hasattr(empresa, 'url_logo') else None,
-                    'color_empresa': color_empresa, 'fecha_actual': timezone.now().strftime('%d/%m/%Y'),
-                    'url_drive': None, 
-                    'asignadas': [formato_item(p) for p in data['asignadas']],
-                    'perdidas_precio': [formato_item(p) for p in data['perdidas_precio']],
-                    'perdidas_tecnica': [formato_item(p) for p in data['perdidas_tecnica']],
+                    'empresa_emisora': empresa_emisora.nombre, 'url_logo': empresa_emisora.url_logo if hasattr(empresa_emisora, 'url_logo') else None,
+                    'color_empresa': color_empresa, 'fecha_actual': timezone.now().strftime('%d/%m/%Y'), 'url_drive': None, 
+                    'asignadas': [formato_item(p) for p in data['asignadas']], 'perdidas_precio': [formato_item(p) for p in data['perdidas_precio']], 'perdidas_tecnica': [formato_item(p) for p in data['perdidas_tecnica']],
                 }
                 
                 html_content = render_to_string('admin/licitaciones/licitacion/emails/resultados_email.html', ctx)
-                msg = EmailMultiAlternatives(f"Resultados de Cotización (Evento {cotizacion.folio}) - {empresa.nombre}", strip_tags(html_content), f'"{empresa.nombre}" <{empresa.correo_remitente}>', [c.strip() for c in socio.correos.split(',') if c.strip()], connection=conexion_dinamica, bcc=lista_respuesta, reply_to=lista_respuesta)
-                msg.attach_alternative(html_content, "text/html")
-                for archivo in request.FILES.getlist('adjuntos'): msg.attach(archivo.name, archivo.read(), archivo.content_type)
-                
+                text_content = strip_tags(html_content)
+
                 try: 
+                    msg = EmailMultiAlternatives(subject=f"Resultados de Cotización (Evento {cotizacion.folio}) - {empresa_emisora.nombre}", body=text_content, from_email=from_email_str, to=destinatarios, bcc=lista_respuesta, reply_to=lista_respuesta)
+                    msg.attach_alternative(html_content, "text/html")
+                    for archivo in archivos_adjuntos:
+                        archivo.seek(0)
+                        msg.attach(archivo.name, archivo.read(), archivo.content_type)
                     msg.send(fail_silently=False)
-                    enviados += 1
-                except Exception as e: messages.error(request, f"Error con {socio.nombre}: {e}")
+                    correos_enviados += 1
+                except Exception as e: messages.error(request, f"Error SMTP con {socio.nombre}: {e}")
                 
-            if enviados > 0: messages.success(request, f"¡Resultados enviados a {enviados} laboratorios!")
+            if correos_enviados > 0: messages.success(request, f"¡Resultados enviados a {correos_enviados} laboratorios!")
             return redirect('admin:licitaciones_cotizacion_change', object_id)
 
         context = {'title': f'Notificar Resultados: {cotizacion.folio}', 'evento': cotizacion, 'socios_data': socios_dict.values(), 'opts': self.model._meta, 'empresas_grupo': Empresa.objects.all(), 'has_view_permission': True}
