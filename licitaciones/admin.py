@@ -670,7 +670,7 @@ class LicitacionAdmin(admin.ModelAdmin):
 
                 try:
                     correo = EmailMultiAlternatives(
-                        subject=asunto, body=text_content, from_email=from_email_str, 
+                        subject=asunto, body=text_content, from_email=f'"{empresa_emisora.nombre}" <{mi_remitente}>', 
                         to=destinatarios, connection=conexion_dinamica, bcc=lista_respuesta, reply_to=lista_respuesta
                     )
                     correo.attach_alternative(html_content, "text/html")
@@ -771,7 +771,7 @@ class LicitacionAdmin(admin.ModelAdmin):
 
                 try:
                     correo = EmailMultiAlternatives(
-                        subject=asunto, body=text_content, from_email=from_email_str, 
+                        subject=asunto, body=text_content, from_email=f'"{empresa_emisora.nombre}" <{mi_remitente}>', 
                         to=destinatarios, connection=conexion_dinamica, bcc=lista_respuesta, reply_to=lista_respuesta
                     )
                     correo.attach_alternative(html_content, "text/html")
@@ -1478,7 +1478,7 @@ class CotizacionAdmin(admin.ModelAdmin):
                 
                 html_content = render_to_string('admin/licitaciones/licitacion/emails/cotizacion_email.html', ctx)
                 try: 
-                    msg = EmailMultiAlternatives(subject=f"Requerimiento de Cotización - Evento {cotizacion.folio}", body=strip_tags(html_content), from_email=from_email_str, to=destinatarios, connection=conexion_dinamica, bcc=lista_respuesta, reply_to=lista_respuesta)
+                    msg = EmailMultiAlternatives(subject=f"Requerimiento de Cotización - Evento {cotizacion.folio}", body=strip_tags(html_content), from_email=f'"{empresa_emisora.nombre}" <{mi_remitente}>', to=destinatarios, connection=conexion_dinamica, bcc=lista_respuesta, reply_to=lista_respuesta)
                     msg.attach_alternative(html_content, "text/html")
                     for archivo in archivos_adjuntos: 
                         archivo.seek(0)
@@ -1541,7 +1541,7 @@ class CotizacionAdmin(admin.ModelAdmin):
                 
                 html_content = render_to_string('admin/licitaciones/licitacion/emails/resultados_email.html', ctx)
                 try: 
-                    msg = EmailMultiAlternatives(subject=f"Resultados de Cotización (Evento {cotizacion.folio}) - {empresa_emisora.nombre}", body=strip_tags(html_content), from_email=from_email_str, to=destinatarios, connection=conexion_dinamica, bcc=lista_respuesta, reply_to=lista_respuesta)
+                    msg = EmailMultiAlternatives(subject=f"Resultados de Cotización (Evento {cotizacion.folio}) - {empresa_emisora.nombre}", body=strip_tags(html_content), from_email=f'"{empresa_emisora.nombre}" <{mi_remitente}>', to=destinatarios, connection=conexion_dinamica, bcc=lista_respuesta, reply_to=lista_respuesta)
                     msg.attach_alternative(html_content, "text/html")
                     for archivo in archivos_adjuntos:
                         archivo.seek(0)
