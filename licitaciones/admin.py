@@ -18,6 +18,9 @@ from django.utils.safestring import mark_safe
 from .models import ConfiguracionEmail
 from django.core.mail import get_connection
 from django.core.mail import EmailMultiAlternatives
+from .models import EscanerKardex
+from django.http import HttpResponseRedirect
+from django.urls import reverse
 
 from .models import (
     OrdenCompra, PartidaCompra, Inventario, DocumentoOrdenCompra,
@@ -670,7 +673,7 @@ class LicitacionAdmin(admin.ModelAdmin):
 
                 try:
                     correo = EmailMultiAlternatives(
-                        subject=asunto, body=text_content, from_email=f'"{empresa_emisora.nombre}" <{mi_remitente}>', 
+                        subject=asunto, body=text_content, from_email=from_email_str, 
                         to=destinatarios, connection=conexion_dinamica, bcc=lista_respuesta, reply_to=lista_respuesta
                     )
                     correo.attach_alternative(html_content, "text/html")
@@ -771,7 +774,7 @@ class LicitacionAdmin(admin.ModelAdmin):
 
                 try:
                     correo = EmailMultiAlternatives(
-                        subject=asunto, body=text_content, from_email=f'"{empresa_emisora.nombre}" <{mi_remitente}>', 
+                        subject=asunto, body=text_content, from_email=from_email_str, 
                         to=destinatarios, connection=conexion_dinamica, bcc=lista_respuesta, reply_to=lista_respuesta
                     )
                     correo.attach_alternative(html_content, "text/html")
@@ -860,7 +863,7 @@ class PartidaRequerimientoAdmin(admin.ModelAdmin):
 
     def importe_total(self, obj):
         total = (obj.cantidad_maxima or 0) * (obj.precio or 0)
-        return format_html('<b>${:,.2f}</b>', total)
+        return format_html('<b>${}</b>', f"{total:,.2f}")
     importe_total.short_description = "Importe Máximo"
     importe_total.admin_order_field = 'cantidad_maxima'
 
@@ -1089,7 +1092,7 @@ class ContratoAdmin(ImportExportModelAdmin):
         try: total_multas = sum(float(orden.penalizacion_estimada) for orden in ordenes)
         except (ValueError, TypeError): total_multas = 0.0
             
-        if total_multas > 0: return format_html('<span style="color: #dc3545; font-weight: bold;">- ${:,.2f}</span>', total_multas)
+        if total_multas > 0: return format_html('<span style="color: #dc3545; font-weight: bold;">- ${}</span>', f"{total_multas:,.2f}")
         return mark_safe('<span style="color: #28a745; font-weight: bold;">$0.00</span>')
     monto_penalizado.short_description = "Penalizaciones"
 
@@ -1166,8 +1169,8 @@ class OrdenSuministroAdmin(ImportExportModelAdmin):
     def piezas_entregadas(self, obj):
         enviadas = sum((r.cantidad_entregada or 0) for r in obj.remisiones.exclude(estatus_viaje='RECHAZO'))
         total_solicitado = sum(p.cantidad_solicitada for p in obj.partidas.all())
-        if enviadas >= total_solicitado and total_solicitado > 0: return format_html('<b style="color: #28a745;">{:,}</b>', enviadas) 
-        return format_html('<b style="color: #007bff;">{:,}</b>', enviadas)
+        if enviadas >= total_solicitado and total_solicitado > 0: return format_html('<b style="color: #28a745;">{}</b>', f"{enviadas:,}") 
+        return format_html('<b style="color: #007bff;">{}</b>', f"{enviadas:,}")
     piezas_entregadas.short_description = "Cant. Entregada"
 
     def piezas_pendientes(self, obj):
@@ -1175,7 +1178,7 @@ class OrdenSuministroAdmin(ImportExportModelAdmin):
         total_solicitado = sum(p.cantidad_solicitada for p in obj.partidas.all())
         pendientes = total_solicitado - enviadas
         if pendientes <= 0: return mark_safe('<b style="color: #28a745;">0</b>') 
-        return format_html('<b style="color: #dc3545;">{:,}</b>', pendientes)
+        return format_html('<b style="color: #dc3545;">{}</b>', f"{pendientes:,}")
     piezas_pendientes.short_description = "Cant. Pendiente"
 
     def estatus_logistico(self, obj):
@@ -1190,7 +1193,7 @@ class OrdenSuministroAdmin(ImportExportModelAdmin):
         if obj.estatus in ['CANCELADA', 'CANCELADA_EVIDENCIA']:
             piezas_entregadas = sum((r.cantidad_entregada or 0) for r in obj.remisiones.exclude(estatus_viaje='RECHAZO'))
             if piezas_entregadas > 0:
-                return format_html('<div style="text-align: center; line-height: 1.2;"><span style="background-color: #000; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 10px; display: block; margin-bottom: 2px;">🚨 CANCELADA (TIENE EVIDENCIA)</span><span style="font-size: 10px; color: #dc3545; font-weight: bold;">Se entregaron {:,} pzas</span></div>', piezas_entregadas)
+                return format_html('<div style="text-align: center; line-height: 1.2;"><span style="background-color: #000; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 10px; display: block; margin-bottom: 2px;">🚨 CANCELADA (TIENE EVIDENCIA)</span><span style="font-size: 10px; color: #dc3545; font-weight: bold;">Se entregaron {} pzas</span></div>', f"{piezas_entregadas:,}")
             return format_html('<span style="background-color: #6f42c1; color: white; padding: 5px 10px; border-radius: 4px; font-weight: bold; font-size: 11px;">🚫 CANCELADA (Sin entregas)</span>')
 
         if obj.estatus in ['PENDIENTE', 'PARCIAL'] and obj.dias_atraso > 0:
@@ -1202,7 +1205,7 @@ class OrdenSuministroAdmin(ImportExportModelAdmin):
     def monto_penalizacion(self, obj):
         try: penalizacion = float(obj.penalizacion_estimada)
         except (ValueError, TypeError): penalizacion = 0.0
-        if penalizacion > 0: return format_html('<span style="color: #dc3545; font-weight: bold;">- ${:,.2f}</span>', penalizacion)
+        if penalizacion > 0: return format_html('<span style="color: #dc3545; font-weight: bold;">- ${}</span>', f"{penalizacion:,.2f}")
         return mark_safe('<span style="color: #ccc;">$0.00</span>')
     monto_penalizacion.short_description = "Penalización Acumulada"
     
@@ -1275,6 +1278,70 @@ class InventarioResource(resources.ModelResource):
         fields = ('almacen__nombre', 'clave_sector', 'descripcion', 'socio_comercial', 'fabricante', 'tipo_producto', 'lote', 'fecha_caducidad', 'cantidad_disponible')
         export_order = fields
 
+# ==========================================
+# --- REPORTE DE INVENTARIO "CHULO" ---
+# ==========================================
+@admin.action(description='📊 Descargar Inventario Ejecutivo (Excel Especial)')
+def exportar_inventario_personalizado(modeladmin, request, queryset):
+    response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response['Content-Disposition'] = 'attachment; filename="Inventario_Detallado_Gpharma.xlsx"'
+    
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Inventario Actual"
+
+    font_cabecera = Font(bold=True, color="000000")
+    fill_cabecera = PatternFill("solid", fgColor="D9D9D9")
+    alineacion_centro = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    alineacion_izq = Alignment(horizontal="left", vertical="center", wrap_text=True)
+    borde_delgado = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+
+    encabezados = ['ALMACÉN', 'CLAVE SECTOR', 'DESCRIPCIÓN', 'SOCIO COMERCIAL', 'FABRICANTE', 'TIPO', 'LOTE', 'CADUCIDAD', 'EXISTENCIA']
+    ws.append(encabezados)
+
+    for col_num, header in enumerate(encabezados, 1):
+        celda = ws.cell(row=1, column=col_num)
+        celda.font = font_cabecera
+        celda.fill = fill_cabecera
+        celda.alignment = alineacion_centro
+        celda.border = borde_delgado
+
+    for item in queryset:
+        med = item.medicamento
+        socio = med.socio_contacto.nombre if med.socio_contacto else "SIN ASIGNAR"
+        
+        fila = [
+            item.almacen.nombre if item.almacen else "BODEGA CENTRAL",
+            med.clave_sector,
+            med.denominacion_generica,
+            socio,
+            med.fabricante,
+            item.get_tipo_producto_display(),
+            item.lote,
+            item.fecha_caducidad.strftime('%d/%m/%Y') if item.fecha_caducidad else "S/F",
+            item.cantidad_disponible
+        ]
+        ws.append(fila)
+        
+        r = ws.max_row
+        for c in range(1, 10):
+            celda = ws.cell(row=r, column=c)
+            celda.border = borde_delgado
+            celda.alignment = alineacion_centro if c != 3 else alineacion_izq
+
+    ws.column_dimensions['A'].width = 20
+    ws.column_dimensions['B'].width = 18
+    ws.column_dimensions['C'].width = 45
+    ws.column_dimensions['D'].width = 25
+    ws.column_dimensions['E'].width = 25
+    ws.column_dimensions['F'].width = 15
+    ws.column_dimensions['G'].width = 15
+    ws.column_dimensions['H'].width = 15
+    ws.column_dimensions['I'].width = 12
+
+    wb.save(response)
+    return response
+
 @admin.register(Inventario)
 class InventarioAdmin(ImportExportModelAdmin):
     resource_class = InventarioResource
@@ -1283,6 +1350,7 @@ class InventarioAdmin(ImportExportModelAdmin):
     search_fields = ('medicamento__clave_sector', 'medicamento__denominacion_generica', 'lote')
     list_filter = ('tipo_producto', 'almacen', 'fecha_caducidad',)
     autocomplete_fields = ['medicamento']
+    actions = [exportar_inventario_personalizado]
 
 @admin.register(RemisionEntrega)
 class RemisionEntregaAdmin(admin.ModelAdmin):
@@ -1478,7 +1546,7 @@ class CotizacionAdmin(admin.ModelAdmin):
                 
                 html_content = render_to_string('admin/licitaciones/licitacion/emails/cotizacion_email.html', ctx)
                 try: 
-                    msg = EmailMultiAlternatives(subject=f"Requerimiento de Cotización - Evento {cotizacion.folio}", body=strip_tags(html_content), from_email=f'"{empresa_emisora.nombre}" <{mi_remitente}>', to=destinatarios, connection=conexion_dinamica, bcc=lista_respuesta, reply_to=lista_respuesta)
+                    msg = EmailMultiAlternatives(subject=f"Requerimiento de Cotización - Evento {cotizacion.folio}", body=strip_tags(html_content), from_email=from_email_str, to=destinatarios, connection=conexion_dinamica, bcc=lista_respuesta, reply_to=lista_respuesta)
                     msg.attach_alternative(html_content, "text/html")
                     for archivo in archivos_adjuntos: 
                         archivo.seek(0)
@@ -1541,7 +1609,7 @@ class CotizacionAdmin(admin.ModelAdmin):
                 
                 html_content = render_to_string('admin/licitaciones/licitacion/emails/resultados_email.html', ctx)
                 try: 
-                    msg = EmailMultiAlternatives(subject=f"Resultados de Cotización (Evento {cotizacion.folio}) - {empresa_emisora.nombre}", body=strip_tags(html_content), from_email=f'"{empresa_emisora.nombre}" <{mi_remitente}>', to=destinatarios, connection=conexion_dinamica, bcc=lista_respuesta, reply_to=lista_respuesta)
+                    msg = EmailMultiAlternatives(subject=f"Resultados de Cotización (Evento {cotizacion.folio}) - {empresa_emisora.nombre}", body=strip_tags(html_content), from_email=from_email_str, to=destinatarios, connection=conexion_dinamica, bcc=lista_respuesta, reply_to=lista_respuesta)
                     msg.attach_alternative(html_content, "text/html")
                     for archivo in archivos_adjuntos:
                         archivo.seek(0)
@@ -1613,7 +1681,7 @@ class IncidenciaInventarioAdmin(ImportExportModelAdmin):
 
     def total_recuperado(self, obj):
         total = float(obj.monto_nota_credito) + float(obj.monto_penalizacion)
-        if total > 0: return format_html('<b style="color: #28a745;">+ ${:,.2f}</b>', total)
+        if total > 0: return format_html('<b style="color: #28a745;">+ ${}</b>', f"{total:,.2f}")
         return mark_safe('<span style="color: #ccc;">$0.00</span>') 
     total_recuperado.short_description = "Cobro a Proveedor"
 
@@ -1649,3 +1717,276 @@ class PedidoDirectoAdmin(admin.ModelAdmin):
         elif dias_restantes <= 3: return format_html('<span style="color: #856404; background: #f1c40f; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px;">⏳ Crítico ({} días)</span>', dias_restantes)
         else: return format_html('<span style="color: white; background: #2ecc71; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px;">🟢 A tiempo ({} días)</span>', dias_restantes)
     semaforo_urgencia.short_description = 'Tiempo de Entrega'
+
+class ClaveContratoResource(resources.ModelResource):
+    contrato = fields.Field(column_name='numero_contrato', attribute='contrato', widget=ForeignKeyWidget(Contrato, field='numero_contrato'))
+    medicamento = fields.Field(column_name='clave_sector', attribute='medicamento', widget=ForeignKeyWidget(CatalogoMedicamento, field='clave_sector'))
+
+    class Meta:
+        model = ClaveContrato
+        fields = ('contrato', 'medicamento', 'cantidad_minima', 'cantidad_maxima', 'precio_neto')
+        import_id_fields = ('contrato', 'medicamento')
+
+
+# =========================================================================
+# 🛒 RECUPERADO: MÓDULO DE COMPRAS Y RECEPCIÓN CEGUECIDA
+# =========================================================================
+
+class PartidaCompraInline(admin.TabularInline):
+    model = PartidaCompra
+    extra = 1
+    autocomplete_fields = ['medicamento']
+    fields = ('medicamento', 'custom_cantidad_pedida', 'precio_unitario', 'importe_visual', 'cantidad_recibida')
+    readonly_fields = ('importe_visual', 'custom_cantidad_pedida')
+
+    def custom_cantidad_pedida(self, obj):
+        return f"{obj.cantidad:,}" if obj.cantidad else "0"
+    custom_cantidad_pedida.short_description = "Cantidad Solicitada"
+
+    def importe_visual(self, obj):
+        if obj.cantidad and obj.precio_unitario:
+            total = float(obj.cantidad) * float(obj.precio_unitario)
+            return format_html('<b>${}</b>', f"{total:,.2f}")
+        return "$0.00"
+    importe_visual.short_description = "Importe total"
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        formfield = super().formfield_for_foreignkey(db_field, request, **kwargs)
+        if db_field.name == "medicamento":
+            formfield.widget.attrs.update({'style': 'width: 450px; min-width: 450px;'})
+        return formfield
+
+
+class DocumentoOrdenCompraInline(admin.TabularInline):
+    model = DocumentoOrdenCompra
+    extra = 1
+    fields = ('descripcion', 'archivo')
+
+
+@admin.register(OrdenCompra)
+class OrdenCompraAdmin(admin.ModelAdmin):
+    list_display = ('folio', 'proveedor', 'fecha_entrega_esperada', 'mostrar_total', 'penalizacion_calculada', 'auditoria_ciega', 'estatus_badge', 'enviar_oc_link')
+    list_filter = ('estatus', 'empresa_compradora', 'proveedor')
+    search_fields = ('folio', 'proveedor__nombre', 'destino') 
+    inlines = [PartidaCompraInline, DocumentoOrdenCompraInline]
+    autocomplete_fields = ['proveedor'] 
+    list_per_page = 30
+    actions = ['marcar_recibida_y_crear_inventario']
+
+    def penalizacion_calculada(self, obj):
+        return f"${obj.penalizacion_calculada:,.2f}"
+    penalizacion_calculada.short_description = "📉 Penalización por Atraso"
+
+    def enviar_oc_link(self, obj):
+        return format_html('<a class="button" href="{}" style="background-color: #5e35b1; color:white; padding: 5px 10px; border-radius: 4px; text-decoration: none; font-size:11px; font-weight:bold;">✉️ Enviar OC</a>', f"{obj.id}/notificar-proveedor/")
+    enviar_oc_link.short_description = "Notificar"
+
+    def mostrar_total(self, obj):
+        return format_html('<b style="color: #5e35b1;">${}</b>', f"{obj.total_compra:,.2f}")
+    mostrar_total.short_description = "Total OC"
+
+    def estatus_badge(self, obj):
+        colores = {'BORRADOR': '#6c757d', 'AUTORIZADA': '#007bff', 'TRANSITO': '#fd7e14', 'RECIBIDA': '#28a745', 'CANCELADA': '#dc3545'}
+        return format_html('<span style="background-color: {}; color: white; padding: 4px 10px; border-radius: 6px; font-weight: bold; font-size: 11px;">{}</span>', colores.get(obj.estatus, '#000'), obj.get_estatus_display())
+    estatus_badge.short_description = "Estatus"
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path('<path:object_id>/notificar-proveedor/', self.admin_site.admin_view(self.notificar_proveedor_view), name='notificar_proveedor_oc'),
+            path('<path:object_id>/vista-previa-pdf/', self.admin_site.admin_view(self.vista_previa_pdf_view), name='vista_previa_pdf_oc'),
+        ]
+        return custom_urls + urls
+
+    def vista_previa_pdf_view(self, request, object_id):
+        from io import BytesIO
+        try: from xhtml2pdf import pisa
+        except ImportError:
+            messages.error(request, "Falta xhtml2pdf.")
+            return redirect('admin:licitaciones_ordencompra_changelist')
+        oc = self.get_object(request, object_id)
+        contexto = {'oc': oc, 'proveedor': oc.proveedor, 'empresa': oc.empresa_compradora, 'partidas': oc.partidas_compra.all()}
+        html_pdf = render_to_string('admin/licitaciones/ordencompra/pdf/orden_compra_pdf.html', contexto)
+        result_file = BytesIO()
+        pisa.CreatePDF(html_pdf, dest=result_file)
+        response = HttpResponse(result_file.getvalue(), content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="Borrador_{oc.folio}.pdf"'
+        return response
+
+    def notificar_proveedor_view(self, request, object_id):
+        from io import BytesIO
+        try: from xhtml2pdf import pisa
+        except ImportError: return redirect('admin:licitaciones_ordencompra_changelist')
+        
+        oc = self.get_object(request, object_id)
+        proveedor = oc.proveedor
+        
+        if request.method == 'POST':
+            empresa = oc.empresa_compradora
+            remitente = empresa.correo_remitente if empresa.correo_remitente else "notificaciones@jcv-sistemas.lat"
+            destinatarios = [c.strip() for c in proveedor.correos.split(',') if c.strip()]
+            
+            asunto = f"ORDEN DE COMPRA OFICIAL: {oc.folio} - {empresa.nombre}"
+            contexto = {'oc': oc, 'proveedor': proveedor, 'empresa': empresa, 'partidas': oc.partidas_compra.all(), 'total': f"{oc.total_compra:,.2f}"}
+            
+            html_content = render_to_string('admin/licitaciones/ordencompra/emails/orden_compra_email.html', contexto)
+            msg = EmailMultiAlternatives(subject=asunto, body=strip_tags(html_content), from_email=f'"{empresa.nombre}" <{remitente}>', to=destinatarios)
+            msg.attach_alternative(html_content, "text/html")
+            
+            result_file = BytesIO()
+            pisa.CreatePDF(render_to_string('admin/licitaciones/ordencompra/pdf/orden_compra_pdf.html', contexto), dest=result_file)
+            msg.attach(f"OC_{oc.folio}.pdf", result_file.getvalue(), 'application/pdf')
+            msg.send()
+            
+            if oc.estatus == 'BORRADOR':
+                oc.estatus = 'AUTORIZADA'
+                oc.save()
+            messages.success(request, "🚀 ¡Orden de Compra enviada con éxito!")
+            return redirect('admin:licitaciones_ordencompra_changelist')
+            
+        return render(request, 'admin/licitaciones/ordencompra/confirmar_envio_oc.html', {'oc': oc, 'proveedor': proveedor, 'opts': self.model._meta})
+
+    @admin.action(description='📦 Marcar como RECIBIDA e Ingresar al Inventario')
+    def marcar_recibida_y_crear_inventario(self, request, queryset):
+        import datetime
+        procesadas = 0
+        for orden in queryset:
+            if orden.estatus == 'RECIBIDA': continue
+            orden.estatus = 'RECIBIDA'
+            orden.save()
+            for p in orden.partidas_compra.all():
+                p.custom_cantidad_recibida = p.cantidad
+                p.save()
+                Inventario.objects.create(
+                    medicamento=p.medicamento, cantidad_disponible=p.custom_cantidad_recibida,
+                    lote=f"LOT-{orden.folio}", fecha_ingreso=datetime.date.today(),
+                    fecha_caducidad=datetime.date.today() + datetime.timedelta(days=730)
+                )
+            procesadas += 1
+        messages.success(request, f"Se procesaron {procesadas} órdenes correctamente.")
+
+    def auditoria_ciega(self, obj):
+        reclamado = sum(p.cantidad_recibida for p in obj.partidas_compra.all() if p.cantidad_recibida)
+        recibido = sum(e.cantidad_recibida for e in obj.entradaalmacen_set.all() if e.cantidad_recibida)
+        if reclamado == 0 and recibido == 0: return mark_safe('<span style="color: #95a5a6; font-weight: bold;">➖ Pendiente</span>')
+        if reclamado == recibido: return format_html('<span style="color: #28a745; font-weight: bold;">✅ CUADRA PERFECTO ({})</span>', f"{recibido:,}")
+        return format_html('<span style="color: #dc3545; font-weight: bold;">❌ DISCREPANCIA (Comp: {} | Alm: {})</span>', f"{reclamado:,}", f"{recibido:,}")
+    auditoria_ciega.short_description = "Auditoría de Recepción"
+
+
+# =========================================================================
+# 📦 RECUPERADO: FORMULARIO DINÁMICO AJAX Y RECEPCIÓN ALMACÉN
+# =========================================================================
+
+class EntradaAlmacenForm(forms.ModelForm):
+    class Meta:
+        model = EntradaAlmacen
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance and self.instance.pk and self.instance.orden_id:
+            self.fields['medicamento'].queryset = CatalogoMedicamento.objects.filter(id__in=PartidaCompra.objects.filter(orden=self.instance.orden).values('medicamento'))
+        elif self.data.get('orden'):
+            self.fields['medicamento'].queryset = CatalogoMedicamento.objects.filter(id__in=PartidaCompra.objects.filter(orden_id=self.data.get('orden')).values('medicamento'))
+        else:
+            self.fields['medicamento'].queryset = CatalogoMedicamento.objects.none()
+
+        js = """
+        <script type="text/javascript">
+            document.addEventListener('DOMContentLoaded', function() {
+                var $ = django.jQuery || window.jQuery;
+                $('#id_orden').on('change', function() {
+                    var ordenId = $(this).val();
+                    var $medSelect = $('#id_medicamento');
+                    if (!ordenId) { $medSelect.empty(); return; }
+                    $medSelect.html('<option value="">🔄 Buscando en la OC...</option>');
+                    $.ajax({
+                        url: '/admin/licitaciones/entradaalmacen/ajax/load-medicamentos/?orden_id=' + ordenId,
+                        success: function(data) {
+                            $medSelect.empty().append('<option value="">--- Selecciona clave ---</option>');
+                            $.each(data, function(i, item) { $medSelect.append('<option value="'+item.id+'">'+item.text+'</option>'); });
+                        }
+                    });
+                });
+            });
+        </script>
+        """
+        if 'orden' in self.fields:
+            self.fields['orden'].help_text = mark_safe((self.fields['orden'].help_text or '') + js)
+
+
+@admin.register(EntradaAlmacen)
+class EntradaAlmacenAdmin(admin.ModelAdmin):
+    form = EntradaAlmacenForm
+    list_per_page = 30
+    list_display = ('orden', 'almacen_destino', 'medicamento', 'custom_cant_recibida', 'lote', 'ver_acuse', 'ver_factura', 'documentacion_ok', 'fecha_ingreso')
+    search_fields = ('orden__folio', 'medicamento__clave_sector', 'lote')
+    list_filter = ('almacen_destino', 'documentacion_completa', 'fecha_ingreso')
+    autocomplete_fields = ['orden']
+
+    def custom_cant_recibida(self, obj):
+        return f"{obj.cantidad_recibida:,}" if obj.cantidad_recibida else "0"
+    custom_cant_recibida.short_description = "Cantidad Recibida"
+
+    fieldsets = (
+        ('🔗 Vinculación', {'fields': ('almacen_destino', 'orden', 'medicamento')}),
+        ('📦 Datos Físicos', {'fields': ('cantidad_recibida', 'lote', 'fecha_caducidad')}),
+        ('📋 Calidad y Logística', {'fields': ('documentacion_completa', 'ubicacion', 'observaciones_calidad', 'acuse_recibo', 'factura_proveedor')}),
+    )
+
+    def get_urls(self):
+        return [path('ajax/load-medicamentos/', self.admin_site.admin_view(self.load_medicamentos), name='ajax_load_medicamentos_almacen')] + super().get_urls()
+
+    def load_medicamentos(self, request):
+        from django.http import JsonResponse
+        orden_id = request.GET.get('orden_id')
+        if not orden_id: return JsonResponse([])
+        partidas = PartidaCompra.objects.filter(orden_id=orden_id).select_related('medicamento')
+        return JsonResponse([{'id': p.medicamento.id, 'text': f"Clave: {p.medicamento.clave_sector} | {p.medicamento.denominacion_generica[:40]}..."} for p in partidas], safe=False)
+
+    def ver_acuse(self, obj):
+        if obj.acuse_recibo: return format_html('<a href="{}" target="_blank" style="background-color: #17a2b8; color: white; padding: 4px 8px; border-radius: 4px; text-decoration: none; font-size: 11px; font-weight: bold;">📄 Acuse</a>', obj.acuse_recibo.url)
+        return "-"
+    ver_acuse.short_description = "Acuse"
+
+    def ver_factura(self, obj):
+        if obj.factura_proveedor: return format_html('<a href="{}" target="_blank" style="background-color: #6c757d; color: white; padding: 4px 8px; border-radius: 4px; text-decoration: none; font-size: 11px; font-weight: bold;">🧾 Factura</a>', obj.factura_proveedor.url)
+        return "-"
+    ver_factura.short_description = "Factura"
+
+    def documentacion_ok(self, obj):
+        if obj.documentacion_completa: return mark_safe('<span style="color: #28a745; font-weight: bold;">✔ Completa</span>')
+        return mark_safe('<span style="color: #dc3545; font-weight: bold;">❌ Faltante</span>')
+    documentacion_ok.short_description = "Documentación"
+
+
+# ==========================================
+# 🚚 RECUPERADO: TRASPASOS INTERCOMPANY Y ESCÁNER KARDEX
+# ==========================================
+
+@admin.register(TraspasoIntercompany)
+class TraspasoIntercompanyAdmin(admin.ModelAdmin):
+    list_display = ('folio_factura', 'almacen_origen', 'almacen_destino', 'medicamento', 'lote', 'custom_cantidad', 'mostrar_importe', 'estatus')
+    search_fields = ('folio_factura', 'medicamento__clave_sector', 'lote')
+    list_filter = ('estatus', 'almacen_origen', 'almacen_destino', 'fecha_operacion')
+    autocomplete_fields = ['medicamento']
+    
+    def custom_cantidad(self, obj):
+        return f"{obj.cantidad:,}" if obj.cantidad else "0"
+    custom_cantidad.short_description = "Cantidad"
+
+    def get_readonly_fields(self, request, obj=None):
+        if obj and obj.procesado: return ('almacen_origen', 'almacen_destino', 'medicamento', 'lote', 'cantidad', 'precio_unitario', 'folio_factura', 'estatus')
+        return ()
+
+    def mostrar_importe(self, obj):
+        total = obj.cantidad * obj.precio_unitario
+        return format_html('<b>${}</b>', f"{total:,.2f}")
+    mostrar_importe.short_description = "Valor Fiscal Total"
+
+
+@admin.register(EscanerKardex)
+class EscanerKardexAdmin(admin.ModelAdmin):
+    def changelist_view(self, request, extra_context=None):
+        return HttpResponseRedirect(reverse('buscar_kardex'))
