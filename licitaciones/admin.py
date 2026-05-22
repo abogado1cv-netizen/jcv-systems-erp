@@ -1488,6 +1488,7 @@ class RemisionEntregaAdmin(admin.ModelAdmin):
 # ==========================================
 class CotizacionForm(forms.ModelForm):
     pegar_excel = forms.CharField(label="📥 Carga Masiva (Pegar desde Excel)", required=False, widget=forms.Textarea(attrs={'rows': 6, 'placeholder': 'Ejemplo:\n1\t010.000.4434.00\tPARACETAMOL 500MG\t500\t1000'}))
+    fecha_apertura = forms.DateTimeField(label="Fecha y hora de apertura", required=False, widget=forms.DateTimeInput(format='%Y-%m-%dT%H:%M', attrs={'type': 'datetime-local'}))
     class Meta: model = Cotizacion; fields = '__all__'
 
 class PartidaCotizacionInline(admin.TabularInline):
@@ -1508,13 +1509,13 @@ class CotizacionAdmin(admin.ModelAdmin):
     form = CotizacionForm
     inlines = [PartidaCotizacionInline]
     change_form_template = "admin/licitaciones/cotizacion/change_form.html"
-    list_display = ('folio', 'tipo_procedimiento', 'cliente_visual', 'fecha_emision', 'total_cotizado', 'estatus_badge', 'btn_convertir')
+    list_display = ('folio', 'tipo_procedimiento', 'cliente_visual', 'fecha_emision', 'fecha_apertura', 'total_cotizado', 'estatus_badge', 'btn_convertir')
     search_fields = ('folio', 'razon_social', 'dependencia')
     list_filter = ('tipo_procedimiento', 'estatus', 'fecha_emision')
     actions = [exportar_analisis_unificado, exportar_socios_unificado]
 
     fieldsets = (
-        ('📄 Datos del Evento', {'fields': ('tipo_procedimiento', 'empresa', 'folio', 'fecha_emision', 'vigencia_dias')}),
+        ('📄 Datos del Evento', {'fields': ('tipo_procedimiento', 'empresa', 'folio', 'fecha_emision', 'fecha_apertura', 'vigencia_dias')}),
         ('🏢 Cliente', {'fields': ('razon_social', 'dependencia')}),
         ('🚦 Estatus', {'fields': ('estatus',)}),
         ('⚡ Carga Automática (Excel)', {'fields': ('pegar_excel',)}),

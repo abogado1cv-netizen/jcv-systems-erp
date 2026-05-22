@@ -904,6 +904,7 @@ class Cotizacion(models.Model):
     razon_social = models.CharField(max_length=200, blank=True, null=True, verbose_name="Razón Social (Cliente Privado)")
     dependencia = models.CharField(max_length=100, choices=DEPENDENCIAS_MAESTRAS, blank=True, null=True, verbose_name="Dependencia (Gobierno)")
     
+    fecha_apertura = models.DateTimeField(verbose_name="Fecha y hora de apertura (Propuestas)", null=True, blank=True)
     fecha_emision = models.DateField(default=timezone.now, verbose_name="Fecha de Emisión")
     vigencia_dias = models.IntegerField(default=15, verbose_name="Días de Vigencia")
     
