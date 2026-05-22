@@ -1275,59 +1275,68 @@ class OrdenSuministroAdmin(ImportExportModelAdmin):
 # REGISTRO DEL NUEVO MÓDULO DE INVENTARIO
 # ==========================================
 
-# 1. Creamos el "Mapa" (Resource) para que el botón de Excel sepa de dónde jalar los datos extra
+# 1. Traductores Inteligentes para limpiar basura del Excel
+class AlmacenSeguroWidget(ForeignKeyWidget):
+    def clean(self, value, row=None, **kwargs):
+        val = str(value).strip() if value else ''
+        if val:
+            almacen, _ = self.model.objects.get_or_create(nombre=val)
+            return almacen
+        return None
+
+class MedicamentoSeguroWidget(ForeignKeyWidget):
+    def clean(self, value, row=None, **kwargs):
+        clave = str(value).strip() if value else ''
+        if clave:
+            # Usamos filter().first() para agarrar la primera y evitar el error de los 7 clones
+            med = self.model.objects.filter(clave_sector=clave).first()
+            if not med:
+                desc = str(row.get('DESCRIPCIÓN', 'Agregado por Excel')).strip()
+                med = self.model.objects.create(
+                    clave_sector=clave,
+                    descripcion=desc,
+                    denominacion_generica=desc
+                )
+            return med
+        return None
+
+# 2. El "Mapa" (Resource) principal
 class InventarioResource(resources.ModelResource):
-    # Buscadores inteligentes para relaciones (Foreign Keys)
     almacen = fields.Field(
         column_name='almacen__nombre',
         attribute='almacen',
-        widget=ForeignKeyWidget(Almacen, 'nombre')
+        widget=AlmacenSeguroWidget(Almacen, 'nombre')
     )
     medicamento = fields.Field(
         column_name='CLAVE SECTOR',
         attribute='medicamento',
-        widget=ForeignKeyWidget(CatalogoMedicamento, 'clave_sector')
+        widget=MedicamentoSeguroWidget(CatalogoMedicamento, 'clave_sector')
     )
     
-    # Campos de solo lectura (Solo sirven para exportar el Excel chulo, se ignoran al importar)
+    # Campos visuales que solo sirven al descargar
     descripcion = fields.Field(attribute='medicamento__denominacion_generica', column_name='DESCRIPCIÓN', readonly=True)
     fabricante = fields.Field(attribute='medicamento__fabricante', column_name='FABRICANTE', readonly=True)
     socio_comercial = fields.Field(attribute='medicamento__socio_contacto__nombre', column_name='SOCIO COMERCIAL', readonly=True)
 
     class Meta:
         model = Inventario
-        # OJO: Aquí usamos las variables nuevas 'almacen' y 'medicamento'
         fields = ('almacen', 'medicamento', 'descripcion', 'socio_comercial', 'fabricante', 'tipo_producto', 'lote', 'fecha_caducidad', 'cantidad_disponible')
         export_order = fields
-        import_id_fields = ('medicamento', 'lote') # Para no duplicar inventarios
+        import_id_fields = ('medicamento', 'lote')
 
     def before_import_row(self, row, **kwargs):
-        # 1. SEGURO: Si el Almacén del Excel no existe, lo creamos
-        alm_nombre = str(row.get('almacen__nombre', '')).strip()
-        if alm_nombre:
-            Almacen.objects.get_or_create(nombre=alm_nombre)
-
-        # 2. SEGURO: Si la Clave del Excel no existe en tu catálogo, la creamos
-        clave_sec = str(row.get('CLAVE SECTOR', '')).strip()
-        if clave_sec:
-            CatalogoMedicamento.objects.get_or_create(
-                clave_sector=clave_sec,
-                defaults={
-                    'descripcion': str(row.get('DESCRIPCIÓN', 'Agregado por Excel')),
-                    'denominacion_generica': str(row.get('DESCRIPCIÓN', 'PENDIENTE'))
-                }
-            )
-
-        # 3. Rellenar Tipos de Producto vacíos
-        val_tipo = str(row.get('tipo_producto', '')).strip()
-        if not val_tipo or val_tipo.upper() in ['N/A', 'NONE', 'NULL']:
+        # 1. Limpiar y forzar el tipo de producto
+        val_tipo = str(row.get('tipo_producto', '')).strip().upper()
+        if 'GEN' in val_tipo:
+            row['tipo_producto'] = 'GENERICO'
+        else:
             row['tipo_producto'] = 'COMERCIAL'
 
-        # 4. Rellenar Fechas de Caducidad vacías
+        # 2. Rellenar Fechas de Caducidad vacías
         val_fecha = str(row.get('fecha_caducidad', '')).strip()
         if not val_fecha or val_fecha.upper() in ['N/A', 'NONE', 'NULL', 'S/F']:
             row['fecha_caducidad'] = '2030-12-31'
-
+            
 # ==========================================
 # --- REPORTE DE INVENTARIO "CHULO" ---
 # ==========================================
