@@ -373,11 +373,17 @@ class CatalogoMedicamentoResource(resources.ModelResource):
             'num_prorroga', 'codigo_barras', 'fecha_expedicion', 'fecha_vigencia'
         )
         
+# 👇 ESTA ES LA MAGIA DEL INVENTARIO 👇
     def before_import_row(self, row, **kwargs):
-        if str(row.get('fecha_expedicion', '')).strip() in ['None', '#N/A', 'N/A', 'NA', '']:
-            row['fecha_expedicion'] = None
-        if str(row.get('fecha_vigencia', '')).strip() in ['None', '#N/A', 'N/A', 'NA', '']:
-            row['fecha_vigencia'] = None
+        # 1. Si tipo_producto está vacío
+        val_tipo = str(row.get('tipo_producto', '')).strip()
+        if not val_tipo or val_tipo.upper() in ['N/A', 'NONE', 'NULL']:
+            row['tipo_producto'] = 'COMERCIAL'
+
+        # 2. Si la fecha de caducidad está vacía
+        val_fecha = str(row.get('fecha_caducidad', '')).strip()
+        if not val_fecha or val_fecha.upper() in ['N/A', 'NONE', 'NULL', 'S/F']:
+            row['fecha_caducidad'] = '2030-12-31'
 
 
 class SemaforoVigenciaFilter(admin.SimpleListFilter):
@@ -1277,6 +1283,7 @@ class InventarioResource(resources.ModelResource):
         model = Inventario
         fields = ('almacen__nombre', 'clave_sector', 'descripcion', 'socio_comercial', 'fabricante', 'tipo_producto', 'lote', 'fecha_caducidad', 'cantidad_disponible')
         export_order = fields
+        import_id_fields = ('clave_sector', 'lote')
 
 # ==========================================
 # --- REPORTE DE INVENTARIO "CHULO" ---
