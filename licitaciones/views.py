@@ -193,16 +193,26 @@ def dashboard_licitaciones(request):
         partidas_lic = partidas_lic.filter(
             Q(licitacion__num_procedimiento__icontains=q) |
             Q(medicamento__clave_sector__icontains=q) |
+            Q(medicamento__denominacion_generica__icontains=q) |
             Q(medicamento__fabricante__icontains=q) |
             Q(resultado__icontains=q)
         )
 
-        cotizaciones = cotizaciones.filter(Q(folio__icontains=q) | Q(razon_social__icontains=q) | Q(dependencia__icontains=q))
+        cotizaciones = cotizaciones.filter(Q(folio__icontains=q) | Q(razon_social__icontains=q) | Q(dependencia__icontains=q)) | Q(empresa__nombre__icontains=q) | Q(estatus__icontains=q)
         partidas_cot = partidas_cot.filter(
             Q(cotizacion__folio__icontains=q) |
             Q(medicamento__clave_sector__icontains=q) |
-            Q(medicamento__fabricante__icontains=q)
-        )
+            Q(medicamento__denominacion_generica__icontains=q) |
+            Q(medicamento__denominacion_distintiva__icontains=q) |
+            Q(medicamento__fabricante__icontains=q) |
+            Q(cotizacion__razon_social__icontains=q) |
+            Q(cotizacion__dependencia__icontains=q) |
+            Q(cotizacion__empresa__nombre__icontains=q)
+        ).select_related('cotizacion', 'medicamento')
+
+    if partidas_cot.exists():
+        cotizaciones_ids = list(partidas_cot.values_list('cotizacion_id', flat=True).distinct())
+        cotizaciones = cotizaciones | Cotizacion.objects.filter(id__in=cotizaciones_ids)
 
     total_licitaciones = licitaciones.count() + cotizaciones.count()
     en_proceso = licitaciones.filter(estatus__estado='EN_PROCESO').count() + cotizaciones.filter(estatus__in=['BORRADOR', 'ENVIADA']).count()
