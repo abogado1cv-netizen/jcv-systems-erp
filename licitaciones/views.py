@@ -198,6 +198,8 @@ def dashboard_licitaciones(request):
             Q(resultado__icontains=q)
         )
 
+        q_limpio = q.strip()
+
         cotizaciones = cotizaciones.filter(Q(folio__icontains=q) | Q(razon_social__icontains=q) | Q(dependencia__icontains=q)) | Q(empresa__nombre__icontains=q) | Q(estatus__icontains=q)
         partidas_cot = partidas_cot.filter(
             Q(cotizacion__folio__icontains=q) |
@@ -210,8 +212,8 @@ def dashboard_licitaciones(request):
             Q(cotizacion__empresa__nombre__icontains=q)
         ).select_related('cotizacion', 'medicamento')
 
-    if partidas_cot.exists():
-        cotizaciones_ids = list(partidas_cot.values_list('cotizacion_id', flat=True).distinct())
+    if partidas_cot_busqueda.exists():
+        cotizaciones_ids = list(partidas_cot_busqueda.values_list('cotizacion_id', flat=True).distinct())
         cotizaciones = cotizaciones | Cotizacion.objects.filter(id__in=cotizaciones_ids)
 
     total_licitaciones = licitaciones.count() + cotizaciones.count()
