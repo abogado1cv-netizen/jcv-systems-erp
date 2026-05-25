@@ -212,7 +212,7 @@ def dashboard_licitaciones(request):
             Q(cotizacion__empresa__nombre__icontains=q)
         ).select_related('cotizacion', 'medicamento')
 
-    if partidas_cot_busqueda.exists():
+    if partidas_cot.exists():
         cotizaciones_ids = list(partidas_cot_busqueda.values_list('cotizacion_id', flat=True).distinct())
         cotizaciones = cotizaciones | Cotizacion.objects.filter(id__in=cotizaciones_ids)
 

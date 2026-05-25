@@ -145,7 +145,7 @@ class CatalogoMedicamento(models.Model):
 class PartidaRequerimiento(models.Model):
     licitacion = models.ForeignKey(Licitacion, on_delete=models.CASCADE, related_name='partidas')
     numero_partida = models.IntegerField(verbose_name="No. Partida", null=True, blank=True) 
-    medicamento = models.ForeignKey(CatalogoMedicamento, on_delete=models.PROTECT, verbose_name="Medicamento")
+    medicamento = models.ForeignKey(CatalogoMedicamento, on_delete=models.CASCADE, verbose_name="Medicamento")
     cantidad_minima = models.PositiveIntegerField(null=True, blank=True, default=0)
     cantidad_maxima = models.PositiveIntegerField(null=True, blank=True, default=0)
     costo = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, default=0)
@@ -736,7 +736,7 @@ class OrdenCompra(models.Model):
 
 class PartidaCompra(models.Model):
     orden = models.ForeignKey(OrdenCompra, related_name='partidas_compra', on_delete=models.CASCADE)
-    medicamento = models.ForeignKey('CatalogoMedicamento', on_delete=models.PROTECT)
+    medicamento = models.ForeignKey('CatalogoMedicamento', on_delete=models.CASCADE)
     cantidad = models.PositiveIntegerField("Cantidad (Piezas)")
     precio_unitario = models.DecimalField("Costo Unitario", max_digits=12, decimal_places=2)
     precio_referencia = models.DecimalField("Precio Presupuestado/Histórico", max_digits=12, decimal_places=2, default=0.00, help_text="Para medir el ahorro (PPV).")
