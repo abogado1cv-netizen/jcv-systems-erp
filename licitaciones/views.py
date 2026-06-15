@@ -840,3 +840,40 @@ def panel_equipo(request):
         'equipo': equipo,
     }
     return render(request, 'dashboard_equipo.html', context)
+
+
+@staff_member_required
+def dashboard_historial(request):
+    query = request.GET.get('q', '').strip()
+    resultados = HistorialPrecio.objects.all()
+
+    # Si el usuario escribió algo en la barra de búsqueda
+    if query:
+        resultados = resultados.filter(
+            Q(clave__icontains=query) |
+            Q(descripcion__icontains=query) |
+            Q(procedimiento__icontains=query) |
+            Q(proveedor__icontains=query)
+        )
+    else:
+        # Si está vacío, mostramos los últimos 50 registros por defecto
+        resultados = resultados[:50]
+
+    # 📊 CALCULAMOS LAS MÉTRICAS EN TIEMPO REAL PARA LAS TARJETAS
+    total_piezas = resultados.aggregate(tot=Sum('cantidad'))['tot'] or 0
+    monto_total = resultados.aggregate(tot=Sum('valor'))['tot'] or 0
+    precio_promedio = resultados.aggregate(avg=Avg('precio'))['avg'] or 0
+    
+    # Contamos a cuántos hospitales diferentes llegó esa clave en la búsqueda
+    hospitales_unicos = resultados.values('institucion_desagregada').distinct().count()
+
+    context = {
+        'title': 'Buscador de Inteligencia de Mercado',
+        'query': query,
+        'resultados': resultados,
+        'total_piezas': f"{total_piezas:,}",
+        'monto_total_str': f"${monto_total:,.2f}",
+        'precio_promedio_str': f"${precio_promedio:,.2f}",
+        'hospitales_unicos': hospitales_unicos,
+    }
+    return render(request, 'dashboard_historial.html', context)

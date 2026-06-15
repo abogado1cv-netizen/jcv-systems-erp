@@ -1,0 +1,103 @@
+{% extends "admin/base_site.html" %}
+{% load humanize %}
+
+{% block content %}
+<div class="container-fluid pt-3">
+    <div class="card card-outline card-primary mb-4">
+        <div class="card-body">
+            <form method="GET" action="">
+                <div class="input-group input-group-lg">
+                    <input type="text" name="q" class="form-control" placeholder="Escribe una clave (Ej: 010.000.4158.00) o un procedimiento..." value="{{ query }}">
+                    <div class="input-group-append">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-search"></i> Buscar Asignaciones
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {% if query %}
+    <div class="row">
+        <div class="col-lg-3 col-6">
+            <div class="small-box bg-info">
+                <div class="inner">
+                    <h3>{{ hospitales_unicos }}</h3>
+                    <p>Hospitales Destino Detectados</p>
+                </div>
+                <div class="icon"><i class="fas fa-hospital"></i></div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-6">
+            <div class="small-box bg-success">
+                <div class="inner">
+                    <h3>{{ monto_total_str }}</h3>
+                    <p>Valor Total Adjudicado</p>
+                </div>
+                <div class="icon"><i class="fas fa-dollar-sign"></i></div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-6">
+            <div class="small-box bg-warning">
+                <div class="inner">
+                    <h3>{{ total_piezas }}</h3>
+                    <p>Piezas Totales Consolidadas</p>
+                </div>
+                <div class="icon"><i class="fas fa-boxes"></i></div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-6">
+            <div class="small-box bg-purple" style="background-color: #6f42c1; color: white;">
+                <div class="inner">
+                    <h3>{{ precio_promedio_str }}</h3>
+                    <p>Precio Promedio de Venta</p>
+                </div>
+                <div class="icon"><i class="fas fa-chart-line"></i></div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="card card-outline card-dark">
+        <div class="card-header">
+            <h3 class="card-title">🚨 Trazabilidad de Asignación por Hospital</h3>
+        </div>
+        <div class="card-body table-responsive p-0" style="max-height: 500px;">
+            <table class="table table-head-fixed table-hover text-nowrap">
+                <thead>
+                    <tr style="background-color: #f4f6f9;">
+                        <th>Clave</th>
+                        <th>Procedimiento</th>
+                        <th>Hospital / Unidad Destino</th>
+                        <th>Proveedor Ganador</th>
+                        <th class="text-center">Cantidad</th>
+                        <th class="text-right">Precio Unitario</th>
+                        <th class="text-right">Valor Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in resultados %}
+                    <tr>
+                        <td><code>{{ item.clave }}</code></td>
+                        <td><span class="badge badge-secondary">{{ item.procedimiento }}</span></td>
+                        <td><b>{{ item.institucion_desagregada|default:item.institucion }}</b></td>
+                        <td><i class="fas fa-industry text-muted mr-1"></i> {{ item.proveedor }}</td>
+                        <td class="text-center">{{ item.cantidad|intcomma }}</td>
+                        <td class="text-right text-success font-weight-bold">${{ item.precio|intcomma }}</td>
+                        <td class="text-right font-weight-bold">${{ item.valor|intcomma }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" class="text-center text-muted py-4">
+                            <i class="fas fa-folder-open fa-2x mb-2 d-block"></i>
+                            No se encontraron registros históricos para tu búsqueda.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
