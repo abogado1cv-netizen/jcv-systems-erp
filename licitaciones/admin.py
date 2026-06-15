@@ -23,6 +23,7 @@ from django.http import HttpResponseRedirect
 from django.urls import reverse
 from .models import HistorialPrecio
 
+
 from .models import (
     OrdenCompra, PartidaCompra, Inventario, DocumentoOrdenCompra,
     CatalogoMedicamento, EstatusProcedimiento, Empresa, SocioComercial,
@@ -2058,7 +2059,23 @@ from .models import HistorialPrecio
 # 📊 PANEL: HISTORIAL DE PRECIOS
 # ==========================================
 @admin.register(HistorialPrecio)
+class HistorialPrecioResource(resources.ModelResource):
+    # Esto lee la 'clave' del Excel y la vincula automáticamente con tu Catálogo de Medicamentos
+    medicamento = fields.Field(
+        column_name='clave',
+        attribute='medicamento',
+        widget=MedicamentoSeguroWidget(CatalogoMedicamento, 'clave_sector')
+    )
+
+    class Meta:
+        model = HistorialPrecio
+        import_id_fields = ('clave', 'procedimiento') # Evita duplicados si subes el mismo archivo
+
+# 👇 2. LO CONECTAMOS AL PANEL QUE YA TENÍAS
+@admin.register(HistorialPrecio)
 class HistorialPrecioAdmin(ImportExportModelAdmin):
+    resource_class = HistorialPrecioResource  # <--- CONECTAMOS EL TRADUCTOR AQUÍ
+    
     list_per_page = 50
     list_display = ('clave', 'descripcion_corta', 'institucion', 'procedimiento', 'proveedor', 'mostrar_precio', 'cantidad', 'mostrar_valor', 'fecha_captura')
     search_fields = ('clave', 'descripcion', 'procedimiento', 'institucion', 'proveedor')
@@ -2080,9 +2097,12 @@ class HistorialPrecioAdmin(ImportExportModelAdmin):
     mostrar_valor.short_description = "Valor Total"
     mostrar_valor.admin_order_field = 'valor'
 
-    # Bloqueamos agregar o editar, para que sea un historial de 100% solo lectura
+    # 👇 IMPORTANTE: Dejamos importar el Excel, pero bloqueamos que se agreguen a mano
+    def has_import_permission(self, request):
+        return True
+        
     def has_add_permission(self, request):
         return False
 
     def get_readonly_fields(self, request, obj=None):
-        return [f.name for f in self.model._meta.fields]    
+        return [f.name for f in self.model._meta.fields]
