@@ -16,7 +16,7 @@ from .models import (
     OrdenSuministro, RemisionEntrega, ClaveContrato, CatalogoMedicamento,
     PartidaOrden, Cotizacion, PartidaCotizacion, PedidoDirecto,
     OrdenCompra, PartidaCompra, SocioComercial, EntradaAlmacen,
-    TraspasoIntercompany, DEPENDENCIAS_MAESTRAS, PerfilEquipo,
+    TraspasoIntercompany, DEPENDENCIAS_MAESTRAS, PerfilEquipo, HistorialPrecio,
 )
 
 # ==========================================
