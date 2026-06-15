@@ -2072,10 +2072,8 @@ class HistorialPrecioResource(resources.ModelResource):
         attribute='medicamento',
         widget=MedicamentoSeguroWidget(CatalogoMedicamento, 'clave_sector')
     )
-
     class Meta:
         model = HistorialPrecio
-        import_id_fields = ('clave', 'procedimiento')
 
 # 2. PANEL VISUAL (Aquí estaba el error del letrero)
 @admin.register(HistorialPrecio)
@@ -2111,3 +2109,6 @@ class HistorialPrecioAdmin(ImportExportModelAdmin):
 
     def get_readonly_fields(self, request, obj=None):
         return [f.name for f in self.model._meta.fields]
+    
+    def get_instance(self, instance_loader, row):
+        return None
