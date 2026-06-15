@@ -21,6 +21,7 @@ from django.core.mail import EmailMultiAlternatives
 from .models import EscanerKardex
 from django.http import HttpResponseRedirect
 from django.urls import reverse
+from .models import HistorialPrecio
 
 from .models import (
     OrdenCompra, PartidaCompra, Inventario, DocumentoOrdenCompra,
@@ -2050,3 +2051,38 @@ class TraspasoIntercompanyAdmin(admin.ModelAdmin):
 class EscanerKardexAdmin(admin.ModelAdmin):
     def changelist_view(self, request, extra_context=None):
         return HttpResponseRedirect(reverse('buscar_kardex'))
+    
+from .models import HistorialPrecio
+
+# ==========================================
+# 📊 PANEL: HISTORIAL DE PRECIOS
+# ==========================================
+@admin.register(HistorialPrecio)
+class HistorialPrecioAdmin(ImportExportModelAdmin):
+    list_per_page = 50
+    list_display = ('clave', 'descripcion_corta', 'institucion', 'procedimiento', 'proveedor', 'mostrar_precio', 'cantidad', 'mostrar_valor', 'fecha_captura')
+    search_fields = ('clave', 'descripcion', 'procedimiento', 'institucion', 'proveedor')
+    list_filter = ('institucion', 'tipo_procedimiento', 'proveedor', 'fecha_captura')
+
+    def descripcion_corta(self, obj):
+        if obj.descripcion and len(obj.descripcion) > 35:
+            return f"{obj.descripcion[:35]}..."
+        return obj.descripcion
+    descripcion_corta.short_description = "Descripción"
+
+    def mostrar_precio(self, obj):
+        return format_html('<b style="color: #28a745;">${:,.2f}</b>', obj.precio)
+    mostrar_precio.short_description = "Precio Unitario"
+    mostrar_precio.admin_order_field = 'precio'
+
+    def mostrar_valor(self, obj):
+        return format_html('<b>${:,.2f}</b>', obj.valor)
+    mostrar_valor.short_description = "Valor Total"
+    mostrar_valor.admin_order_field = 'valor'
+
+    # Bloqueamos agregar o editar, para que sea un historial de 100% solo lectura
+    def has_add_permission(self, request):
+        return False
+
+    def get_readonly_fields(self, request, obj=None):
+        return [f.name for f in self.model._meta.fields]    

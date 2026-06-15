@@ -169,6 +169,33 @@ class PartidaRequerimiento(models.Model):
     @property
     def valor_maximo_precio(self): return (self.precio * self.cantidad_maxima) if self.precio and self.cantidad_maxima else 0
 
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs) # Primero guardamos la partida normal
+        
+        # Si ganamos la partida y tiene precio, la mandamos al historial
+        if self.resultado == 'Asignada' and self.precio and self.precio > 0:
+            proveedor_nombre = 'Sin Laboratorio'
+            if self.medicamento.socio_contacto:
+                proveedor_nombre = self.medicamento.socio_contacto.nombre
+            elif self.medicamento.fabricante:
+                proveedor_nombre = self.medicamento.fabricante
+
+            HistorialPrecio.objects.update_or_create(
+                procedimiento=self.licitacion.num_procedimiento,
+                clave=self.medicamento.clave_sector,
+                defaults={
+                    'medicamento': self.medicamento,
+                    'descripcion': self.medicamento.descripcion,
+                    'tipo_procedimiento': 'Licitación Pública',
+                    'proveedor': proveedor_nombre,
+                    'institucion': self.licitacion.get_dependencia_display() if hasattr(self.licitacion, 'get_dependencia_display') else self.licitacion.dependencia,
+                    'institucion_desagregada': self.licitacion.dependencia,
+                    'precio': self.precio,
+                    'cantidad': self.cantidad_maxima or 0,
+                    'valor': (self.cantidad_maxima or 0) * self.precio
+                }
+            )
+
 class RegistroUbicacion(models.Model):
     usuario = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="Empleado")
     latitud = models.CharField(max_length=50)
@@ -962,6 +989,35 @@ class PartidaCotizacion(models.Model):
     def importe(self):
         return float(self.cantidad or 0) * float(self.precio_unitario or 0)
 
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        
+        if self.cotizacion.estatus == 'GANADA' and self.precio_unitario and self.precio_unitario > 0:
+            proveedor_nombre = 'Sin Laboratorio'
+            if self.medicamento.socio_contacto:
+                proveedor_nombre = self.medicamento.socio_contacto.nombre
+            elif self.medicamento.fabricante:
+                proveedor_nombre = self.medicamento.fabricante
+
+            institucion_cliente = self.cotizacion.get_dependencia_display() if self.cotizacion.dependencia else (self.cotizacion.razon_social or 'Privado')
+
+            HistorialPrecio.objects.update_or_create(
+                procedimiento=self.cotizacion.folio,
+                clave=self.medicamento.clave_sector,
+                defaults={
+                    'medicamento': self.medicamento,
+                    'descripcion': self.medicamento.descripcion,
+                    'tipo_procedimiento': self.cotizacion.get_tipo_procedimiento_display(),
+                    'proveedor': proveedor_nombre,
+                    'institucion': institucion_cliente,
+                    'institucion_desagregada': self.cotizacion.dependencia or self.cotizacion.razon_social or 'Privado',
+                    'precio': self.precio_unitario,
+                    'cantidad': self.cantidad or 0,
+                    'valor': (self.cantidad or 0) * self.precio_unitario
+                }
+            )
+
+
     class Meta:
         verbose_name = "Partida Cotizada"
         verbose_name_plural = "Medicamentos Cotizados"
@@ -1135,3 +1191,33 @@ class PerfilEquipo(models.Model):
             self.user.groups.add(grupo)
             self.user.is_staff = True 
             self.user.save()
+
+            # ==========================================
+# 📊 MÓDULO DE INTELIGENCIA: HISTORIAL DE PRECIOS
+# ==========================================
+class HistorialPrecio(models.Model):
+    medicamento = models.ForeignKey('CatalogoMedicamento', on_delete=models.SET_NULL, null=True, blank=True)
+    clave = models.CharField("Clave", max_length=50)
+    descripcion = models.TextField("Descripción")
+    grupo_terapeutico = models.CharField("Grupo Terapéutico", max_length=150, default="No Especificado")
+    
+    procedimiento = models.CharField("Procedimiento", max_length=100)
+    tipo_procedimiento = models.CharField("Tipo de Procedimiento", max_length=100)
+    
+    proveedor = models.CharField("Proveedor / Laboratorio", max_length=200)
+    institucion = models.CharField("Institución", max_length=150)
+    institucion_desagregada = models.CharField("Institución Desagregada", max_length=150, blank=True, null=True)
+    
+    precio = models.DecimalField("Precio Unitario", max_digits=12, decimal_places=2)
+    cantidad = models.PositiveIntegerField("Cantidad", default=0)
+    valor = models.DecimalField("Valor Total", max_digits=15, decimal_places=2)
+    
+    fecha_captura = models.DateTimeField("Fecha de Registro", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Historial de Precio"
+        verbose_name_plural = "Historial de Precios"
+        ordering = ['-fecha_captura']
+
+    def __str__(self):
+        return f"{self.clave} - ${self.precio}"
