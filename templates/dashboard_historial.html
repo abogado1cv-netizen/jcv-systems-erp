@@ -1,6 +1,11 @@
 {% extends "admin/base_site.html" %}
 {% load humanize %}
 
+{% block extrahead %}
+    {{ block.super }}
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap4.min.css">
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid pt-3">
     <div class="card card-outline card-primary mb-4">
@@ -63,10 +68,10 @@
         <div class="card-header">
             <h3 class="card-title">🚨 Trazabilidad de Asignación por Hospital</h3>
         </div>
-        <div class="card-body table-responsive p-0" style="max-height: 500px;">
-            <table class="table table-head-fixed table-hover text-nowrap">
-                <thead>
-                    <tr style="background-color: #f4f6f9;">
+        <div class="card-body table-responsive p-3">
+            <table id="tablaAsignaciones" class="table table-hover text-nowrap table-bordered">
+                <thead style="background-color: #f4f6f9;">
+                    <tr>
                         <th>Clave</th>
                         <th>Procedimiento</th>
                         <th>Hospital / Unidad Destino</th>
@@ -80,19 +85,12 @@
                     {% for item in resultados %}
                     <tr>
                         <td><code>{{ item.clave }}</code></td>
-                        <td><span class="badge badge-secondary">{{ item.procedimiento }}</span></td>
+                        <td><b>{{ item.procedimiento }}</b></td>
                         <td><b>{{ item.institucion_desagregada|default:item.institucion }}</b></td>
                         <td><i class="fas fa-industry text-muted mr-1"></i> {{ item.proveedor }}</td>
-                        <td class="text-center">{{ item.cantidad|intcomma }}</td>
-                        <td class="text-right text-success font-weight-bold">${{ item.precio|intcomma }}</td>
-                        <td class="text-right font-weight-bold">${{ item.valor|intcomma }}</td>
-                    </tr>
-                    {% empty %}
-                    <tr>
-                        <td colspan="7" class="text-center text-muted py-4">
-                            <i class="fas fa-folder-open fa-2x mb-2 d-block"></i>
-                            No se encontraron registros históricos para tu búsqueda.
-                        </td>
+                        <td class="text-center" data-order="{{ item.cantidad }}">{{ item.cantidad|intcomma }}</td>
+                        <td class="text-right text-success font-weight-bold" data-order="{{ item.precio }}">${{ item.precio|intcomma }}</td>
+                        <td class="text-right font-weight-bold" data-order="{{ item.valor }}">${{ item.valor|intcomma }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -100,4 +98,26 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extrajs %}
+    {{ block.super }}
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap4.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            $('#tablaAsignaciones').DataTable({
+                "language": {
+                    "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/es-MX.json" // Lo pone todo en Español
+                },
+                "paging": true,           // Agrega paginación
+                "lengthChange": true,     // Permite elegir cuántos registros ver
+                "searching": true,        // Agrega un buscador rápido interno
+                "ordering": true,         // ¡ACTIVA LAS FLECHITAS PARA ORDENAR!
+                "info": true,
+                "autoWidth": false,
+                "order": [[ 5, "asc" ]]   // Por defecto, ordena por la columna 5 (Precio) de menor a mayor
+            });
+        });
+    </script>
 {% endblock %}
