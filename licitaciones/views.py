@@ -847,25 +847,30 @@ def dashboard_historial(request):
     query = request.GET.get('q', '').strip()
     resultados = HistorialPrecio.objects.all()
 
-    # Si el usuario escribió algo en la barra de búsqueda
+    # Ponemos las variables en cero por defecto
+    total_piezas = 0
+    monto_total = 0
+    precio_promedio = 0
+    hospitales_unicos = 0
+
     if query:
+        # 1. Hacemos el filtro de la búsqueda
         resultados = resultados.filter(
             Q(clave__icontains=query) |
             Q(descripcion__icontains=query) |
             Q(procedimiento__icontains=query) |
             Q(proveedor__icontains=query)
         )
-    else:
-        # Si está vacío, mostramos los últimos 50 registros por defecto
-        resultados = resultados[:50]
 
-    # 📊 CALCULAMOS LAS MÉTRICAS EN TIEMPO REAL PARA LAS TARJETAS
-    total_piezas = resultados.aggregate(tot=Sum('cantidad'))['tot'] or 0
-    monto_total = resultados.aggregate(tot=Sum('valor'))['tot'] or 0
-    precio_promedio = resultados.aggregate(avg=Avg('precio'))['avg'] or 0
-    
-    # Contamos a cuántos hospitales diferentes llegó esa clave en la búsqueda
-    hospitales_unicos = resultados.values('institucion_desagregada').distinct().count()
+        # 2. 📊 CALCULAMOS LAS MÉTRICAS AQUÍ ADENTRO (ANTES DE RECORTAR NADA)
+        total_piezas = resultados.aggregate(tot=Sum('cantidad'))['tot'] or 0
+        monto_total = resultados.aggregate(tot=Sum('valor'))['tot'] or 0
+        precio_promedio = resultados.aggregate(avg=Avg('precio'))['avg'] or 0
+        hospitales_unicos = resultados.values('institucion_desagregada').distinct().count()
+
+    else:
+        # 3. Si está vacío, simplemente recortamos a 50 para la tabla
+        resultados = resultados.order_by('-fecha_captura')[:50]
 
     context = {
         'title': 'Buscador de Inteligencia de Mercado',
