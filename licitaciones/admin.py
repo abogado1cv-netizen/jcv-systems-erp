@@ -2055,12 +2055,18 @@ class EscanerKardexAdmin(admin.ModelAdmin):
     
 from .models import HistorialPrecio
 
+from django.contrib import admin
+from django.utils.html import format_html
+from import_export import resources, fields
+from import_export.admin import ImportExportModelAdmin
+from .models import HistorialPrecio, CatalogoMedicamento
+
 # ==========================================
 # 📊 PANEL: HISTORIAL DE PRECIOS
 # ==========================================
-@admin.register(HistorialPrecio)
+
+# 1. TRADUCTOR
 class HistorialPrecioResource(resources.ModelResource):
-    # Esto lee la 'clave' del Excel y la vincula automáticamente con tu Catálogo de Medicamentos
     medicamento = fields.Field(
         column_name='clave',
         attribute='medicamento',
@@ -2069,12 +2075,12 @@ class HistorialPrecioResource(resources.ModelResource):
 
     class Meta:
         model = HistorialPrecio
-        import_id_fields = ('clave', 'procedimiento') # Evita duplicados si subes el mismo archivo
+        import_id_fields = ('clave', 'procedimiento')
 
-# 👇 2. LO CONECTAMOS AL PANEL QUE YA TENÍAS
+# 2. PANEL VISUAL (Aquí estaba el error del letrero)
 @admin.register(HistorialPrecio)
 class HistorialPrecioAdmin(ImportExportModelAdmin):
-    resource_class = HistorialPrecioResource  # <--- CONECTAMOS EL TRADUCTOR AQUÍ
+    resource_class = HistorialPrecioResource
     
     list_per_page = 50
     list_display = ('clave', 'descripcion_corta', 'institucion', 'procedimiento', 'proveedor', 'mostrar_precio', 'cantidad', 'mostrar_valor', 'fecha_captura')
@@ -2097,7 +2103,6 @@ class HistorialPrecioAdmin(ImportExportModelAdmin):
     mostrar_valor.short_description = "Valor Total"
     mostrar_valor.admin_order_field = 'valor'
 
-    # 👇 IMPORTANTE: Dejamos importar el Excel, pero bloqueamos que se agreguen a mano
     def has_import_permission(self, request):
         return True
         
