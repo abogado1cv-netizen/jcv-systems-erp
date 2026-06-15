@@ -114,6 +114,7 @@ JAZZMIN_SETTINGS = {
     "topmenu_links": [
         {"name": "Inicio",  "url": "admin:index", "permissions": ["auth.view_user"]},
         {"name": "📊 Comercial", "url": "/dashboard/licitaciones/"},
+        {'name': '🔍 Historial de Precios', 'url': '/dashboard/historial-precios/'},
         {"name": "📁 Contratos", "url": "/dashboard/contratos/"},
         {"name": "🛒 Compras", "url": "/dashboard/compras/"},
         {"name": "🚚 Logística", "url": "/dashboard/ordenes/"},
