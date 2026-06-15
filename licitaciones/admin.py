@@ -2092,12 +2092,14 @@ class HistorialPrecioAdmin(ImportExportModelAdmin):
     descripcion_corta.short_description = "Descripción"
 
     def mostrar_precio(self, obj):
-        return format_html('<b style="color: #28a745;">${:,.2f}</b>', obj.precio)
+        precio_str = "{:,.2f}".format(float(obj.precio or 0))
+        return format_html('<b style="color: #28a745;">${}</b>', precio_str)
     mostrar_precio.short_description = "Precio Unitario"
     mostrar_precio.admin_order_field = 'precio'
 
     def mostrar_valor(self, obj):
-        return format_html('<b>${:,.2f}</b>', obj.valor)
+        valor_str = "{:,.2f}".format(float(obj.valor or 0))
+        return format_html('<b>${}</b>', valor_str)
     mostrar_valor.short_description = "Valor Total"
     mostrar_valor.admin_order_field = 'valor'
 
