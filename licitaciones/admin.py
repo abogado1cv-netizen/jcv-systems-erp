@@ -46,7 +46,7 @@ def exportar_a_csv(modeladmin, request, queryset):
     return response
 
 # ==========================================
-# 📊 MOTOR UNIFICADO: ANÁLISIS COMERCIAL EJECUTIVO
+# 📊 MOTOR UNIFICADO: ANÁLISIS COMERCIAL EJECUTIVO (CORREGIDO)
 # ==========================================
 @admin.action(description='📊 Descargar Análisis Comercial (Unificado)')
 def exportar_analisis_unificado(modeladmin, request, queryset):
@@ -71,10 +71,10 @@ def exportar_analisis_unificado(modeladmin, request, queryset):
         folio = getattr(obj, 'num_procedimiento', getattr(obj, 'folio', 'S/D'))
         cliente = obj.get_dependencia_display() if es_licitacion else (obj.razon_social or obj.get_dependencia_display() or "S/D")
         
-        f_pub = obj.fecha_publicacion.strftime('%d/%m/%Y %H:%M') if es_licitacion and obj.fecha_publicacion else 'N/A'
-        f_ape = obj.fecha_apertura.strftime('%d/%m/%Y %H:%M') if es_licitacion and obj.fecha_apertura else 'N/A'
-        f_jun = obj.fecha_junta.strftime('%d/%m/%Y %H:%M') if es_licitacion and obj.fecha_junta else 'N/A'
-        f_fal = obj.fecha_fallo.strftime('%d/%m/%Y %H:%M') if es_licitacion and obj.fecha_fallo else 'N/A'
+        f_pub = obj.fecha_publicacion.strftime('%d/%m/%Y %H:%M') if es_licitacion and getattr(obj, 'fecha_publicacion', None) else 'N/A'
+        f_ape = obj.fecha_apertura.strftime('%d/%m/%Y %H:%M') if es_licitacion and getattr(obj, 'fecha_apertura', None) else 'N/A'
+        f_jun = obj.fecha_junta.strftime('%d/%m/%Y %H:%M') if es_licitacion and getattr(obj, 'fecha_junta', None) else 'N/A'
+        f_fal = obj.fecha_fallo.strftime('%d/%m/%Y %H:%M') if es_licitacion and getattr(obj, 'fecha_fallo', None) else 'N/A'
 
         response['Content-Disposition'] = f'attachment; filename="Analisis_Ejecutivo_{folio}.xlsx"'
 
@@ -114,8 +114,8 @@ def exportar_analisis_unificado(modeladmin, request, queryset):
         for i, p in enumerate(partidas, 1):
             med = p.medicamento
             clave = med.clave_sector if med else 'S/C'
-            desc_completa = med.descripcion if med else 'S/D'
-            generica = med.denominacion_generica if med else 'S/D'
+            desc_completa = med.descripcion if med else 'Pendiente Registro'
+            generica = med.denominacion_generica if med else 'Pendiente Registro'
             distintiva = med.denominacion_distintiva if med and med.denominacion_distintiva else ''
             socio = med.socio_contacto.nombre if med and med.socio_contacto else 'Sin Laboratorio'
             
@@ -157,8 +157,8 @@ def exportar_analisis_unificado(modeladmin, request, queryset):
             for i, p in enumerate(partidas, 1):
                 med = p.medicamento
                 clave = med.clave_sector if med else 'S/C'
-                desc_completa = med.descripcion if med else 'S/D'
-                generica = med.denominacion_generica if med else 'S/D'
+                desc_completa = med.descripcion if med else 'Pendiente Registro'
+                generica = med.denominacion_generica if med else 'Pendiente Registro'
                 distintiva = med.denominacion_distintiva if med and med.denominacion_distintiva else ''
                 socio = med.socio_contacto.nombre if med and med.socio_contacto else 'Sin Laboratorio'
 
@@ -185,7 +185,7 @@ def exportar_analisis_unificado(modeladmin, request, queryset):
     return response
 
 # ==========================================
-# 🏭 MOTOR UNIFICADO: REPORTE POR SOCIO COMERCIAL
+# 🏭 MOTOR UNIFICADO: REPORTE POR SOCIO COMERCIAL (CORREGIDO)
 # ==========================================
 @admin.action(description='🏭 Descargar Reporte Agrupado por Socios (Unificado)')
 def exportar_socios_unificado(modeladmin, request, queryset):
@@ -211,10 +211,10 @@ def exportar_socios_unificado(modeladmin, request, queryset):
         folio = getattr(obj, 'num_procedimiento', getattr(obj, 'folio', 'S/D'))
         es_licitacion = hasattr(obj, 'num_procedimiento')
         
-        f_pub = obj.fecha_publicacion.strftime('%d/%m/%Y %H:%M') if es_licitacion and obj.fecha_publicacion else 'N/A'
-        f_ape = obj.fecha_apertura.strftime('%d/%m/%Y %H:%M') if es_licitacion and obj.fecha_apertura else 'N/A'
-        f_jun = obj.fecha_junta.strftime('%d/%m/%Y %H:%M') if es_licitacion and obj.fecha_junta else 'N/A'
-        f_fal = obj.fecha_fallo.strftime('%d/%m/%Y %H:%M') if es_licitacion and obj.fecha_fallo else 'N/A'
+        f_pub = obj.fecha_publicacion.strftime('%d/%m/%Y %H:%M') if es_licitacion and getattr(obj, 'fecha_publicacion', None) else 'N/A'
+        f_ape = obj.fecha_apertura.strftime('%d/%m/%Y %H:%M') if es_licitacion and getattr(obj, 'fecha_apertura', None) else 'N/A'
+        f_jun = obj.fecha_junta.strftime('%d/%m/%Y %H:%M') if es_licitacion and getattr(obj, 'fecha_junta', None) else 'N/A'
+        f_fal = obj.fecha_fallo.strftime('%d/%m/%Y %H:%M') if es_licitacion and getattr(obj, 'fecha_fallo', None) else 'N/A'
 
         response['Content-Disposition'] = f'attachment; filename="Reporte_Socios_{folio}.xlsx"'
 
@@ -259,28 +259,56 @@ def exportar_socios_unificado(modeladmin, request, queryset):
         
         for i, p in enumerate(partidas, 1):
             med = p.medicamento
-            if not med: continue
             
-            socio = med.socio_contacto.nombre if med.socio_contacto else 'Sin socio comercial'
-            clave = med.clave_sector
+            # ¡CORRECCIÓN APLICADA AQUÍ!
+            # Ya no nos saltamos a los que no tienen medicamento.
+            
+            if med:
+                socio = med.socio_contacto.nombre if med.socio_contacto else 'Sin Laboratorio'
+                clave = med.clave_sector
+                descripcion = med.descripcion
+                generica = med.denominacion_generica
+                distintiva = med.denominacion_distintiva or ''
+                fabricante = med.fabricante or ''
+                rfc = med.rfc_fabricante or ''
+                pais = med.pais_fabricacion or ''
+                reg_san = med.num_registro_sanitario or ''
+                prorroga = med.num_prorroga or ''
+                codigo_b = med.codigo_barras or ''
+                f_exp = med.fecha_expedicion.strftime('%Y-%m-%d') if med.fecha_expedicion else ''
+                f_vig = med.fecha_vigencia.strftime('%Y-%m-%d') if med.fecha_vigencia else ''
+                
+                stock_disp = Inventario.objects.filter(medicamento=med, cantidad_disponible__gt=0).select_related('almacen')
+                total_piezas = sum(item.cantidad_disponible for item in stock_disp)
+                texto_ubic = " | ".join([f"{item.almacen.nombre if item.almacen else 'Bodega'} ({item.cantidad_disponible})" for item in stock_disp]) if stock_disp else "Sin Inventario"
+            else:
+                socio = 'Sin Laboratorio'
+                clave = getattr(p, 'clave_historica', 'S/C')
+                descripcion = 'Pendiente Registro en Catálogo'
+                generica = 'Pendiente Registro'
+                distintiva = ''
+                fabricante = ''
+                rfc = ''
+                pais = ''
+                reg_san = ''
+                prorroga = ''
+                codigo_b = ''
+                f_exp = ''
+                f_vig = ''
+                total_piezas = 0
+                texto_ubic = "N/A"
+
             cant = getattr(p, 'cantidad_maxima', getattr(p, 'cantidad', 0))
             precio = float(getattr(p, 'precio', getattr(p, 'precio_unitario', 0)))
             costo = float(getattr(p, 'costo', 0))
             importe = cant * precio
             num_partida = getattr(p, 'numero_partida', i)
-            
-            stock_disp = Inventario.objects.filter(medicamento=med, cantidad_disponible__gt=0).select_related('almacen')
-            total_piezas = sum(item.cantidad_disponible for item in stock_disp)
-            texto_ubic = " | ".join([f"{item.almacen.nombre if item.almacen else 'Bodega'} ({item.cantidad_disponible})" for item in stock_disp]) if stock_disp else "Sin Inventario"
-
-            f_exp = med.fecha_expedicion.strftime('%Y-%m-%d') if med.fecha_expedicion else ''
-            f_vig = med.fecha_vigencia.strftime('%Y-%m-%d') if med.fecha_vigencia else ''
 
             filas.append([
-                socio, num_partida, clave, med.descripcion, med.denominacion_generica, 
-                med.denominacion_distintiva or '', med.fabricante or '', med.rfc_fabricante or '', 
-                med.pais_fabricacion or '', med.num_registro_sanitario or '', med.num_prorroga or '', 
-                med.codigo_barras or '', f_exp, f_vig, cant, total_piezas, texto_ubic, 
+                socio, num_partida, clave, descripcion, generica, 
+                distintiva, fabricante, rfc, 
+                pais, reg_san, prorroga, 
+                codigo_b, f_exp, f_vig, cant, total_piezas, texto_ubic, 
                 0, costo, precio, importe
             ])
             
