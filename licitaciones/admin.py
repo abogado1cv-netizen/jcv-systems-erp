@@ -669,9 +669,9 @@ class LicitacionAdmin(admin.ModelAdmin):
         partidas = licitacion.partidas.all()
         socios_dict = {}
         
-        for p in partidas:
-            clave_actual = p.medicamento.clave_sector
-            medicamentos_relacionados = CatalogoMedicamento.objects.filter(clave_sector=clave_actual)
+        for p in licitacion.partidas.all():
+            if not p.medicamento: continue
+            meds_relacionados = CatalogoMedicamento.objects.filter(clave_sector=p.medicamento.clave_sector)
             for med in medicamentos_relacionados:
                 socio = med.socio_contacto
                 if socio:
@@ -771,17 +771,19 @@ class LicitacionAdmin(admin.ModelAdmin):
         from django.conf import settings
         
         licitacion = self.get_object(request, object_id)
-        partidas = licitacion.partidas.select_related('medicamento__socio_contacto')
         socios_dict = {}
         
-        for p in partidas:
-            socio = p.medicamento.socio_contacto
-            if socio:
-                if socio.id not in socios_dict: socios_dict[socio.id] = {'socio': socio, 'asignadas': [], 'perdidas_precio': [], 'perdidas_tecnica': [], 'pendientes': []}
-                if p.resultado == 'Asignada': socios_dict[socio.id]['asignadas'].append(p)
-                elif p.resultado == 'Perdida por precio': socios_dict[socio.id]['perdidas_precio'].append(p)
-                elif p.resultado == 'Perdida técnicamente': socios_dict[socio.id]['perdidas_tecnica'].append(p)
-                else: socios_dict[socio.id]['pendientes'].append(p)
+        for p in licitacion.partidas.all():
+            if not p.medicamento: continue
+            meds_relacionados = CatalogoMedicamento.objects.filter(clave_sector=p.medicamento.clave_sector)
+            for med in meds_relacionados:
+                socio = med.socio_contacto
+                if socio:
+                    if socio.id not in socios_dict: socios_dict[socio.id] = {'socio': socio, 'asignadas': [], 'perdidas_precio': [], 'perdidas_tecnica': [], 'pendientes': []}
+                    if p.resultado == 'Asignada' and p not in socios_dict[socio.id]['asignadas']: socios_dict[socio.id]['asignadas'].append(p)
+                    elif p.resultado == 'Perdida por precio' and p not in socios_dict[socio.id]['perdidas_precio']: socios_dict[socio.id]['perdidas_precio'].append(p)
+                    elif p.resultado == 'Perdida técnicamente' and p not in socios_dict[socio.id]['perdidas_tecnica']: socios_dict[socio.id]['perdidas_tecnica'].append(p)
+                    elif p.resultado not in ['Asignada', 'Perdida por precio', 'Perdida técnicamente'] and p not in socios_dict[socio.id]['pendientes']: socios_dict[socio.id]['pendientes'].append(p)
 
         if request.method == 'POST':
             socios_seleccionados = request.POST.getlist('socios')
@@ -1652,10 +1654,13 @@ class CotizacionAdmin(admin.ModelAdmin):
             
         socios_dict = {}
         for p in cotizacion.partidas_cotizacion.all():
-            socio = p.medicamento.socio_contacto if p.medicamento else None
+            if not p.medicamento: continue
+            meds_relacionados = CatalogoMedicamento.objects.filter(clave_sector=p.medicamento.clave_sector)
+            for med in meds_relacionados:
+                socio = med.socio_contacto
             if socio:
                 if socio.id not in socios_dict: socios_dict[socio.id] = {'socio': socio, 'partidas': []}
-                socios_dict[socio.id]['partidas'].append(p)
+                if p not in socios_dict[socio.id]['partidas']: socios_dict[socio.id]['partidas'].append(p)
 
         if request.method == 'POST':
             socios_seleccionados = request.POST.getlist('socios')
@@ -1710,12 +1715,15 @@ class CotizacionAdmin(admin.ModelAdmin):
             
         socios_dict = {}
         for p in cotizacion.partidas_cotizacion.all():
-            socio = p.medicamento.socio_contacto if p.medicamento else None
-            if socio:
-                if socio.id not in socios_dict: socios_dict[socio.id] = {'socio': socio, 'asignadas': [], 'perdidas_precio': [], 'perdidas_tecnica': [], 'pendientes': []}
-                if cotizacion.estatus == 'GANADA': socios_dict[socio.id]['asignadas'].append(p)
-                elif cotizacion.estatus in ['PERDIDA', 'CANCELADA']: socios_dict[socio.id]['perdidas_precio'].append(p)
-                else: socios_dict[socio.id]['pendientes'].append(p)
+            if not p.medicamento: continue
+            meds_relacionados = CatalogoMedicamento.objects.filter(clave_sector=p.medicamento.clave_sector)
+            for med in meds_relacionados:
+                socio = med.socio_contacto
+                if socio:
+                    if socio.id not in socios_dict: socios_dict[socio.id] = {'socio': socio, 'asignadas': [], 'perdidas_precio': [], 'perdidas_tecnica': [], 'pendientes': []}
+                    if cotizacion.estatus == 'GANADA' and p not in socios_dict[socio.id]['asignadas']: socios_dict[socio.id]['asignadas'].append(p)
+                    elif cotizacion.estatus in ['PERDIDA', 'CANCELADA'] and p not in socios_dict[socio.id]['perdidas_precio']: socios_dict[socio.id]['perdidas_precio'].append(p)
+                    elif cotizacion.estatus not in ['GANADA', 'PERDIDA', 'CANCELADA'] and p not in socios_dict[socio.id]['pendientes']: socios_dict[socio.id]['pendientes'].append(p)
 
         if request.method == 'POST':
             socios_seleccionados = request.POST.getlist('socios')
