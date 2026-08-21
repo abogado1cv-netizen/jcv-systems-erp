@@ -46,10 +46,11 @@ def exportar_a_csv(modeladmin, request, queryset):
     return response
 
 # ==========================================
-# 📊 MOTOR UNIFICADO: ANÁLISIS COMERCIAL EJECUTIVO (CORREGIDO)
+# 📊 MOTOR UNIFICADO: ANÁLISIS COMERCIAL EJECUTIVO (MULTILABORATORIO)
 # ==========================================
 @admin.action(description='📊 Descargar Análisis Comercial (Unificado)')
 def exportar_analisis_unificado(modeladmin, request, queryset):
+    from .models import CatalogoMedicamento
     response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     es_individual = queryset.count() == 1
     wb = openpyxl.Workbook()
@@ -112,32 +113,47 @@ def exportar_analisis_unificado(modeladmin, request, queryset):
 
         partidas = obj.partidas.all() if es_licitacion else obj.partidas_cotizacion.all()
         for i, p in enumerate(partidas, 1):
-            med = p.medicamento
-            clave = med.clave_sector if med else 'S/C'
-            desc_completa = med.descripcion if med else 'Pendiente Registro'
-            generica = med.denominacion_generica if med else 'Pendiente Registro'
-            distintiva = med.denominacion_distintiva if med and med.denominacion_distintiva else ''
-            socio = med.socio_contacto.nombre if med and med.socio_contacto else 'Sin Laboratorio'
-            
+            med_original = p.medicamento
             cant_min = getattr(p, 'cantidad_minima', 0)
             cant_max = getattr(p, 'cantidad_maxima', getattr(p, 'cantidad', 0))
             precio = float(getattr(p, 'precio', getattr(p, 'precio_unitario', 0)))
             importe_max = cant_max * precio
+            resultado = getattr(p, 'resultado', 'Pendiente') if es_licitacion else (obj.get_estatus_display() if hasattr(obj, 'get_estatus_display') else 'Pendiente')
             
-            if es_licitacion:
-                resultado = getattr(p, 'resultado', 'Pendiente')
+            if med_original:
+                clave_buscar = med_original.clave_sector
+                meds_relacionados = CatalogoMedicamento.objects.filter(clave_sector=clave_buscar)
+                
+                if not meds_relacionados.exists():
+                    meds_relacionados = [med_original]
+                    
+                # Clonamos la fila para cada laboratorio que surte esta clave
+                for med in meds_relacionados:
+                    clave = med.clave_sector
+                    desc_completa = med.descripcion
+                    generica = med.denominacion_generica
+                    distintiva = med.denominacion_distintiva or ''
+                    socio = med.socio_contacto.nombre if med.socio_contacto else 'Sin Laboratorio'
+                    
+                    ws.append([getattr(p, 'numero_partida', i), clave, desc_completa, generica, distintiva, socio, cant_min, cant_max, precio, importe_max, resultado])
+                    
+                    r = ws.max_row
+                    for c in range(1, len(encabezados) + 1):
+                        celda = ws.cell(row=r, column=c)
+                        celda.border = borde_delgado
+                        celda.alignment = alineacion_centro
+                        if c in [9, 10]: celda.number_format = formato_moneda
+                        if c in [3, 4, 5, 6]: celda.alignment = alineacion_izq
             else:
-                resultado = obj.get_estatus_display() if hasattr(obj, 'get_estatus_display') else 'Pendiente'
-
-            ws.append([getattr(p, 'numero_partida', i), clave, desc_completa, generica, distintiva, socio, cant_min, cant_max, precio, importe_max, resultado])
-            
-            r = ws.max_row
-            for c in range(1, len(encabezados) + 1):
-                celda = ws.cell(row=r, column=c)
-                celda.border = borde_delgado
-                celda.alignment = alineacion_centro
-                if c in [9, 10]: celda.number_format = formato_moneda
-                if c in [3, 4, 5, 6]: celda.alignment = alineacion_izq
+                clave = getattr(p, 'clave_historica', 'S/C')
+                ws.append([getattr(p, 'numero_partida', i), clave, 'Pendiente Registro', 'Pendiente Registro', '', 'Sin Laboratorio', cant_min, cant_max, precio, importe_max, resultado])
+                r = ws.max_row
+                for c in range(1, len(encabezados) + 1):
+                    celda = ws.cell(row=r, column=c)
+                    celda.border = borde_delgado
+                    celda.alignment = alineacion_centro
+                    if c in [9, 10]: celda.number_format = formato_moneda
+                    if c in [3, 4, 5, 6]: celda.alignment = alineacion_izq
 
     else:
         response['Content-Disposition'] = 'attachment; filename="Analisis_Comercial_Global.xlsx"'
@@ -154,42 +170,58 @@ def exportar_analisis_unificado(modeladmin, request, queryset):
             es_licitacion = hasattr(obj, 'num_procedimiento')
             folio = getattr(obj, 'num_procedimiento', getattr(obj, 'folio', 'S/D'))
             partidas = obj.partidas.all() if hasattr(obj, 'num_procedimiento') else obj.partidas_cotizacion.all()
+            
             for i, p in enumerate(partidas, 1):
-                med = p.medicamento
-                clave = med.clave_sector if med else 'S/C'
-                desc_completa = med.descripcion if med else 'Pendiente Registro'
-                generica = med.denominacion_generica if med else 'Pendiente Registro'
-                distintiva = med.denominacion_distintiva if med and med.denominacion_distintiva else ''
-                socio = med.socio_contacto.nombre if med and med.socio_contacto else 'Sin Laboratorio'
-
+                med_original = p.medicamento
                 cant_min = getattr(p, 'cantidad_minima', 0)
                 cant_max = getattr(p, 'cantidad_maxima', getattr(p, 'cantidad', 0))
                 precio = float(getattr(p, 'precio', getattr(p, 'precio_unitario', 0)))
                 importe_max = cant_max * precio
-                
-                if es_licitacion:
-                    resultado = getattr(p, 'resultado', 'Pendiente')
-                else:
-                    resultado = obj.get_estatus_display() if hasattr(obj, 'get_estatus_display') else 'Pendiente'
+                resultado = getattr(p, 'resultado', 'Pendiente') if es_licitacion else (obj.get_estatus_display() if hasattr(obj, 'get_estatus_display') else 'Pendiente')
 
-                ws.append([folio, getattr(p, 'numero_partida', i), clave, desc_completa, generica, distintiva, socio, cant_min, cant_max, precio, importe_max, resultado])
-                r = ws.max_row
-                for c in range(1, len(encabezados) + 1):
-                    celda = ws.cell(row=r, column=c)
-                    celda.border = borde_delgado
-                    celda.alignment = alineacion_centro
-                    if c in [10, 11]: celda.number_format = formato_moneda
-                    if c in [4, 5, 6, 7]: celda.alignment = alineacion_izq
+                if med_original:
+                    clave_buscar = med_original.clave_sector
+                    meds_relacionados = CatalogoMedicamento.objects.filter(clave_sector=clave_buscar)
+                    
+                    if not meds_relacionados.exists():
+                        meds_relacionados = [med_original]
+                        
+                    for med in meds_relacionados:
+                        clave = med.clave_sector
+                        desc_completa = med.descripcion
+                        generica = med.denominacion_generica
+                        distintiva = med.denominacion_distintiva or ''
+                        socio = med.socio_contacto.nombre if med.socio_contacto else 'Sin Laboratorio'
+
+                        ws.append([folio, getattr(p, 'numero_partida', i), clave, desc_completa, generica, distintiva, socio, cant_min, cant_max, precio, importe_max, resultado])
+                        r = ws.max_row
+                        for c in range(1, len(encabezados) + 1):
+                            celda = ws.cell(row=r, column=c)
+                            celda.border = borde_delgado
+                            celda.alignment = alineacion_centro
+                            if c in [10, 11]: celda.number_format = formato_moneda
+                            if c in [4, 5, 6, 7]: celda.alignment = alineacion_izq
+                else:
+                    clave = getattr(p, 'clave_historica', 'S/C')
+                    ws.append([folio, getattr(p, 'numero_partida', i), clave, 'Pendiente Registro', 'Pendiente Registro', '', 'Sin Laboratorio', cant_min, cant_max, precio, importe_max, resultado])
+                    r = ws.max_row
+                    for c in range(1, len(encabezados) + 1):
+                        celda = ws.cell(row=r, column=c)
+                        celda.border = borde_delgado
+                        celda.alignment = alineacion_centro
+                        if c in [10, 11]: celda.number_format = formato_moneda
+                        if c in [4, 5, 6, 7]: celda.alignment = alineacion_izq
 
     wb.save(response)
     return response
 
 # ==========================================
-# 🏭 MOTOR UNIFICADO: REPORTE POR SOCIO COMERCIAL (CORREGIDO)
+# 🏭 MOTOR UNIFICADO: REPORTE POR SOCIO COMERCIAL (MULTILABORATORIO)
 # ==========================================
 @admin.action(description='🏭 Descargar Reporte Agrupado por Socios (Unificado)')
 def exportar_socios_unificado(modeladmin, request, queryset):
     from django.db.models import Sum
+    from .models import CatalogoMedicamento, Inventario
     response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     es_individual = queryset.count() == 1
     
@@ -258,59 +290,60 @@ def exportar_socios_unificado(modeladmin, request, queryset):
         partidas = obj.partidas.all() if es_licitacion else obj.partidas_cotizacion.all()
         
         for i, p in enumerate(partidas, 1):
-            med = p.medicamento
-            
-            # ¡CORRECCIÓN APLICADA AQUÍ!
-            # Ya no nos saltamos a los que no tienen medicamento.
-            
-            if med:
-                socio = med.socio_contacto.nombre if med.socio_contacto else 'Sin Laboratorio'
-                clave = med.clave_sector
-                descripcion = med.descripcion
-                generica = med.denominacion_generica
-                distintiva = med.denominacion_distintiva or ''
-                fabricante = med.fabricante or ''
-                rfc = med.rfc_fabricante or ''
-                pais = med.pais_fabricacion or ''
-                reg_san = med.num_registro_sanitario or ''
-                prorroga = med.num_prorroga or ''
-                codigo_b = med.codigo_barras or ''
-                f_exp = med.fecha_expedicion.strftime('%Y-%m-%d') if med.fecha_expedicion else ''
-                f_vig = med.fecha_vigencia.strftime('%Y-%m-%d') if med.fecha_vigencia else ''
-                
-                stock_disp = Inventario.objects.filter(medicamento=med, cantidad_disponible__gt=0).select_related('almacen')
-                total_piezas = sum(item.cantidad_disponible for item in stock_disp)
-                texto_ubic = " | ".join([f"{item.almacen.nombre if item.almacen else 'Bodega'} ({item.cantidad_disponible})" for item in stock_disp]) if stock_disp else "Sin Inventario"
-            else:
-                socio = 'Sin Laboratorio'
-                clave = getattr(p, 'clave_historica', 'S/C')
-                descripcion = 'Pendiente Registro en Catálogo'
-                generica = 'Pendiente Registro'
-                distintiva = ''
-                fabricante = ''
-                rfc = ''
-                pais = ''
-                reg_san = ''
-                prorroga = ''
-                codigo_b = ''
-                f_exp = ''
-                f_vig = ''
-                total_piezas = 0
-                texto_ubic = "N/A"
-
+            med_original = p.medicamento
             cant = getattr(p, 'cantidad_maxima', getattr(p, 'cantidad', 0))
             precio = float(getattr(p, 'precio', getattr(p, 'precio_unitario', 0)))
             costo = float(getattr(p, 'costo', 0))
             importe = cant * precio
             num_partida = getattr(p, 'numero_partida', i)
+            
+            if med_original:
+                clave_buscar = med_original.clave_sector
+                # ¡MAGIA AQUÍ!: Buscamos a TODOS los laboratorios que tengan esta clave
+                meds_relacionados = CatalogoMedicamento.objects.filter(clave_sector=clave_buscar)
+                
+                if not meds_relacionados.exists():
+                    meds_relacionados = [med_original]
+                    
+                # Clonamos la fila para cada laboratorio
+                for med in meds_relacionados:
+                    socio = med.socio_contacto.nombre if med.socio_contacto else 'Sin Laboratorio'
+                    clave = med.clave_sector
+                    descripcion = med.descripcion
+                    generica = med.denominacion_generica
+                    distintiva = med.denominacion_distintiva or ''
+                    fabricante = med.fabricante or ''
+                    rfc = med.rfc_fabricante or ''
+                    pais = med.pais_fabricacion or ''
+                    reg_san = med.num_registro_sanitario or ''
+                    prorroga = med.num_prorroga or ''
+                    codigo_b = med.codigo_barras or ''
+                    f_exp = med.fecha_expedicion.strftime('%Y-%m-%d') if med.fecha_expedicion else ''
+                    f_vig = med.fecha_vigencia.strftime('%Y-%m-%d') if med.fecha_vigencia else ''
+                    
+                    stock_disp = Inventario.objects.filter(medicamento=med, cantidad_disponible__gt=0).select_related('almacen')
+                    total_piezas = sum(item.cantidad_disponible for item in stock_disp)
+                    texto_ubic = " | ".join([f"{item.almacen.nombre if item.almacen else 'Bodega'} ({item.cantidad_disponible})" for item in stock_disp]) if stock_disp else "Sin Inventario"
 
-            filas.append([
-                socio, num_partida, clave, descripcion, generica, 
-                distintiva, fabricante, rfc, 
-                pais, reg_san, prorroga, 
-                codigo_b, f_exp, f_vig, cant, total_piezas, texto_ubic, 
-                0, costo, precio, importe
-            ])
+                    filas.append([
+                        socio, num_partida, clave, descripcion, generica, 
+                        distintiva, fabricante, rfc, 
+                        pais, reg_san, prorroga, 
+                        codigo_b, f_exp, f_vig, cant, total_piezas, texto_ubic, 
+                        0, costo, precio, importe
+                    ])
+            else:
+                socio = 'Sin Laboratorio'
+                clave = getattr(p, 'clave_historica', 'S/C')
+                descripcion = 'Pendiente Registro en Catálogo'
+                
+                filas.append([
+                    socio, num_partida, clave, descripcion, 'Pendiente Registro', 
+                    '', '', '', 
+                    '', '', '', 
+                    '', '', '', cant, 0, 'N/A', 
+                    0, costo, precio, importe
+                ])
             
     filas.sort(key=lambda x: str(x[0])) 
     
@@ -334,12 +367,8 @@ def exportar_socios_unificado(modeladmin, request, queryset):
             
             current_fab = fab
             subtotal_importe = 0
-            mostrar_fab = fab
-        else:
-            mostrar_fab = ''
             
         subtotal_importe += fila[20] 
-        fila[0] = mostrar_fab
         ws.append(fila)
         fila_actual = ws.max_row
         
@@ -1563,15 +1592,28 @@ class CotizacionAdmin(admin.ModelAdmin):
                 if not columnas or not "".join(columnas).strip() or len(columnas) < 4: continue
                 try:
                     with transaction.atomic():
-                        clave_val, descripcion_val = columnas[1].strip(), columnas[2].strip().replace('\n', ' ') 
+                        clave_val = columnas[1].strip()
+                        descripcion_val = columnas[2].strip().replace('\n', ' ') 
                         max_str = columnas[4].strip().replace(',', '').replace(' ', '') if len(columnas) >= 5 and columnas[4].strip() else columnas[3].strip().replace(',', '').replace(' ', '')
                         if not clave_val or not max_str: continue
                         cantidad_final = int(float(max_str))
-                        medicamento_db, created = CatalogoMedicamento.objects.get_or_create(clave_sector=clave_val, defaults={'descripcion': descripcion_val, 'denominacion_generica': descripcion_val, 'fabricante': ''})
-                        if created: claves_nuevas.append(clave_val)
+                        
+                        # SOLUCIÓN 1: Ya no choca si hay múltiples laboratorios con la misma clave
+                        medicamento_db = CatalogoMedicamento.objects.filter(clave_sector=clave_val).first()
+                        if not medicamento_db:
+                            medicamento_db = CatalogoMedicamento.objects.create(
+                                clave_sector=clave_val, 
+                                descripcion=descripcion_val, 
+                                denominacion_generica=descripcion_val, 
+                                fabricante=''
+                            )
+                            claves_nuevas.append(clave_val)
+                            
                         PartidaCotizacion.objects.create(cotizacion=obj, medicamento=medicamento_db, cantidad=cantidad_final, precio_unitario=0.00)
                         importes_agregados += 1
-                except Exception: continue 
+                except Exception as e: 
+                    print(f"Fila ignorada por error ({clave_val}): {e}")
+                    continue 
             if importes_agregados > 0: messages.success(request, f"¡Éxito! Se cargaron {importes_agregados} partidas.")
             if claves_nuevas: messages.warning(request, f"🔔 Se crearon {len(claves_nuevas)} CLAVES NUEVAS.")
 
