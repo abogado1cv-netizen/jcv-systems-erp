@@ -46,7 +46,7 @@ def exportar_a_csv(modeladmin, request, queryset):
     return response
 
 # ==========================================
-# 📊 MOTOR UNIFICADO: ANÁLISIS COMERCIAL EJECUTIVO (MULTILABORATORIO)
+# 📊 MOTOR UNIFICADO: ANÁLISIS COMERCIAL EJECUTIVO (CON MIN/MAX)
 # ==========================================
 @admin.action(description='📊 Descargar Análisis Comercial (Unificado)')
 def exportar_analisis_unificado(modeladmin, request, queryset):
@@ -216,7 +216,7 @@ def exportar_analisis_unificado(modeladmin, request, queryset):
     return response
 
 # ==========================================
-# 🏭 MOTOR UNIFICADO: REPORTE POR SOCIO COMERCIAL (MULTILABORATORIO)
+# 🏭 MOTOR UNIFICADO: REPORTE POR SOCIO COMERCIAL (CON MIN/MAX)
 # ==========================================
 @admin.action(description='🏭 Descargar Reporte Agrupado por Socios (Unificado)')
 def exportar_socios_unificado(modeladmin, request, queryset):
@@ -273,7 +273,8 @@ def exportar_socios_unificado(modeladmin, request, queryset):
     else:
         response['Content-Disposition'] = 'attachment; filename="Reporte_Socios_Global.xlsx"'
 
-    encabezados = ['Socio Comercial', 'Partida', 'Clave', 'Descripcion (completa) ', 'denominacion_generica', 'denominacion_distintiva', 'fabricante', 'rfc_fabricante', 'pais_fabricacion', 'num_registro_sanitario', 'num_prorroga', 'codigo_barras', 'fecha_expedicion', 'fecha_vigencia', 'Cantidad solicitada', 'Piezas en inventario', 'Ubicación del Inventario', '$ referencia', 'precio costo ', 'precio unitario', 'Importe']
+    # ¡NUEVOS ENCABEZADOS! Agregamos CANTIDAD MÍNIMA y ajustamos a MÁXIMA
+    encabezados = ['Socio Comercial', 'Partida', 'Clave', 'Descripcion (completa) ', 'denominacion_generica', 'denominacion_distintiva', 'fabricante', 'rfc_fabricante', 'pais_fabricacion', 'num_registro_sanitario', 'num_prorroga', 'codigo_barras', 'fecha_expedicion', 'fecha_vigencia', 'CANTIDAD MÍNIMA', 'CANTIDAD MÁXIMA', 'Piezas en inventario', 'Ubicación del Inventario', '$ referencia', 'precio costo ', 'precio unitario', 'IMPORTE MÁXIMO']
     ws.append(encabezados)
     fila_encabezados = ws.max_row
     
@@ -291,21 +292,20 @@ def exportar_socios_unificado(modeladmin, request, queryset):
         
         for i, p in enumerate(partidas, 1):
             med_original = p.medicamento
-            cant = getattr(p, 'cantidad_maxima', getattr(p, 'cantidad', 0))
+            cant_min = getattr(p, 'cantidad_minima', 0)
+            cant_max = getattr(p, 'cantidad_maxima', getattr(p, 'cantidad', 0))
             precio = float(getattr(p, 'precio', getattr(p, 'precio_unitario', 0)))
             costo = float(getattr(p, 'costo', 0))
-            importe = cant * precio
+            importe_max = cant_max * precio
             num_partida = getattr(p, 'numero_partida', i)
             
             if med_original:
                 clave_buscar = med_original.clave_sector
-                # ¡MAGIA AQUÍ!: Buscamos a TODOS los laboratorios que tengan esta clave
                 meds_relacionados = CatalogoMedicamento.objects.filter(clave_sector=clave_buscar)
                 
                 if not meds_relacionados.exists():
                     meds_relacionados = [med_original]
                     
-                # Clonamos la fila para cada laboratorio
                 for med in meds_relacionados:
                     socio = med.socio_contacto.nombre if med.socio_contacto else 'Sin Laboratorio'
                     clave = med.clave_sector
@@ -329,8 +329,9 @@ def exportar_socios_unificado(modeladmin, request, queryset):
                         socio, num_partida, clave, descripcion, generica, 
                         distintiva, fabricante, rfc, 
                         pais, reg_san, prorroga, 
-                        codigo_b, f_exp, f_vig, cant, total_piezas, texto_ubic, 
-                        0, costo, precio, importe
+                        codigo_b, f_exp, f_vig, 
+                        cant_min, cant_max, total_piezas, texto_ubic, 
+                        0, costo, precio, importe_max
                     ])
             else:
                 socio = 'Sin Laboratorio'
@@ -341,8 +342,9 @@ def exportar_socios_unificado(modeladmin, request, queryset):
                     socio, num_partida, clave, descripcion, 'Pendiente Registro', 
                     '', '', '', 
                     '', '', '', 
-                    '', '', '', cant, 0, 'N/A', 
-                    0, costo, precio, importe
+                    '', '', '', 
+                    cant_min, cant_max, 0, 'N/A', 
+                    0, costo, precio, importe_max
                 ])
             
     filas.sort(key=lambda x: str(x[0])) 
@@ -354,40 +356,42 @@ def exportar_socios_unificado(modeladmin, request, queryset):
         fab = fila[0]
         if current_fab != fab:
             if current_fab is not None:
-                r = ['' for _ in range(21)]
+                # Ahora son 22 columnas en lugar de 21
+                r = ['' for _ in range(22)]
                 r[0] = f'Total {current_fab}'
-                r[20] = subtotal_importe
+                r[21] = subtotal_importe
                 ws.append(r)
                 fila_subtotal = ws.max_row
-                for c in range(1, 22): 
+                for c in range(1, 23): 
                     ws.cell(row=fila_subtotal, column=c).fill = fill_subtotal
                     ws.cell(row=fila_subtotal, column=c).font = font_subtotal
                     ws.cell(row=fila_subtotal, column=c).border = borde_delgado
-                ws.cell(row=fila_subtotal, column=21).number_format = formato_moneda
+                ws.cell(row=fila_subtotal, column=22).number_format = formato_moneda
             
             current_fab = fab
             subtotal_importe = 0
             
-        subtotal_importe += fila[20] 
+        subtotal_importe += fila[21] 
         ws.append(fila)
         fila_actual = ws.max_row
         
-        for c in range(1, 22):
+        for c in range(1, 23):
             celda = ws.cell(row=fila_actual, column=c)
             celda.border = borde_delgado
-            if c in [18, 19, 20, 21]: celda.number_format = formato_moneda
+            # Aplicar formato de moneda a las últimas 4 columnas
+            if c in [19, 20, 21, 22]: celda.number_format = formato_moneda
 
     if current_fab is not None:
-        r = ['' for _ in range(21)]
+        r = ['' for _ in range(22)]
         r[0] = f'Total {current_fab}'
-        r[20] = subtotal_importe
+        r[21] = subtotal_importe
         ws.append(r)
         fila_subtotal = ws.max_row
-        for c in range(1, 22):
+        for c in range(1, 23):
             ws.cell(row=fila_subtotal, column=c).fill = fill_subtotal
             ws.cell(row=fila_subtotal, column=c).font = font_subtotal
             ws.cell(row=fila_subtotal, column=c).border = borde_delgado
-        ws.cell(row=fila_subtotal, column=21).number_format = formato_moneda
+        ws.cell(row=fila_subtotal, column=22).number_format = formato_moneda
 
     wb.save(response)
     return response
