@@ -110,11 +110,10 @@
         .items-table tr:nth-child(even) {
             background-color: #fcfcfc;
         }
-        .col-partida { width: 10%; text-align: center; }
-        /* El color de la clave ahora es dinámico */
-        .col-clave { width: 20%; text-align: center; font-weight: bold; color: {{ color_empresa|default:"#004a99" }}; }
-        .col-desc { width: 50%; text-align: left; }
-        .col-cant { width: 20%; text-align: center; }
+        .col-partida { width: 8%; text-align: center; }
+        .col-clave { width: 18%; text-align: center; font-weight: bold; color: {{ color_empresa|default:"#004a99" }}; }
+        .col-desc { width: 44%; text-align: left; }
+        .col-cant { width: 15%; text-align: center; }
 
         /* Botón Drive */
         .drive-container {
@@ -165,6 +164,8 @@
             <div class="info-box">
                 <div class="info-row"><span class="info-label">Evento #</span> {{ evento_num }}</div>
                 <div class="info-row"><span class="info-label">Dependencia:</span> {{ dependencia }}</div>
+                <!-- 🚀 AQUI AGREGAMOS LA FECHA DE APERTURA 🚀 -->
+                <div class="info-row"><span class="info-label">Apertura:</span> {{ fecha_apertura|default:"Por definir" }}</div>
                 <div class="info-row"><span class="info-label">Fecha Solicitud:</span> {{ fecha_actual }}</div>
             </div>
 
@@ -174,6 +175,8 @@
                         <th>Part.</th>
                         <th>Clave</th>
                         <th>Descripción (Sustancia Activa)</th>
+                        <!-- 🚀 AQUI AGREGAMOS EL ENCABEZADO DE CANT. MIN. 🚀 -->
+                        <th>Cant. Mín.</th>
                         <th>Cant. Máx.</th>
                     </tr>
                 </thead>
@@ -183,6 +186,8 @@
                         <td class="col-partida">{{ item.partida }}</td>
                         <td class="col-clave">{{ item.clave }}</td>
                         <td class="col-desc">{{ item.descripcion }}</td>
+                        <!-- 🚀 AQUI AGREGAMOS EL DATO DE CANT. MIN. 🚀 -->
+                        <td class="col-cant">{{ item.cantidad_minima|default:"0" }}</td>
                         <td class="col-cant">{{ item.cantidad }}</td>
                     </tr>
                     {% endfor %}

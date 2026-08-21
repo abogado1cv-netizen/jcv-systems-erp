@@ -718,6 +718,7 @@ class LicitacionAdmin(admin.ModelAdmin):
                         'partida': p.numero_partida,
                         'clave': p.medicamento.clave_sector,
                         'descripcion': p.medicamento.descripcion,
+                        'cantidad_minima': f"{p.cantidad_minima:,}" if p.cantidad_minima else "0",
                         'cantidad': f"{p.cantidad_maxima:,}" 
                     })
                 
@@ -730,6 +731,7 @@ class LicitacionAdmin(admin.ModelAdmin):
                     'socio_nombre': socio.nombre,
                     'evento_num': licitacion.num_procedimiento,
                     'dependencia': licitacion.dependencia,
+                    'fecha_apertura': f_apertura,
                     'empresa_emisora': empresa_emisora.nombre,
                     'url_logo': empresa_emisora.url_logo if hasattr(empresa_emisora, 'url_logo') and empresa_emisora.url_logo else None,
                     'color_empresa': color_empresa,
