@@ -667,16 +667,28 @@ class LicitacionAdmin(admin.ModelAdmin):
         
         licitacion = self.get_object(request, object_id)
         partidas = licitacion.partidas.all()
-        socios_dict = {}
         
-        for p in licitacion.partidas.all():
+        socios_dict = {}
+        nombre_a_id = {}
+        
+        for p in partidas:
             if not p.medicamento: continue
-            meds_relacionados = CatalogoMedicamento.objects.filter(clave_sector=p.medicamento.clave_sector)
+            medicamentos_relacionados = CatalogoMedicamento.objects.filter(clave_sector=p.medicamento.clave_sector)
             for med in medicamentos_relacionados:
                 socio = med.socio_contacto
                 if socio:
-                    if socio.id not in socios_dict: socios_dict[socio.id] = {'socio': socio, 'partidas': []}
-                    if p not in socios_dict[socio.id]['partidas']: socios_dict[socio.id]['partidas'].append(p)
+                    nombre_key = socio.nombre.strip().upper()
+                    if nombre_key not in nombre_a_id:
+                        nombre_a_id[nombre_key] = socio.id
+                        socios_dict[socio.id] = {'socio': socio, 'partidas': [], 'correos_set': set()}
+                    
+                    rep_id = nombre_a_id[nombre_key]
+                    if p not in socios_dict[rep_id]['partidas']: 
+                        socios_dict[rep_id]['partidas'].append(p)
+                        
+                    if socio.correos:
+                        for c in socio.correos.split(','):
+                            if c.strip(): socios_dict[rep_id]['correos_set'].add(c.strip())
 
         if request.method == 'POST':
             socios_seleccionados = request.POST.getlist('socios')
@@ -699,16 +711,13 @@ class LicitacionAdmin(admin.ModelAdmin):
             conexion_dinamica = get_connection()
             correos_enviados = 0
             
-            # DEFINIMOS LA FECHA AQUÍ ARRIBA PARA QUE ESTÉ DISPONIBLE PARA TODOS
             f_apertura = licitacion.fecha_apertura.strftime('%d/%m/%Y %H:%M') if licitacion.fecha_apertura else 'Por definir'
             
             for socio_id in socios_seleccionados:
                 data = socios_dict.get(int(socio_id))
                 if not data: continue
                 socio = data['socio']
-                
-                correos_raw = socio.correos if socio.correos else ""
-                destinatarios = [c.strip() for c in correos_raw.split(',') if c.strip()]
+                destinatarios = list(data['correos_set'])
                 if not destinatarios:
                     messages.warning(request, f"⚠️ Saltado: {socio.nombre} no tiene un correo válido.")
                     continue
@@ -1648,19 +1657,34 @@ class CotizacionAdmin(admin.ModelAdmin):
     def notificar_socios_view(self, request, object_id):
         from django.template.loader import render_to_string
         from django.utils.html import strip_tags
+        from django.conf import settings
         
         try: cotizacion = Cotizacion.objects.get(id=object_id)
         except Cotizacion.DoesNotExist: return redirect('admin:licitaciones_cotizacion_changelist')
             
         socios_dict = {}
+        nombre_a_id = {}
+        
         for p in cotizacion.partidas_cotizacion.all():
             if not p.medicamento: continue
             meds_relacionados = CatalogoMedicamento.objects.filter(clave_sector=p.medicamento.clave_sector)
             for med in meds_relacionados:
                 socio = med.socio_contacto
-            if socio:
-                if socio.id not in socios_dict: socios_dict[socio.id] = {'socio': socio, 'partidas': []}
-                if p not in socios_dict[socio.id]['partidas']: socios_dict[socio.id]['partidas'].append(p)
+                if socio:
+                    # Agrupar por nombre exacto para fusionar duplicados
+                    nombre_key = socio.nombre.strip().upper()
+                    if nombre_key not in nombre_a_id:
+                        nombre_a_id[nombre_key] = socio.id
+                        socios_dict[socio.id] = {'socio': socio, 'partidas': [], 'correos_set': set()}
+                    
+                    rep_id = nombre_a_id[nombre_key]
+                    
+                    if p not in socios_dict[rep_id]['partidas']: 
+                        socios_dict[rep_id]['partidas'].append(p)
+                        
+                    if socio.correos:
+                        for c in socio.correos.split(','):
+                            if c.strip(): socios_dict[rep_id]['correos_set'].add(c.strip())
 
         if request.method == 'POST':
             socios_seleccionados = request.POST.getlist('socios')
@@ -1676,18 +1700,29 @@ class CotizacionAdmin(admin.ModelAdmin):
             conexion_dinamica = get_connection()
             correos_enviados = 0
             
+            f_apertura = cotizacion.fecha_apertura.strftime('%d/%m/%Y %H:%M') if cotizacion.fecha_apertura else 'Por definir'
+            
             for s_id in socios_seleccionados:
                 data = socios_dict.get(int(s_id))
                 if not data: continue
                 socio = data['socio']
-                destinatarios = [c.strip() for c in (socio.correos or "").split(',') if c.strip()]
+                destinatarios = list(data['correos_set'])
                 if not destinatarios: continue
                 
                 color_empresa = "#8B0000" if "SAGO" in nombre_empresa_up else ("#005b96" if "GAMS" in nombre_empresa_up else ("#218838" if "GSM" in nombre_empresa_up else "#3498db"))
-                items = [{'partida': i+1, 'clave': p.medicamento.clave_sector, 'descripcion': p.medicamento.denominacion_generica, 'cantidad': f"{p.cantidad:,}"} for i, p in enumerate(data['partidas'])]
+                
+                items = [{'partida': i+1, 'clave': p.medicamento.clave_sector, 'descripcion': p.medicamento.denominacion_generica, 'cantidad_minima': "0", 'cantidad': f"{p.cantidad:,}"} for i, p in enumerate(data['partidas'])]
+                
                 ctx = {
-                    'socio_nombre': socio.nombre, 'evento_num': cotizacion.folio, 'dependencia': self.cliente_visual(cotizacion), 'empresa_emisora': empresa_emisora.nombre,
-                    'url_logo': empresa_emisora.url_logo if hasattr(empresa_emisora, 'url_logo') else None, 'color_empresa': color_empresa, 'fecha_actual': timezone.now().strftime('%d/%m/%Y'), 'items': items
+                    'socio_nombre': socio.nombre, 
+                    'evento_num': cotizacion.folio, 
+                    'dependencia': self.cliente_visual(cotizacion), 
+                    'fecha_apertura': f_apertura,
+                    'empresa_emisora': empresa_emisora.nombre,
+                    'url_logo': empresa_emisora.url_logo if hasattr(empresa_emisora, 'url_logo') else None, 
+                    'color_empresa': color_empresa, 
+                    'fecha_actual': timezone.now().strftime('%d/%m/%Y'), 
+                    'items': items
                 }
                 
                 html_content = render_to_string('admin/licitaciones/licitacion/emails/cotizacion_email.html', ctx)
