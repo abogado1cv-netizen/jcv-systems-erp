@@ -699,6 +699,9 @@ class LicitacionAdmin(admin.ModelAdmin):
             conexion_dinamica = get_connection()
             correos_enviados = 0
             
+            # DEFINIMOS LA FECHA AQUÍ ARRIBA PARA QUE ESTÉ DISPONIBLE PARA TODOS
+            f_apertura = licitacion.fecha_apertura.strftime('%d/%m/%Y %H:%M') if licitacion.fecha_apertura else 'Por definir'
+            
             for socio_id in socios_seleccionados:
                 data = socios_dict.get(int(socio_id))
                 if not data: continue
