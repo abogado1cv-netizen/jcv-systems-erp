@@ -1711,7 +1711,7 @@ class CotizacionAdmin(admin.ModelAdmin):
                 
                 color_empresa = "#8B0000" if "SAGO" in nombre_empresa_up else ("#005b96" if "GAMS" in nombre_empresa_up else ("#218838" if "GSM" in nombre_empresa_up else "#3498db"))
                 
-                items = [{'partida': i+1, 'clave': p.medicamento.clave_sector, 'descripcion': p.medicamento.denominacion_generica, 'cantidad_minima': "0", 'cantidad': f"{p.cantidad:,}"} for i, p in enumerate(data['partidas'])]
+                items = [{'partida': i+1, 'clave': p.medicamento.clave_sector, 'descripcion': p.medicamento.descripcion or p.medicamento.denominacion_generica or "Sin descripción registrada", 'cantidad_minima': "0", 'cantidad': f"{p.cantidad:,}"} for i, p in enumerate(data['partidas'])]
                 
                 ctx = {
                     'socio_nombre': socio.nombre, 
