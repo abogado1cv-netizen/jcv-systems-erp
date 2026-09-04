@@ -990,8 +990,17 @@ class ClaveContratoInline(admin.TabularInline):
 
 class EmpresaSeguraWidget(ForeignKeyWidget):
     def clean(self, value, row=None, **kwargs):
-        if value: value = str(value).strip()
-        return super().clean(value, row, **kwargs)
+        if not value or str(value).strip() in ['', 'None', 'N/A', 'NA']: 
+            return None
+            
+        nombre_empresa = str(value).strip()
+        
+        # Magia: Si la empresa (ej. NOVAG) no existe, la crea al vuelo.
+        empresa, creado = self.model.objects.get_or_create(
+            nombre=nombre_empresa,
+            defaults={'servidor_correo': 'smtp.resend.com'}
+        )
+        return empresa
 
 class LicitacionOpcionalWidget(ForeignKeyWidget):
     def clean(self, value, row=None, **kwargs):
@@ -1009,21 +1018,23 @@ class CargaMaestraContratoResource(resources.ModelResource):
         import_id_fields = ('numero_contrato',)
         skip_unchanged = False
 
+    # 🧠 NUEVO TRADUCTOR MAESTRO: Traduce los encabezados de tu Excel antes de empezar
+    def before_import(self, dataset, using_transactions, dry_run, **kwargs):
+        nuevos_encabezados = []
+        for h in dataset.headers:
+            h_upper = str(h).strip().upper()
+            if h_upper in ['RAZON SOCIAL', 'EMPRESA']: nuevos_encabezados.append('empresa')
+            elif h_upper == 'EVENTO': nuevos_encabezados.append('licitacion')
+            elif h_upper in ['CONTRATO', 'REG SAI']: nuevos_encabezados.append('numero_contrato')
+            elif h_upper == 'DEPENDENCIA': nuevos_encabezados.append('dependencia')
+            elif h_upper in ['FECHA DE TERMINACION', 'FECHA FIN']: nuevos_encabezados.append('fecha_fin')
+            else: nuevos_encabezados.append(h) # Mantenemos CLAVE, PRECIO NETO, etc.
+        dataset.headers = nuevos_encabezados
+
     def before_import_row(self, row, **kwargs):
         for key in list(row.keys()):
             if isinstance(row[key], str):
                 row[key] = row[key].strip()
-                
-        # Traductor Inteligente: Entiende tu formato exacto
-        for key in list(row.keys()):
-            k_upper = str(key).strip().upper()
-            val = row[key]
-            
-            if k_upper in ['RAZON SOCIAL', 'EMPRESA']: row['empresa'] = str(val).strip() if val else None
-            elif k_upper == 'EVENTO': row['licitacion'] = str(val).strip() if val else None
-            elif k_upper in ['CONTRATO', 'REG SAI']: row['numero_contrato'] = str(val).strip() if val else None
-            elif k_upper == 'DEPENDENCIA': row['dependencia'] = str(val).strip() if val else 'S/D'
-            elif k_upper in ['FECHA DE TERMINACION', 'FECHA FIN']: row['fecha_fin'] = str(val).strip() if val else None
 
         lic_str = row.get('licitacion')
         dep_str = row.get('dependencia', 'S/D')
@@ -1089,6 +1100,7 @@ class CargaMaestraContratoResource(resources.ModelResource):
                         'piezas_vigentes_pendientes': vigentes
                     }
                 )
+
 @admin.register(Contrato)
 class ContratoAdmin(ImportExportModelAdmin): 
     resource_class = CargaMaestraContratoResource 
