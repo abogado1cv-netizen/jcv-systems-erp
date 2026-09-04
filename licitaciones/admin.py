@@ -1112,7 +1112,7 @@ class CargaMaestraContratoResource(resources.ModelResource):
                     }
                 )
 
-
+@admin.register(Contrato)
 class ContratoAdmin(ImportExportModelAdmin): 
     resource_class = CargaMaestraContratoResource 
     
@@ -1203,7 +1203,6 @@ class ContratoAdmin(ImportExportModelAdmin):
         if total_multas > 0: return format_html('<span style="color: #dc3545; font-weight: bold;">- ${}</span>', f"{total_multas:,.2f}")
         return mark_safe('<span style="color: #28a745; font-weight: bold;">$0.00</span>')
     monto_penalizado.short_description = "Penalizaciones"
-
 # ==========================================
 # RECURSOS LOGÍSTICOS
 # ==========================================
