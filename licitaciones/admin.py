@@ -966,15 +966,24 @@ class ClaveContratoInline(admin.TabularInline):
     model = ClaveContrato
     extra = 0
     autocomplete_fields = ['medicamento']
-    fields = ('medicamento', 'cantidad_minima', 'cantidad_maxima', 'precio_neto', 'piezas_historicas_solicitadas', 'piezas_historicas_entregadas', 'importe_maximo')
-    readonly_fields = ('importe_maximo',)
+    # Mostramos los datos fijos más los campos calculados automáticamente (Inteligencia de Negocios)
+    fields = ('medicamento', 'cantidad_maxima', 'precio_neto', 'piezas_historicas_solicitadas', 'piezas_historicas_entregadas', 'piezas_incumplidas_visual', 'avance_visual', 'monto_pendiente_visual')
+    readonly_fields = ('piezas_incumplidas_visual', 'avance_visual', 'monto_pendiente_visual')
 
-    def importe_maximo(self, obj):
-        if obj.cantidad_maxima and obj.precio_neto:
-            total = obj.cantidad_maxima * obj.precio_neto
-            return format_html('<b>${}</b>', f"{total:,.2f}")
-        return "$0.00"
-    importe_maximo.short_description = "Importe Máx."
+    def piezas_incumplidas_visual(self, obj):
+        inc = obj.piezas_incumplidas
+        if inc > 0: return format_html('<b style="color: #dc3545;">{}</b>', f"{inc:,}")
+        return "-"
+    piezas_incumplidas_visual.short_description = "Incumplidas"
+
+    def avance_visual(self, obj):
+        color = 'green' if obj.avance_contrato >= 95 else ('orange' if obj.avance_contrato >= 70 else 'red')
+        return format_html('<b style="color: {};">{}%</b>', color, obj.avance_contrato)
+    avance_visual.short_description = "% Avance"
+
+    def monto_pendiente_visual(self, obj):
+        return format_html('<b style="color: #5e35b1;">${}</b>', f"{obj.monto_pendiente_emitir:,.2f}")
+    monto_pendiente_visual.short_description = "Pendiente ($)"
 
 class EmpresaSeguraWidget(ForeignKeyWidget):
     def clean(self, value, row=None, **kwargs):
@@ -998,39 +1007,36 @@ class CargaMaestraContratoResource(resources.ModelResource):
         import_id_fields = ('numero_contrato',)
         skip_unchanged = False
 
+    # 1️⃣ EL TRADUCTOR (Se ejecuta ANTES de guardar el contrato)
     def before_import_row(self, row, **kwargs):
+        # Limpiamos espacios basura de las llaves del Excel
         for key in list(row.keys()):
             if isinstance(row[key], str):
                 row[key] = row[key].strip()
                 
+        # Mapeo Inteligente: Traduce las columnas de TU Excel a lo que Django entiende
         for key in list(row.keys()):
-            k_lower = str(key).strip().lower()
+            k_upper = str(key).strip().upper()
             val = row[key]
             
-            if k_lower == 'empresa': row[key] = str(val).strip() if val else None
-            elif k_lower == 'licitacion': row[key] = str(val).strip() if val else None
-            elif k_lower in ['fecha_inicio', 'fecha_fin']:
-                if str(val).strip() in ['', 'None', 'N/A', 'NA']: row[key] = None
+            if k_upper == 'RAZON SOCIAL': row['empresa'] = str(val).strip() if val else None
+            elif k_upper == 'EVENTO': row['licitacion'] = str(val).strip() if val else None
+            elif k_upper == 'CONTRATO': row['numero_contrato'] = str(val).strip() if val else None
+            elif k_upper == 'DEPENDENCIA': row['dependencia'] = str(val).strip() if val else 'S/D'
 
-        lic_str = None
-        dep_str = 'S/D'
-        for key, val in row.items():
-            k_lower = str(key).strip().lower()
-            if k_lower == 'licitacion':
-                lic_str = str(val).strip() if val else None
-            if k_lower == 'dependencia':
-                dep_str = str(val).strip() if val else 'S/D'
-
+        # Creación "Al Vuelo" de Licitaciones si el evento no existía en el sistema
+        lic_str = row.get('licitacion')
+        dep_str = row.get('dependencia', 'S/D')
+        
         if lic_str:
             lic_obj = Licitacion.objects.filter(num_procedimiento=lic_str).first()
             if not lic_obj:
-                Licitacion.objects.bulk_create([
-                    Licitacion(num_procedimiento=lic_str, dependencia=dep_str)
-                ])
+                Licitacion.objects.create(num_procedimiento=lic_str, dependencia=dep_str)
 
+        # Creación "Al Vuelo" de Medicamentos si la clave no estaba en el catálogo
         clave_sec = None
         for key, val in row.items():
-            if str(key).strip().lower() == 'clave_sector':
+            if str(key).strip().upper() == 'CLAVE':
                 clave_sec = str(val).strip() if val else None
                 break
 
@@ -1039,39 +1045,41 @@ class CargaMaestraContratoResource(resources.ModelResource):
             if not medicamento:
                 CatalogoMedicamento.objects.create(
                     clave_sector=clave_sec,
-                    descripcion='Agregado por carga de Contrato', 
+                    descripcion='Agregada por carga de Contrato', 
                     denominacion_generica='PENDIENTE ASIGNAR MARCA'
                 )
 
+    # 2️⃣ EL INYECTOR DE PARTIDAS (Se ejecuta DESPUÉS de guardar la carátula del contrato)
     def after_import_row(self, row, row_result, **kwargs):
         if kwargs.get('dry_run'):
             return 
             
-        num_contrato = None
+        num_contrato = row.get('numero_contrato')
         clave_sec = None
         cant_min, cant_max, precio = 0, 0, 0.0
         hist_sol, hist_ent = 0, 0
         
+        # Leemos las columnas que corresponden a las Partidas del Contrato
         for key, val in row.items():
-            k_lower = str(key).strip().lower()
-            if k_lower == 'numero_contrato': num_contrato = str(val).strip() if val else None
-            elif k_lower == 'clave_sector': clave_sec = str(val).strip() if val else None
-            elif k_lower == 'cantidad_minima':
+            k_upper = str(key).strip().upper()
+            if k_upper == 'CLAVE': clave_sec = str(val).strip() if val else None
+            elif k_upper == 'CANTIDAD MINIMA ASIGNADA':
                 try: cant_min = int(float(val or 0))
                 except: cant_min = 0
-            elif k_lower == 'cantidad_maxima':
+            elif k_upper == 'CANTIDAD MAXIMA ASIGNADA':
                 try: cant_max = int(float(val or 0))
                 except: cant_max = 0
-            elif k_lower == 'precio_neto':
+            elif k_upper == 'PRECIO NETO':
                 try: precio = float(val or 0.0)
                 except: precio = 0.0
-            elif k_lower == 'piezas_historicas_solicitadas':
+            elif k_upper == 'CANTIDAD EJERCIDA':
                 try: hist_sol = int(float(val or 0))
                 except: hist_sol = 0
-            elif k_lower == 'piezas_historicas_entregadas':
+            elif k_upper == 'CANTIDAD ENTREGADA':
                 try: hist_ent = int(float(val or 0))
                 except: hist_ent = 0
                 
+        # Inyectamos la partida al Contrato recién creado
         if num_contrato and clave_sec:
             contrato_obj = Contrato.objects.filter(numero_contrato=num_contrato).first()
             med_obj = CatalogoMedicamento.objects.filter(clave_sector=clave_sec).first()

@@ -346,8 +346,10 @@ class ClaveContrato(models.Model):
     cantidad_minima = models.IntegerField(default=0, verbose_name="Cant. Mínima")
     cantidad_maxima = models.IntegerField(default=0, verbose_name="Cant. Máxima")
     precio_neto = models.DecimalField(max_digits=10, decimal_places=2, default=0.00, verbose_name="Precio Neto")
-    piezas_historicas_solicitadas = models.IntegerField(default=0, verbose_name="Histórico Solicitado")
-    piezas_historicas_entregadas = models.IntegerField(default=0, verbose_name="Histórico Entregado")
+    
+    # Estos son los datos que subirás por Excel o llenarás a mano
+    piezas_historicas_solicitadas = models.IntegerField(default=0, verbose_name="Cant. Ejercida (Solicitada)")
+    piezas_historicas_entregadas = models.IntegerField(default=0, verbose_name="Cant. Entregada (Real)")
     
     class Meta:
         verbose_name = "Clave Asignada"
@@ -355,6 +357,49 @@ class ClaveContrato(models.Model):
 
     def __str__(self):
         return f"{self.medicamento.clave_sector} - {self.contrato.numero_contrato}"
+
+    # ==========================================
+    # 🧠 INTELIGENCIA DEL CONTRATO (CÁLCULOS AUTOMÁTICOS)
+    # ==========================================
+    
+    @property
+    def total_cant_min(self):
+        """Total Moneda: Cantidad Mínima * Precio Neto"""
+        return float(self.cantidad_minima) * float(self.precio_neto)
+        
+    @property
+    def total_cant_max(self):
+        """Total Moneda / Monto Asignado: Cantidad Máxima * Precio Neto"""
+        return float(self.cantidad_maxima) * float(self.precio_neto)
+        
+    @property
+    def piezas_incumplidas(self):
+        """Piezas Solicitadas que NO se entregaron (Ejercidas - Entregadas)"""
+        faltantes = self.piezas_historicas_solicitadas - self.piezas_historicas_entregadas
+        return faltantes if faltantes > 0 else 0
+        
+    @property
+    def piezas_faltantes_100(self):
+        """Piezas que el cliente aún puede pedir (Máxima - Ejercida)"""
+        faltantes = self.cantidad_maxima - self.piezas_historicas_solicitadas
+        return faltantes if faltantes > 0 else 0
+        
+    @property
+    def avance_contrato(self):
+        """Porcentaje (%): Entregado vs Máximo del contrato"""
+        if self.cantidad_maxima == 0: return 0.0
+        return round((self.piezas_historicas_entregadas / float(self.cantidad_maxima)) * 100, 2)
+        
+    @property
+    def abasto_contrato(self):
+        """Nivel de Servicio (%): Entregado vs Solicitado (Ejercido)"""
+        if self.piezas_historicas_solicitadas == 0: return 0.0
+        return round((self.piezas_historicas_entregadas / float(self.piezas_historicas_solicitadas)) * 100, 2)
+        
+    @property
+    def monto_pendiente_emitir(self):
+        """Dinero Faltante: Piezas que faltan para el 100% * Precio Neto"""
+        return self.piezas_faltantes_100 * float(self.precio_neto)
 
 class OrdenSuministro(models.Model):
     TIPO_CHOICES = [
