@@ -966,14 +966,17 @@ class ClaveContratoInline(admin.TabularInline):
     model = ClaveContrato
     extra = 0
     autocomplete_fields = ['medicamento']
-    # Mostramos los datos fijos más los campos calculados automáticamente (Inteligencia de Negocios)
-    fields = ('medicamento', 'cantidad_maxima', 'precio_neto', 'piezas_historicas_solicitadas', 'piezas_historicas_entregadas', 'piezas_incumplidas_visual', 'avance_visual', 'monto_pendiente_visual')
+    fields = (
+        'medicamento', 'cantidad_maxima', 'cantidad_ampliada', 'precio_neto', 
+        'piezas_historicas_solicitadas', 'piezas_historicas_entregadas', 'piezas_vigentes_pendientes',
+        'piezas_incumplidas_visual', 'avance_visual', 'monto_pendiente_visual'
+    )
     readonly_fields = ('piezas_incumplidas_visual', 'avance_visual', 'monto_pendiente_visual')
 
     def piezas_incumplidas_visual(self, obj):
         inc = obj.piezas_incumplidas
         if inc > 0: return format_html('<b style="color: #dc3545;">{}</b>', f"{inc:,}")
-        return "-"
+        return mark_safe('<b style="color: #28a745;">0</b>')
     piezas_incumplidas_visual.short_description = "Incumplidas"
 
     def avance_visual(self, obj):
@@ -998,42 +1001,37 @@ class LicitacionOpcionalWidget(ForeignKeyWidget):
 class CargaMaestraContratoResource(resources.ModelResource):
     empresa = fields.Field(column_name='empresa', attribute='empresa', widget=EmpresaSeguraWidget(Empresa, field='nombre'))
     licitacion = fields.Field(column_name='licitacion', attribute='licitacion_origen', widget=LicitacionOpcionalWidget(Licitacion, field='num_procedimiento'))
-    fecha_inicio = fields.Field(column_name='fecha_inicio', attribute='fecha_inicio', widget=DateWidget(format='%Y-%m-%d'))
     fecha_fin = fields.Field(column_name='fecha_fin', attribute='fecha_fin', widget=DateWidget(format='%Y-%m-%d'))
 
     class Meta:
         model = Contrato
-        fields = ('numero_contrato', 'dependencia', 'empresa', 'fecha_inicio', 'fecha_fin', 'licitacion')
+        fields = ('numero_contrato', 'dependencia', 'empresa', 'fecha_fin', 'licitacion')
         import_id_fields = ('numero_contrato',)
         skip_unchanged = False
 
-    # 1️⃣ EL TRADUCTOR (Se ejecuta ANTES de guardar el contrato)
     def before_import_row(self, row, **kwargs):
-        # Limpiamos espacios basura de las llaves del Excel
         for key in list(row.keys()):
             if isinstance(row[key], str):
                 row[key] = row[key].strip()
                 
-        # Mapeo Inteligente: Traduce las columnas de TU Excel a lo que Django entiende
+        # Traductor Inteligente: Entiende tu formato exacto
         for key in list(row.keys()):
             k_upper = str(key).strip().upper()
             val = row[key]
             
-            if k_upper == 'RAZON SOCIAL': row['empresa'] = str(val).strip() if val else None
+            if k_upper in ['RAZON SOCIAL', 'EMPRESA']: row['empresa'] = str(val).strip() if val else None
             elif k_upper == 'EVENTO': row['licitacion'] = str(val).strip() if val else None
-            elif k_upper == 'CONTRATO': row['numero_contrato'] = str(val).strip() if val else None
+            elif k_upper in ['CONTRATO', 'REG SAI']: row['numero_contrato'] = str(val).strip() if val else None
             elif k_upper == 'DEPENDENCIA': row['dependencia'] = str(val).strip() if val else 'S/D'
+            elif k_upper in ['FECHA DE TERMINACION', 'FECHA FIN']: row['fecha_fin'] = str(val).strip() if val else None
 
-        # Creación "Al Vuelo" de Licitaciones si el evento no existía en el sistema
         lic_str = row.get('licitacion')
         dep_str = row.get('dependencia', 'S/D')
-        
         if lic_str:
             lic_obj = Licitacion.objects.filter(num_procedimiento=lic_str).first()
             if not lic_obj:
                 Licitacion.objects.create(num_procedimiento=lic_str, dependencia=dep_str)
 
-        # Creación "Al Vuelo" de Medicamentos si la clave no estaba en el catálogo
         clave_sec = None
         for key, val in row.items():
             if str(key).strip().upper() == 'CLAVE':
@@ -1043,60 +1041,54 @@ class CargaMaestraContratoResource(resources.ModelResource):
         if clave_sec:
             medicamento = CatalogoMedicamento.objects.filter(clave_sector=clave_sec).first()
             if not medicamento:
-                CatalogoMedicamento.objects.create(
-                    clave_sector=clave_sec,
-                    descripcion='Agregada por carga de Contrato', 
-                    denominacion_generica='PENDIENTE ASIGNAR MARCA'
-                )
+                CatalogoMedicamento.objects.create(clave_sector=clave_sec, descripcion='Agregada por Contrato', denominacion_generica='PENDIENTE ASIGNAR')
 
-    # 2️⃣ EL INYECTOR DE PARTIDAS (Se ejecuta DESPUÉS de guardar la carátula del contrato)
     def after_import_row(self, row, row_result, **kwargs):
-        if kwargs.get('dry_run'):
-            return 
+        if kwargs.get('dry_run'): return 
             
         num_contrato = row.get('numero_contrato')
         clave_sec = None
-        cant_min, cant_max, precio = 0, 0, 0.0
-        hist_sol, hist_ent = 0, 0
+        cant_max, ampliacion, precio = 0, 0, 0.0
+        hist_sol, hist_ent, vigentes = 0, 0, 0
         
-        # Leemos las columnas que corresponden a las Partidas del Contrato
         for key, val in row.items():
             k_upper = str(key).strip().upper()
             if k_upper == 'CLAVE': clave_sec = str(val).strip() if val else None
-            elif k_upper == 'CANTIDAD MINIMA ASIGNADA':
-                try: cant_min = int(float(val or 0))
-                except: cant_min = 0
             elif k_upper == 'CANTIDAD MAXIMA ASIGNADA':
                 try: cant_max = int(float(val or 0))
                 except: cant_max = 0
+            elif k_upper == '20% AMPLIACION':
+                try: ampliacion = int(float(val or 0))
+                except: ampliacion = 0
             elif k_upper == 'PRECIO NETO':
                 try: precio = float(val or 0.0)
                 except: precio = 0.0
             elif k_upper == 'CANTIDAD EJERCIDA':
                 try: hist_sol = int(float(val or 0))
                 except: hist_sol = 0
-            elif k_upper == 'CANTIDAD ENTREGADA':
+            elif k_upper in ['CANTIDAD ENTREGADA', 'CANTIDAD ENTREGADO']:
                 try: hist_ent = int(float(val or 0))
                 except: hist_ent = 0
+            elif 'ORDENES VIGENTES' in k_upper:
+                try: vigentes = int(float(val or 0))
+                except: vigentes = 0
                 
-        # Inyectamos la partida al Contrato recién creado
         if num_contrato and clave_sec:
             contrato_obj = Contrato.objects.filter(numero_contrato=num_contrato).first()
             med_obj = CatalogoMedicamento.objects.filter(clave_sector=clave_sec).first()
             
             if contrato_obj and med_obj:
                 ClaveContrato.objects.update_or_create(
-                    contrato=contrato_obj,
-                    medicamento=med_obj,
+                    contrato=contrato_obj, medicamento=med_obj,
                     defaults={
-                        'cantidad_minima': cant_min,
                         'cantidad_maxima': cant_max,
+                        'cantidad_ampliada': ampliacion,
                         'precio_neto': precio,
                         'piezas_historicas_solicitadas': hist_sol,
-                        'piezas_historicas_entregadas': hist_ent
+                        'piezas_historicas_entregadas': hist_ent,
+                        'piezas_vigentes_pendientes': vigentes
                     }
                 )
-
 @admin.register(Contrato)
 class ContratoAdmin(ImportExportModelAdmin): 
     resource_class = CargaMaestraContratoResource 

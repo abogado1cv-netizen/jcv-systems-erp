@@ -347,9 +347,11 @@ class ClaveContrato(models.Model):
     cantidad_maxima = models.IntegerField(default=0, verbose_name="Cant. Máxima")
     precio_neto = models.DecimalField(max_digits=10, decimal_places=2, default=0.00, verbose_name="Precio Neto")
     
-    # Estos son los datos que subirás por Excel o llenarás a mano
-    piezas_historicas_solicitadas = models.IntegerField(default=0, verbose_name="Cant. Ejercida (Solicitada)")
-    piezas_historicas_entregadas = models.IntegerField(default=0, verbose_name="Cant. Entregada (Real)")
+    # NUEVOS CAMPOS CARGADOS POR EXCEL
+    cantidad_ampliada = models.IntegerField(default=0, verbose_name="Piezas de Ampliación (20%)")
+    piezas_historicas_solicitadas = models.IntegerField(default=0, verbose_name="Cant. Ejercida")
+    piezas_historicas_entregadas = models.IntegerField(default=0, verbose_name="Cant. Entregada")
+    piezas_vigentes_pendientes = models.IntegerField(default=0, verbose_name="Órdenes Vigentes Pendientes")
     
     class Meta:
         verbose_name = "Clave Asignada"
@@ -359,46 +361,45 @@ class ClaveContrato(models.Model):
         return f"{self.medicamento.clave_sector} - {self.contrato.numero_contrato}"
 
     # ==========================================
-    # 🧠 INTELIGENCIA DEL CONTRATO (CÁLCULOS AUTOMÁTICOS)
+    # 🧠 INTELIGENCIA: FÓRMULAS EXACTAS DE GOBIERNO
     # ==========================================
-    
     @property
-    def total_cant_min(self):
-        """Total Moneda: Cantidad Mínima * Precio Neto"""
-        return float(self.cantidad_minima) * float(self.precio_neto)
-        
+    def cantidad_maxima_total(self):
+        """Cant Max Original + El 20% de Ampliación"""
+        return self.cantidad_maxima + self.cantidad_ampliada
+
     @property
-    def total_cant_max(self):
-        """Total Moneda / Monto Asignado: Cantidad Máxima * Precio Neto"""
-        return float(self.cantidad_maxima) * float(self.precio_neto)
+    def monto_asignado(self):
+        """MONTO ASIGNADO (Máximo Total * Precio Neto)"""
+        return float(self.cantidad_maxima_total) * float(self.precio_neto)
         
     @property
     def piezas_incumplidas(self):
-        """Piezas Solicitadas que NO se entregaron (Ejercidas - Entregadas)"""
-        faltantes = self.piezas_historicas_solicitadas - self.piezas_historicas_entregadas
+        """Lo que ya te pidieron, no has entregado y YA SE VENCIÓ"""
+        faltantes = self.piezas_historicas_solicitadas - self.piezas_historicas_entregadas - self.piezas_vigentes_pendientes
         return faltantes if faltantes > 0 else 0
         
     @property
     def piezas_faltantes_100(self):
-        """Piezas que el cliente aún puede pedir (Máxima - Ejercida)"""
-        faltantes = self.cantidad_maxima - self.piezas_historicas_solicitadas
+        """Lo que la dependencia todavía tiene derecho a pedirte"""
+        faltantes = self.cantidad_maxima_total - self.piezas_historicas_solicitadas
         return faltantes if faltantes > 0 else 0
         
     @property
     def avance_contrato(self):
-        """Porcentaje (%): Entregado vs Máximo del contrato"""
-        if self.cantidad_maxima == 0: return 0.0
-        return round((self.piezas_historicas_entregadas / float(self.cantidad_maxima)) * 100, 2)
+        """% AVANCE DE CONTRATO"""
+        if self.cantidad_maxima_total == 0: return 0.0
+        return round((self.piezas_historicas_entregadas / float(self.cantidad_maxima_total)) * 100, 2)
         
     @property
     def abasto_contrato(self):
-        """Nivel de Servicio (%): Entregado vs Solicitado (Ejercido)"""
+        """% ABASTO DE CONTRATO"""
         if self.piezas_historicas_solicitadas == 0: return 0.0
         return round((self.piezas_historicas_entregadas / float(self.piezas_historicas_solicitadas)) * 100, 2)
         
     @property
     def monto_pendiente_emitir(self):
-        """Dinero Faltante: Piezas que faltan para el 100% * Precio Neto"""
+        """MONTO PENDIENTE POR EMITIR"""
         return self.piezas_faltantes_100 * float(self.precio_neto)
 
 class OrdenSuministro(models.Model):
