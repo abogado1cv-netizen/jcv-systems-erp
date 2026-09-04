@@ -1018,8 +1018,8 @@ class CargaMaestraContratoResource(resources.ModelResource):
         import_id_fields = ('numero_contrato',)
         skip_unchanged = False
 
-    # 🧠 NUEVO TRADUCTOR MAESTRO: Traduce los encabezados de tu Excel antes de empezar
-    def before_import(self, dataset, using_transactions, dry_run, **kwargs):
+    # Corrección Error 1: Ajuste de parámetros
+    def before_import(self, dataset, **kwargs):
         nuevos_encabezados = []
         for h in dataset.headers:
             h_upper = str(h).strip().upper()
@@ -1028,7 +1028,7 @@ class CargaMaestraContratoResource(resources.ModelResource):
             elif h_upper in ['CONTRATO', 'REG SAI']: nuevos_encabezados.append('numero_contrato')
             elif h_upper == 'DEPENDENCIA': nuevos_encabezados.append('dependencia')
             elif h_upper in ['FECHA DE TERMINACION', 'FECHA FIN']: nuevos_encabezados.append('fecha_fin')
-            else: nuevos_encabezados.append(h) # Mantenemos CLAVE, PRECIO NETO, etc.
+            else: nuevos_encabezados.append(h)
         dataset.headers = nuevos_encabezados
 
     def before_import_row(self, row, **kwargs):
@@ -1053,6 +1053,17 @@ class CargaMaestraContratoResource(resources.ModelResource):
             medicamento = CatalogoMedicamento.objects.filter(clave_sector=clave_sec).first()
             if not medicamento:
                 CatalogoMedicamento.objects.create(clave_sector=clave_sec, descripcion='Agregada por Contrato', denominacion_generica='PENDIENTE ASIGNAR')
+
+    # Corrección Error 2: Evitar chocar con la base de datos al crear el Contrato
+    def skip_row(self, instance, original, row, import_validation_errors=None):
+        # El sistema default falla si no ignoramos manualmente el "choque"
+        # Le decimos: "No te preocupes por la carátula, déjame que yo meta la Partida en el after_import_row"
+        return False
+
+    def get_or_init_instance(self, instance_loader, row):
+        # Si el contrato ya existe, lo usamos. Si no, creamos la estructura base.
+        instance, created = super().get_or_init_instance(instance_loader, row)
+        return instance, created
 
     def after_import_row(self, row, row_result, **kwargs):
         if kwargs.get('dry_run'): return 
@@ -1101,7 +1112,7 @@ class CargaMaestraContratoResource(resources.ModelResource):
                     }
                 )
 
-@admin.register(Contrato)
+
 class ContratoAdmin(ImportExportModelAdmin): 
     resource_class = CargaMaestraContratoResource 
     
