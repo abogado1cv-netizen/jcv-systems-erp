@@ -967,7 +967,7 @@ class ClaveContratoInline(admin.TabularInline):
     extra = 0
     autocomplete_fields = ['medicamento']
     fields = (
-        'medicamento', 'cantidad_maxima', 'cantidad_ampliada', 'precio_neto', 
+        'medicamento', 'marcas_aprobadas', 'fabricantes_aprobados', 'cantidad_maxima', 'cantidad_ampliada', 'precio_neto', 
         'piezas_historicas_solicitadas', 'piezas_historicas_entregadas', 'piezas_vigentes_pendientes',
         'piezas_incumplidas_visual', 'avance_visual', 'monto_pendiente_visual'
     )
@@ -1072,10 +1072,15 @@ class CargaMaestraContratoResource(resources.ModelResource):
         clave_sec = None
         cant_max, ampliacion, precio = 0, 0, 0.0
         hist_sol, hist_ent, vigentes = 0, 0, 0
+        marcas_val, fab_val = "", "" # <--- Variables para pescar las marcas
         
         for key, val in row.items():
             k_upper = str(key).strip().upper()
             if k_upper == 'CLAVE': clave_sec = str(val).strip() if val else None
+            # 👇 PESCAMOS LAS COLUMNAS DEL EXCEL 👇
+            elif k_upper in ['MARCA', 'MARCAS', 'MARCA APROBADA']: marcas_val = str(val).strip() if val else ""
+            elif k_upper in ['FABRICANTE', 'FABRICANTES', 'LABORATORIO']: fab_val = str(val).strip() if val else ""
+            
             elif k_upper == 'CANTIDAD MAXIMA ASIGNADA':
                 try: cant_max = int(float(val or 0))
                 except: cant_max = 0
@@ -1103,6 +1108,8 @@ class CargaMaestraContratoResource(resources.ModelResource):
                 ClaveContrato.objects.update_or_create(
                     contrato=contrato_obj, medicamento=med_obj,
                     defaults={
+                        'marcas_aprobadas': marcas_val,         # <--- Lo guardamos
+                        'fabricantes_aprobados': fab_val,       # <--- Lo guardamos
                         'cantidad_maxima': cant_max,
                         'cantidad_ampliada': ampliacion,
                         'precio_neto': precio,

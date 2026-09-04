@@ -343,6 +343,8 @@ class FianzaContrato(models.Model):
 class ClaveContrato(models.Model):
     contrato = models.ForeignKey(Contrato, on_delete=models.CASCADE, related_name='claves')
     medicamento = models.ForeignKey('CatalogoMedicamento', on_delete=models.CASCADE, verbose_name="Clave / Medicamento")
+    marcas_aprobadas = models.CharField(max_length=255, blank=True, null=True, verbose_name="Marca(s) Aprobada(s)")
+    fabricantes_aprobados = models.CharField(max_length=255, blank=True, null=True, verbose_name="Fabricante(s)")
     cantidad_minima = models.IntegerField(default=0, verbose_name="Cant. Mínima")
     cantidad_maxima = models.IntegerField(default=0, verbose_name="Cant. Máxima")
     precio_neto = models.DecimalField(max_digits=10, decimal_places=2, default=0.00, verbose_name="Precio Neto")
