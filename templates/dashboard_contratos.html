@@ -205,12 +205,17 @@
                                 </td>
                                 
                                 <td>
-                                    {% if clave.medicamento.socio_contacto %}
-                                        <span style="color: #444; font-size: 12px; font-weight: 600;">
-                                            {{ clave.medicamento.socio_contacto.nombre|truncatechars:30 }}
-                                        </span>
+                                    {% if clave.marcas_aprobadas or clave.fabricantes_aprobados %}
+                                        <div style="color: #444; font-size: 12px; font-weight: 600; line-height: 1.2;">
+                                            {% if clave.marcas_aprobadas %}
+                                                <span title="{{ clave.marcas_aprobadas }}">🏷️ {{ clave.marcas_aprobadas|truncatechars:30 }}</span><br>
+                                            {% endif %}
+                                            {% if clave.fabricantes_aprobados %}
+                                                <span title="{{ clave.fabricantes_aprobados }}" style="color: #666; font-size: 10px;">🏭 {{ clave.fabricantes_aprobados|truncatechars:30 }}</span>
+                                            {% endif %}
+                                        </div>
                                     {% else %}
-                                        <span style="color: #ccc; font-style: italic; font-size: 12px;">Sin Socio</span>
+                                        <span style="color: #ccc; font-style: italic; font-size: 12px;">No registradas</span>
                                     {% endif %}
                                 </td>
                                 
