@@ -183,14 +183,12 @@
                         <thead>
                             <tr>
                                 <th>CLAVE SECTOR</th>
-                                <th>DESCRIPCIÓN</th>
                                 <th>SOCIO COMERCIAL</th>
                                 <th>LICITACIÓN / EVENTO</th>
                                 <th>CONTRATO</th>
                                 <th>SOLICITADAS</th>
                                 <th>ENTREGADAS</th>
                                 <th>FALTANTES</th>
-                                <th>PZAS MÍN</th>
                                 <th>PZAS MÁX</th>
                                 <th class="text-right">IMPORTE MÁXIMO ASIGNADO</th>
                             </tr>
@@ -199,10 +197,6 @@
                             {% for clave in detalle_claves %}
                             <tr>
                                 <td><b>{{ clave.medicamento.clave_sector }}</b></td>
-                                
-                                <td title="{{ clave.medicamento.denominacion_generica }}">
-                                    {{ clave.medicamento.denominacion_generica|truncatechars:35 }}
-                                </td>
                                 
                                 <td>
                                     {% if clave.marcas_aprobadas or clave.fabricantes_aprobados %}
@@ -239,7 +233,6 @@
                                         <span style="color: #28a745; font-weight: bold;">0</span>
                                     {% endif %}
                                 </td>
-                                <td>{{ clave.cantidad_minima|intcomma }}</td>
                                 <td>{{ clave.cantidad_maxima|intcomma }}</td>
                                 <td class="text-right text-success-custom">
                                     ${{ clave.importe_max|floatformat:2|intcomma }}
@@ -247,7 +240,7 @@
                             </tr>
                             {% empty %}
                             <tr>
-                                <td colspan="10" class="text-center" style="padding: 20px; color: #888;">No hay claves registradas en esta selección.</td>
+                                <td colspan="9" class="text-center" style="padding: 20px; color: #888;">No hay claves registradas en esta selección.</td>
                             </tr>
                             {% endfor %}
                         </tbody>
