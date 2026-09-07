@@ -90,7 +90,8 @@
         </form>
     </div>
 
-    <div class="row mb-3">
+    <!-- KPIs PRINCIPALES (Una sola fila limpia) -->
+    <div class="row mb-4">
         <div class="col-lg-3 col-md-6 col-sm-6 mb-3">
             <div class="kpi-card" style="border-top: 4px solid #007bff;">
                 <div class="kpi-title"><span class="dot" style="background-color: #007bff;"></span> Monto Máximo</div>
@@ -98,6 +99,7 @@
                 <div class="kpi-subtitle">Techo del contrato (Tope)</div>
             </div>
         </div>
+        
         <div class="col-lg-3 col-md-6 col-sm-6 mb-3">
             <div class="kpi-card" style="border-top: 4px solid #17a2b8;">
                 <div class="kpi-title"><span class="dot" style="background-color: #17a2b8;"></span> Monto Solicitado</div>
@@ -105,6 +107,7 @@
                 <div class="kpi-subtitle">Valor total de OPMs (Ventas)</div>
             </div>
         </div>
+        
         <div class="col-lg-3 col-md-6 col-sm-6 mb-3">
             <div class="kpi-card" style="border-top: 4px solid #20c997;">
                 <div class="kpi-title"><span class="dot" style="background-color: #20c997;"></span> Monto Entregado</div>
@@ -112,39 +115,17 @@
                 <div class="kpi-subtitle">Valor real facturable (Entregas)</div>
             </div>
         </div>
+        
         <div class="col-lg-3 col-md-6 col-sm-6 mb-3">
-            <div class="kpi-card" style="border-top: 4px solid #28a745;">
-                <div class="kpi-title"><span class="dot" style="background-color: #28a745;"></span> Monto Mínimo</div>
-                <div class="kpi-value">{{ monto_minimo_str }}</div>
-                <div class="kpi-subtitle">Piso financiero asegurado</div>
-            </div>
-        </div>
-    </div>
-
-    <div class="row mb-4">
-        <div class="col-lg-4 col-md-6 col-sm-6 mb-3">
-            <div class="kpi-card">
-                <div class="kpi-title"><span class="dot" style="background-color: #ffc107;"></span> Avance Mínimo (Pzas)</div>
-                <div class="kpi-value">{{ avance_min_pct }}</div>
-                <div class="kpi-subtitle">{{ piezas_solicitadas|intcomma }} / {{ piezas_minimas_str }} pzas solicitadas</div>
-            </div>
-        </div>
-        <div class="col-lg-4 col-md-6 col-sm-6 mb-3">
-            <div class="kpi-card">
+            <div class="kpi-card" style="border-top: 4px solid #6c757d;">
                 <div class="kpi-title"><span class="dot" style="background-color: #6c757d;"></span> Avance Máximo (Pzas)</div>
                 <div class="kpi-value">{{ avance_max_pct }}</div>
                 <div class="kpi-subtitle">{{ piezas_solicitadas|intcomma }} / {{ piezas_maximas_str }} pzas solicitadas</div>
             </div>
         </div>
-        <div class="col-lg-4 col-md-6 col-sm-6 mb-3">
-            <div class="kpi-card" style="border-left: 4px solid #dc3545;">
-                <div class="kpi-title"><span class="dot" style="background-color: #dc3545;"></span> Penalizaciones</div>
-                <div class="kpi-value" style="color: #dc3545;">{{ total_penalizado_str }}</div>
-                <div class="kpi-subtitle">Multas estimadas por OPMs atrasadas</div>
-            </div>
-        </div>
     </div>
 
+    <!-- GRÁFICAS -->
     <div class="row mb-4">
         <div class="col-md-3">
             <div class="modern-panel">
@@ -174,6 +155,7 @@
         </div>
     </div>
 
+    <!-- TABLA DE DESGLOSE -->
     <div class="row">
         <div class="col-md-12">
             <div class="modern-panel">
