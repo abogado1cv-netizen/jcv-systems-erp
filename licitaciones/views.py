@@ -115,19 +115,14 @@ def dashboard_contratos(request):
 
         detalle_claves.append(clave)
 
-    codigos_presentes = Contrato.objects.values_list('dependencia', flat=True).distinct()
-    dependencias_agrupadas = []
-    for categoria, items in DEPENDENCIAS_MAESTRAS:
-        if isinstance(items, (list, tuple)):
-            hospitales_del_grupo = []
-            for cod, nombre in items:
-                if cod in codigos_presentes:
-                    hospitales_del_grupo.append((cod, nombre))
-            if hospitales_del_grupo:
-                dependencias_agrupadas.append((categoria, hospitales_del_grupo))
-        else:
-            if categoria in codigos_presentes:
-                dependencias_agrupadas.append(('OTROS', [(categoria, items)]))
+    # ==========================================
+    # 👇 ESTE ES EL CAMBIO PARA EL FILTRO DINÁMICO 👇
+    # ==========================================
+    dependencias_reales = Contrato.objects.exclude(dependencia__isnull=True).exclude(dependencia__exact='').values_list('dependencia', flat=True).distinct()
+    dependencias_agrupadas = [
+        ('DEPENDENCIAS REGISTRADAS', [(dep, dep) for dep in dependencias_reales])
+    ]
+    # ==========================================
 
     empresas_qs = Empresa.objects.filter(contrato__isnull=False).distinct()
     if filtro_dependencia:
