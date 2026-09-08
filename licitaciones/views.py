@@ -112,6 +112,21 @@ def dashboard_contratos(request):
         
         faltantes = clave.pzas_solicitadas - clave.pzas_entregadas
         clave.pzas_faltantes = faltantes if faltantes > 0 else 0
+        max_pzas = clave.cantidad_maxima or 0
+        if max_pzas > 0:
+            porcentaje = (clave.pzas_solicitadas / max_pzas) * 100
+        else:
+            porcentaje = 0
+            
+        clave.porcentaje_consumo = porcentaje
+        clave.porcentaje_consumo_seguro = min(porcentaje, 100) # Para que la barra no se desborde del dibujo
+        
+        if porcentaje >= 100:
+            clave.color_semaforo = '#dc3545' # Rojo (Límite alcanzado o rebasado)
+        elif porcentaje >= 85:
+            clave.color_semaforo = '#f39c12' # Naranja/Amarillo (Precaución, a punto de llenarse)
+        else:
+            clave.color_semaforo = '#28a745' # Verde (Todo sano)
 
         detalle_claves.append(clave)
 

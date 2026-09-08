@@ -169,6 +169,7 @@
                                 <th>LICITACIÓN / EVENTO</th>
                                 <th>CONTRATO</th>
                                 <th>SOLICITADAS</th>
+                                <th>SALDO MÁXIMO</th> <!-- 👈 COLUMNA NUEVA -->
                                 <th>ENTREGADAS</th>
                                 <th>FALTANTES</th>
                                 <th>PZAS MÁX</th>
@@ -199,9 +200,39 @@
                                 
                                 <td>{{ clave.contrato.numero_contrato }}</td>
 
+                                <!-- Columna de SOLICITADAS con Semáforo -->
                                 <td>
-                                    <b style="color: #005b96;">{{ clave.pzas_solicitadas|intcomma }}</b>
+                                    <div style="display: flex; flex-direction: column; align-items: flex-start;">
+                                        {% if clave.porcentaje_consumo >= 100 %}
+                                            <span style="color: #dc3545; font-weight: 800;" title="¡Límite alcanzado o rebasado!">
+                                                🚨 {{ clave.pzas_solicitadas|intcomma }}
+                                            </span>
+                                        {% elif clave.porcentaje_consumo >= 85 %}
+                                            <span style="color: #f39c12; font-weight: 800;" title="Próximo al tope máximo">
+                                                ⚠️ {{ clave.pzas_solicitadas|intcomma }}
+                                            </span>
+                                        {% else %}
+                                            <b style="color: #005b96;">{{ clave.pzas_solicitadas|intcomma }}</b>
+                                        {% endif %}
+                                        
+                                        <!-- Mini barra de progreso -->
+                                        <div style="background-color: #e9ecef; border-radius: 4px; height: 6px; width: 100%; min-width: 70px; margin-top: 4px; overflow: hidden;" title="{{ clave.porcentaje_consumo|floatformat:1 }}% consumido">
+                                            <div style="background-color: {{ clave.color_semaforo }}; width: {{ clave.porcentaje_consumo_seguro }}%; height: 100%;"></div>
+                                        </div>
+                                    </div>
                                 </td>
+                                
+                                <!-- 👇 NUEVA COLUMNA: SALDO MÁXIMO 👇 -->
+                                <td>
+                                    {% if clave.pzas_por_solicitar > 0 %}
+                                        <b style="color: #28a745;">{{ clave.pzas_por_solicitar|intcomma }}</b>
+                                    {% elif clave.pzas_por_solicitar == 0 %}
+                                        <b style="color: #6c757d;">0</b>
+                                    {% else %}
+                                        <b style="color: #dc3545;" title="Se excedió el tope por {{ clave.pzas_por_solicitar|intcomma }}">{{ clave.pzas_por_solicitar|intcomma }}</b>
+                                    {% endif %}
+                                </td>
+                                <!-- 👆 FIN NUEVA COLUMNA 👆 -->
                                 
                                 <td>
                                     <span class="badge" style="background-color: #17a2b8; color: white; padding: 5px 10px; border-radius: 12px; font-size: 12px;">
@@ -222,7 +253,7 @@
                             </tr>
                             {% empty %}
                             <tr>
-                                <td colspan="9" class="text-center" style="padding: 20px; color: #888;">No hay claves registradas en esta selección.</td>
+                                <td colspan="10" class="text-center" style="padding: 20px; color: #888;">No hay claves registradas en esta selección.</td>
                             </tr>
                             {% endfor %}
                         </tbody>
