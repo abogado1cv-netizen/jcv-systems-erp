@@ -31,13 +31,7 @@ def dashboard_contratos(request):
     filtro_empresa_id = request.GET.get('empresa', '')
     filtro_contrato = request.GET.get('contrato', '')
 
-    if busqueda:
-        contratos = contratos.filter(
-            Q(numero_contrato__icontains=busqueda) |
-            Q(dependencia__icontains=busqueda) |
-            Q(licitacion_origen__num_procedimiento__icontains=busqueda)
-        ).distinct()
-
+    # 1. Aplicamos los filtros de los menús desplegables
     if filtro_dependencia:
         contratos = contratos.filter(dependencia=filtro_dependencia)
     if filtro_empresa_id.isdigit():
@@ -45,8 +39,20 @@ def dashboard_contratos(request):
     if filtro_contrato:
         contratos = contratos.filter(numero_contrato=filtro_contrato)
 
+    # 2. Base de todas las claves que pertenecen a esos contratos
     claves_qs = ClaveContrato.objects.filter(contrato__in=contratos)
 
+    # 3. 👇 AQUÍ ESTÁ LA MAGIA DEL NUEVO BUSCADOR POR CLAVE 👇
+    if busqueda:
+        claves_qs = claves_qs.filter(
+            Q(contrato__numero_contrato__icontains=busqueda) |
+            Q(contrato__dependencia__icontains=busqueda) |
+            Q(contrato__licitacion_origen__num_procedimiento__icontains=busqueda) |
+            Q(medicamento__clave_sector__icontains=busqueda) |
+            Q(medicamento__denominacion_generica__icontains=busqueda)
+        )
+
+    # 4. Calculamos los KPIs basados en las CLAVES (así se actualizan si buscas una)
     agregados = claves_qs.aggregate(
         min_tot=Sum(F('cantidad_minima') * F('precio_neto')),
         max_tot=Sum(F('cantidad_maxima') * F('precio_neto')),
@@ -59,19 +65,19 @@ def dashboard_contratos(request):
     piezas_minimas = agregados.get('pzas_min') or 0
     piezas_maximas = agregados.get('pzas_max') or 0
 
-    agg_sol_nuevo = PartidaOrden.objects.filter(clave_contrato__contrato__in=contratos).aggregate(
+    agg_sol_nuevo = PartidaOrden.objects.filter(clave_contrato__in=claves_qs).aggregate(
         pzas=Sum('cantidad_solicitada'), din=Sum(F('cantidad_solicitada') * F('clave_contrato__precio_neto'))
     )
-    agg_sol_hist = ClaveContrato.objects.filter(contrato__in=contratos).aggregate(
+    agg_sol_hist = claves_qs.aggregate(
         pzas=Sum('piezas_historicas_solicitadas'), din=Sum(F('piezas_historicas_solicitadas') * F('precio_neto'))
     )
     piezas_solicitadas = (agg_sol_nuevo['pzas'] or 0) + (agg_sol_hist['pzas'] or 0)
     monto_solicitado = (agg_sol_nuevo['din'] or 0) + (agg_sol_hist['din'] or 0)
 
-    agg_ent_nuevo = PartidaOrden.objects.filter(clave_contrato__contrato__in=contratos).aggregate(
+    agg_ent_nuevo = PartidaOrden.objects.filter(clave_contrato__in=claves_qs).aggregate(
         pzas=Sum('cantidad_entregada'), din=Sum(F('cantidad_entregada') * F('clave_contrato__precio_neto'))
     )
-    agg_ent_hist = ClaveContrato.objects.filter(contrato__in=contratos).aggregate(
+    agg_ent_hist = claves_qs.aggregate(
         pzas=Sum('piezas_historicas_entregadas'), din=Sum(F('piezas_historicas_entregadas') * F('precio_neto'))
     )
     piezas_entregadas = (agg_ent_nuevo['pzas'] or 0) + (agg_ent_hist['pzas'] or 0)
@@ -86,7 +92,7 @@ def dashboard_contratos(request):
     avance_min_pct = (piezas_solicitadas / piezas_minimas * 100) if piezas_minimas > 0 else 0
     avance_max_pct = (piezas_solicitadas / piezas_maximas * 100) if piezas_maximas > 0 else 0
 
-    ordenes_vinculadas = OrdenSuministro.objects.filter(partidas__clave_contrato__contrato__in=contratos).distinct()
+    ordenes_vinculadas = OrdenSuministro.objects.filter(partidas__clave_contrato__in=claves_qs).distinct()
     total_penalizado = sum(float(o.penalizacion_estimada) for o in ordenes_vinculadas)
 
     top_claves = claves_qs.annotate(
@@ -113,7 +119,6 @@ def dashboard_contratos(request):
         faltantes = clave.pzas_solicitadas - clave.pzas_entregadas
         clave.pzas_faltantes = faltantes if faltantes > 0 else 0
         
-        # 👇 NUEVAS LÍNEAS MATEMÁTICAS PARA SALDO Y EXCESO 👇
         clave.pzas_por_solicitar = (clave.cantidad_maxima or 0) - clave.pzas_solicitadas
         if clave.pzas_por_solicitar < 0:
             clave.pzas_excedidas = abs(clave.pzas_por_solicitar)
@@ -127,25 +132,21 @@ def dashboard_contratos(request):
             porcentaje = 0
             
         clave.porcentaje_consumo = porcentaje
-        clave.porcentaje_consumo_seguro = min(porcentaje, 100) # Para que la barra no se desborde del dibujo
+        clave.porcentaje_consumo_seguro = min(porcentaje, 100) 
         
         if porcentaje >= 100:
-            clave.color_semaforo = '#dc3545' # Rojo (Límite alcanzado o rebasado)
+            clave.color_semaforo = '#dc3545'
         elif porcentaje >= 85:
-            clave.color_semaforo = '#f39c12' # Naranja/Amarillo (Precaución, a punto de llenarse)
+            clave.color_semaforo = '#f39c12'
         else:
-            clave.color_semaforo = '#28a745' # Verde (Todo sano)
+            clave.color_semaforo = '#28a745'
 
         detalle_claves.append(clave)
 
-    # ==========================================
-    # 👇 ESTE ES EL CAMBIO PARA EL FILTRO DINÁMICO 👇
-    # ==========================================
     dependencias_reales = Contrato.objects.exclude(dependencia__isnull=True).exclude(dependencia__exact='').values_list('dependencia', flat=True).distinct()
     dependencias_agrupadas = [
         ('DEPENDENCIAS REGISTRADAS', [(dep, dep) for dep in dependencias_reales])
     ]
-    # ==========================================
 
     empresas_qs = Empresa.objects.filter(contrato__isnull=False).distinct()
     if filtro_dependencia:
