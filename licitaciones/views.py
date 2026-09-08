@@ -143,19 +143,25 @@ def dashboard_contratos(request):
 
         detalle_claves.append(clave)
 
-    dependencias_reales = Contrato.objects.exclude(dependencia__isnull=True).exclude(dependencia__exact='').values_list('dependencia', flat=True).distinct()
+    # ==========================================
+    # 👇 FILTROS EN CASCADA (SÚPER INTELIGENTES) 👇
+    # ==========================================
+    # 1. Averiguamos qué contratos sobrevivieron a tu búsqueda de la barra central
+    contratos_vivos = Contrato.objects.filter(id__in=claves_qs.values('contrato_id'))
+
+    # 2. Construimos la lista de Dependencias usando SOLO los contratos vivos
+    dependencias_reales = contratos_vivos.exclude(dependencia__isnull=True).exclude(dependencia__exact='').values_list('dependencia', flat=True).distinct()
     dependencias_agrupadas = [
-        ('DEPENDENCIAS REGISTRADAS', [(dep, dep) for dep in dependencias_reales])
+        ('DEPENDENCIAS RESULTANTES', [(dep, dep) for dep in dependencias_reales])
     ]
 
-    empresas_qs = Empresa.objects.filter(contrato__isnull=False).distinct()
-    if filtro_dependencia:
-        empresas_qs = empresas_qs.filter(contrato__dependencia=filtro_dependencia)
+    # 3. Construimos la lista de Empresas usando SOLO los contratos vivos
+    empresas_ids = contratos_vivos.values_list('empresa_id', flat=True).distinct()
+    empresas_qs_final = Empresa.objects.filter(id__in=empresas_ids)
         
-    contratos_qs = Contrato.objects.all()
-    if filtro_dependencia: contratos_qs = contratos_qs.filter(dependencia=filtro_dependencia)
-    if filtro_empresa_id.isdigit(): contratos_qs = contratos_qs.filter(empresa_id=filtro_empresa_id)
-    contratos_list = contratos_qs.values_list('numero_contrato', flat=True).distinct()
+    # 4. Construimos la lista de Contratos usando SOLO los contratos vivos
+    contratos_list = contratos_vivos.values_list('numero_contrato', flat=True).distinct()
+    # ==========================================
 
     context = {
         'monto_minimo_str': f"${monto_minimo:,.2f}",
@@ -175,7 +181,7 @@ def dashboard_contratos(request):
         'montos_top_json': json.dumps(montos_top),
         'detalle_claves': detalle_claves,
         'dependencias_disponibles': dependencias_agrupadas,
-        'empresas_disponibles': empresas_qs,
+        'empresas_disponibles': empresas_qs_final, # 👈 Asegúrate de que aquí diga empresas_qs_final
         'contratos_disponibles': contratos_list,
         'filtro_dependencia': filtro_dependencia,
         'filtro_empresa': int(filtro_empresa_id) if filtro_empresa_id.isdigit() else '',
