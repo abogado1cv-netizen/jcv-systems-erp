@@ -112,6 +112,14 @@ def dashboard_contratos(request):
         
         faltantes = clave.pzas_solicitadas - clave.pzas_entregadas
         clave.pzas_faltantes = faltantes if faltantes > 0 else 0
+        
+        # 👇 NUEVAS LÍNEAS MATEMÁTICAS PARA SALDO Y EXCESO 👇
+        clave.pzas_por_solicitar = (clave.cantidad_maxima or 0) - clave.pzas_solicitadas
+        if clave.pzas_por_solicitar < 0:
+            clave.pzas_excedidas = abs(clave.pzas_por_solicitar)
+        else:
+            clave.pzas_excedidas = 0
+            
         max_pzas = clave.cantidad_maxima or 0
         if max_pzas > 0:
             porcentaje = (clave.pzas_solicitadas / max_pzas) * 100

@@ -169,7 +169,8 @@
                                 <th>LICITACIÓN / EVENTO</th>
                                 <th>CONTRATO</th>
                                 <th>SOLICITADAS</th>
-                                <th>SALDO MÁXIMO</th> <!-- 👈 COLUMNA NUEVA -->
+                                <th>PZAS PARA 100%</th> <!-- 👈 RENOMBRADO -->
+                                <th>AMPLIACIÓN 20%</th> <!-- 👈 COLUMNA NUEVA -->
                                 <th>ENTREGADAS</th>
                                 <th>FALTANTES</th>
                                 <th>PZAS MÁX</th>
@@ -222,17 +223,27 @@
                                     </div>
                                 </td>
                                 
-                                <!-- 👇 NUEVA COLUMNA: SALDO MÁXIMO 👇 -->
+                                <!-- 👇 COLUMNA: PZAS PARA LLEGAR AL 100% 👇 -->
                                 <td>
                                     {% if clave.pzas_por_solicitar > 0 %}
                                         <b style="color: #28a745;">{{ clave.pzas_por_solicitar|intcomma }}</b>
                                     {% elif clave.pzas_por_solicitar == 0 %}
                                         <b style="color: #6c757d;">0</b>
                                     {% else %}
-                                        <b style="color: #dc3545;" title="Se excedió el tope por {{ clave.pzas_por_solicitar|intcomma }}">{{ clave.pzas_por_solicitar|intcomma }}</b>
+                                        <b style="color: #dc3545;" title="Límite excedido">⚠️ Rebasado por {{ clave.pzas_excedidas|intcomma }}</b>
                                     {% endif %}
                                 </td>
-                                <!-- 👆 FIN NUEVA COLUMNA 👆 -->
+
+                                <!-- 👇 COLUMNA: AMPLIACIÓN 20% 👇 -->
+                                <td>
+                                    {% if clave.cantidad_ampliada > 0 %}
+                                        <span class="badge" style="background-color: #6f42c1; color: white; padding: 5px 10px; border-radius: 12px; font-size: 11px;">
+                                            +{{ clave.cantidad_ampliada|intcomma }} pzas
+                                        </span>
+                                    {% else %}
+                                        <span style="color: #ccc; font-weight: bold;">-</span>
+                                    {% endif %}
+                                </td>
                                 
                                 <td>
                                     <span class="badge" style="background-color: #17a2b8; color: white; padding: 5px 10px; border-radius: 12px; font-size: 12px;">
@@ -253,7 +264,7 @@
                             </tr>
                             {% empty %}
                             <tr>
-                                <td colspan="10" class="text-center" style="padding: 20px; color: #888;">No hay claves registradas en esta selección.</td>
+                                <td colspan="11" class="text-center" style="padding: 20px; color: #888;">No hay claves registradas en esta selección.</td>
                             </tr>
                             {% endfor %}
                         </tbody>
