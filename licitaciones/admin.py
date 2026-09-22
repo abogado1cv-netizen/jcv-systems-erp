@@ -1395,18 +1395,52 @@ class AlmacenSeguroWidget(ForeignKeyWidget):
 class MedicamentoSeguroWidget(ForeignKeyWidget):
     def clean(self, value, row=None, **kwargs):
         clave = str(value).strip() if value else ''
-        if clave:
-            # Usamos filter().first() para agarrar la primera y evitar el error de los 7 clones
+        if not clave:
+            return None
+            
+        socio_nombre = str(row.get('SOCIO COMERCIAL', '')).strip()
+        fab_nombre = str(row.get('FABRICANTE', '')).strip()
+        desc = str(row.get('DESCRIPCIÓN', 'Agregado por Excel')).strip()
+        
+        # 1. Resolver el Socio Comercial si viene en el Excel
+        socio_obj = None
+        if socio_nombre and socio_nombre.upper() not in ['N/A', 'NONE', 'NULL', 'SIN ASIGNAR', 'SIN LABORATORIO', '']:
+            # Buscamos o creamos el laboratorio al vuelo
+            from .models import SocioComercial # Asegurar que lo importa
+            socio_obj, _ = SocioComercial.objects.get_or_create(nombre=socio_nombre)
+
+        # 2. Buscar si ya existe la clave CON ese socio comercial específico
+        med = None
+        if socio_obj:
+            med = self.model.objects.filter(clave_sector=clave, socio_contacto=socio_obj).first()
+            
+        # Si no lo encontró con el socio, busca la clave genérica
+        if not med:
             med = self.model.objects.filter(clave_sector=clave).first()
-            if not med:
-                desc = str(row.get('DESCRIPCIÓN', 'Agregado por Excel')).strip()
-                med = self.model.objects.create(
-                    clave_sector=clave,
-                    descripcion=desc,
-                    denominacion_generica=desc
-                )
-            return med
-        return None
+
+        # 3. Si de plano no existe, lo creamos con TODOS los datos
+        if not med:
+            med = self.model.objects.create(
+                clave_sector=clave,
+                descripcion=desc,
+                denominacion_generica=desc,
+                fabricante=fab_nombre,
+                socio_contacto=socio_obj
+            )
+        else:
+            # 4. MAGIA: Si ya existía pero estaba "pelón", lo actualizamos con los datos del Excel
+            modificado = False
+            if not med.socio_contacto and socio_obj:
+                med.socio_contacto = socio_obj
+                modificado = True
+            if not med.fabricante and fab_nombre:
+                med.fabricante = fab_nombre
+                modificado = True
+                
+            if modificado:
+                med.save()
+                
+        return med
 
 # 2. El "Mapa" (Resource) principal
 class InventarioResource(resources.ModelResource):
