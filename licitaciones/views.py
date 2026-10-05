@@ -360,6 +360,7 @@ def dashboard_licitaciones(request):
         'grafica_distribucion_json': json.dumps(grafica_distribucion),
         'nombres_top_json': json.dumps(nombres_top),
         'montos_top_json': json.dumps(montos_top),
+        'top_claves': top_claves,  # 👈 ¡ESTA ES LA LÍNEA MÁGICA QUE FALTABA!
         'total_licitaciones': total_licitaciones,
         'adjudicadas': adjudicadas,
         'perdidas': perdidas,
