@@ -5,23 +5,27 @@
     <h2 style="color: #2c3e50; font-weight: 800;">🏥 Clínica de Datos GPHARMA (Doctor IA)</h2>
     <p style="color: #666; font-size: 15px;">He escaneado todo tu catálogo de medicamentos. Aquí están las anomalías detectadas. Vamos a sanarlas.</p>
     
-    <!-- PABELLÓN 1: CLAVES LARGAS (.00.00) -->
+    <!-- PABELLÓN 1: CLAVES LARGAS / MALFORMADAS -->
     {% if claves_largas %}
     <div style="background: #fff; border-radius: 8px; border-left: 5px solid #dc3545; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin-bottom: 30px;">
-        <h3 style="color: #dc3545; margin-top: 0;">✂️ Anomalía: Claves con 14 Dígitos</h3>
-        <p style="font-size: 13px; color: #555;">Se detectaron claves que terminan en <b>.00.00</b>. Deben ser de 12 dígitos. Clic para amputar la terminación extra.</p>
+        <h3 style="color: #dc3545; margin-top: 0;">✂️ Anomalía: Claves Mutantes y Texto Basura</h3>
+        <p style="font-size: 13px; color: #555;">Se detectaron claves que no cumplen los 12 dígitos o tienen texto ("SIN CLAVE..."). El Doctor IA te da una sugerencia, pero <b>tú puedes modificarla libremente en el recuadro</b>. El sistema validará que queden exactamente a 12 dígitos.</p>
         <table style="width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px;">
             {% for med in claves_largas %}
             <tr style="border-bottom: 1px solid #eee;">
-                <td style="padding: 10px;"><b>Clave Mutante:</b> {{ med.clave_sector }}</td>
-                <td style="padding: 10px; color: #777;">{{ med.denominacion_generica|truncatechars:50 }}</td>
-                <td style="padding: 10px; text-align: right;">
-                    <form method="POST" style="margin: 0;">
+                <td style="padding: 10px; width: 25%;"><b>Basura Detectada:</b><br><span style="color: #dc3545;">{{ med.clave_sector }}</span></td>
+                <td style="padding: 10px; color: #777; width: 35%;">{{ med.denominacion_generica|truncatechars:50 }}</td>
+                <td style="padding: 10px; width: 40%;">
+                    <form method="POST" style="margin: 0; display: flex; gap: 10px;">
                         {% csrf_token %}
                         <input type="hidden" name="accion" value="arreglar_clave_larga">
                         <input type="hidden" name="id_medicamento" value="{{ med.id }}">
-                        <button type="submit" style="background-color: #28a745; color: white; border: none; padding: 5px 15px; border-radius: 4px; font-weight: bold; cursor: pointer;">
-                            💉 Sanar a {{ med.clave_sector|slice:":-3" }}
+                        
+                        <!-- EL NUEVO RECUADRO EDITABLE -->
+                        <input type="text" name="nueva_clave" value="{{ med.sugerencia_ia }}" style="width: 100%; padding: 5px; border: 1px solid #ccc; border-radius: 4px;" required placeholder="Ej: 010.000.1234.00">
+                        
+                        <button type="submit" style="background-color: #28a745; color: white; border: none; padding: 6px 15px; border-radius: 4px; font-weight: bold; cursor: pointer; white-space: nowrap;">
+                            💉 Sanar
                         </button>
                     </form>
                 </td>

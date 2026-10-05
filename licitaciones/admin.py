@@ -529,11 +529,19 @@ class CatalogoMedicamentoAdmin(ImportExportModelAdmin):
             # 2. Amputar .00 extra
             elif accion == 'arreglar_clave_larga':
                 id_med = request.POST.get('id_medicamento')
+                nueva_clave = request.POST.get('nueva_clave', '').strip()
                 med = CatalogoMedicamento.objects.get(id=id_med)
-                if med.clave_sector.endswith('.00.00'):
-                    med.clave_sector = med.clave_sector[:-3] # Le quita los últimos 3 caracteres (".00")
+
+                import re
+                patron = re.compile(r'^\d{3}\.\d{3}\.\d{4}\.\d{2}$')
+
+                if patron.match(nueva_clave):
+                    med.clave_sector = nueva_clave
                     med.save()
-                    messages.success(request, f"¡Clave reparada! Ahora es {med.clave_sector}")
+                    messages.success(request, f"¡Clave reparada exitosamente! Ahora es {med.clave_sector}")
+                else:
+                    messages.error(request, f"🛑 Error: La clave '{nueva_clave}' no cumple el formato estricto a 12 dígitos (XXX.XXX.XXXX.XX). Intenta de nuevo.")
+
             
             # 3. Purificar Denominación Genérica
             elif accion == 'limpiar_generico':
@@ -577,7 +585,16 @@ class CatalogoMedicamentoAdmin(ImportExportModelAdmin):
 
         # SÍNTOMA 2: Claves mutantes (Ya no solo .00.00, sino CUALQUIERA de más de 15 caracteres)
         from django.db.models.functions import Length
+        import re
         claves_largas = CatalogoMedicamento.objects.annotate(clave_len=Length('clave_sector')).filter(clave_len__gt=15)
+
+        for med in claves_largas:
+            # La IA busca si dentro de la basura existe una clave real escondida
+            match = re.search(r'(\d{3}\.\d{3}\.\d{4}\.\d{2})', med.clave_sector)
+            if match:
+                med.sugerencia_ia = match.group(1) # Extrae solo los 12 dígitos limpios
+            else:
+                med.sugerencia_ia = "" # Lo deja en blanco para que tú lo llenes manualmente
 
         # SÍNTOMA 3: Genéricos que empiezan con número
         genericos_numeros = CatalogoMedicamento.objects.filter(denominacion_generica__regex=r'^[0-9]')
