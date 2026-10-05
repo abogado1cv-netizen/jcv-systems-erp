@@ -129,6 +129,31 @@
             <p style="margin: 5px 0 0 0;">El Doctor IA no detectó ninguna anomalía en el formato de tus claves ni descripciones.</p>
         </div>
     {% endif %}
+    <!-- PABELLÓN 5: COLUMNAS INVERTIDAS -->
+    {% if claves_invertidas %}
+    <div style="background: #fff; border-radius: 8px; border-left: 5px solid #e74c3c; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin-bottom: 30px;">
+        <h3 style="color: #e74c3c; margin-top: 0;">🔄 Anomalía: Columnas Invertidas</h3>
+        <p style="font-size: 13px; color: #555;">Se detectaron registros donde la <b>Clave Real</b> está guardada en la descripción, y la clave actual es un número de 5 dígitos. Clic para intercambiarlas.</p>
+        <table style="width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px;">
+            {% for med in claves_invertidas %}
+            <tr style="border-bottom: 1px solid #eee;">
+                <td style="padding: 10px; color: #dc3545;"><b>Falsa Clave:</b> {{ med.clave_sector }}</td>
+                <td style="padding: 10px; color: #28a745;"><b>Clave Real (Atrapada):</b> {{ med.descripcion }}</td>
+                <td style="padding: 10px; text-align: right;">
+                    <form method="POST" style="margin: 0;">
+                        {% csrf_token %}
+                        <input type="hidden" name="accion" value="invertir_columnas">
+                        <input type="hidden" name="id_medicamento" value="{{ med.id }}">
+                        <button type="submit" style="background-color: #e74c3c; color: white; border: none; padding: 5px 15px; border-radius: 4px; font-weight: bold; cursor: pointer;">
+                            🔄 Restaurar Clave Real
+                        </button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+    {% endif %}
 
 </div>
 {% endblock %}

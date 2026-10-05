@@ -22,7 +22,7 @@ from .models import EscanerKardex
 from django.http import HttpResponseRedirect
 from django.urls import reverse
 from .models import HistorialPrecio
-
+import re
 
 from .models import (
     OrdenCompra, PartidaCompra, Inventario, DocumentoOrdenCompra,
@@ -544,6 +544,20 @@ class CatalogoMedicamentoAdmin(ImportExportModelAdmin):
                 med.save()
                 messages.success(request, f"¡Denominación genérica purificada para la clave {med.clave_sector}!")
 
+            # 4. Arreglar Columnas Invertidas (Clave 5 digitos <-> Descripción)
+            elif accion == 'invertir_columnas':
+                id_med = request.POST.get('id_medicamento')
+                med = CatalogoMedicamento.objects.get(id=id_med)
+                
+                verdadera_clave = med.descripcion.strip()
+                texto_basura = med.clave_sector
+                
+                med.clave_sector = verdadera_clave
+                med.descripcion = f"⚠️ PENDIENTE (Antes era: {texto_basura})"
+                med.denominacion_generica = "⚠️ PENDIENTE"
+                med.save()
+                messages.success(request, f"¡Trasplante exitoso! La clave oficial ahora es {med.clave_sector}")
+
             return redirect('admin:clinica_discrepancias')
 
         # -----------------------------------------------------
@@ -561,8 +575,9 @@ class CatalogoMedicamentoAdmin(ImportExportModelAdmin):
             variantes = CatalogoMedicamento.objects.filter(clave_sector=clave)
             discrepancias.append({'clave': clave, 'variantes': variantes})
 
-        # SÍNTOMA 2: Claves mutantes (Terminan en .00.00)
-        claves_largas = CatalogoMedicamento.objects.filter(clave_sector__endswith='.00.00')
+        # SÍNTOMA 2: Claves mutantes (Ya no solo .00.00, sino CUALQUIERA de más de 15 caracteres)
+        from django.db.models.functions import Length
+        claves_largas = CatalogoMedicamento.objects.annotate(clave_len=Length('clave_sector')).filter(clave_len__gt=15)
 
         # SÍNTOMA 3: Genéricos que empiezan con número
         genericos_numeros = CatalogoMedicamento.objects.filter(denominacion_generica__regex=r'^[0-9]')
@@ -580,17 +595,20 @@ class CatalogoMedicamentoAdmin(ImportExportModelAdmin):
         
         # 🧠 La IA genera sugerencias para extraer solo el principio activo
         for g in genericos_sucios:
-            # Cortamos hasta el primer punto (Ej: "Epirubicina. Solución inyectable..." -> "Epirubicina")
             sugerencia = g.denominacion_generica.split('.')[0]
-            # Si no había punto, cortamos antes de palabras clave
             if len(sugerencia) == len(g.denominacion_generica):
                 for palabra in [' Solución', ' Tableta', ' Envase', ' Inyectable', ' Cápsula']:
                     if palabra.lower() in sugerencia.lower():
-                        # Corta justo antes de la palabra problemática
                         import re
                         sugerencia = re.split(palabra, sugerencia, flags=re.IGNORECASE)[0]
                         break
             g.sugerencia_ia = sugerencia.strip() + "."
+
+        # SÍNTOMA 5: Columnas Invertidas (Claves de 5 dígitos y descripción con formato de clave)
+        claves_invertidas = CatalogoMedicamento.objects.filter(
+            clave_sector__regex=r'^\d{4,6}$', # La clave tiene 4 a 6 números pelones
+            descripcion__regex=r'^\d{3}\.\d{3}\.\d{4}\.\d{2}$' # La descripción trae la clave real
+        )
 
         context = {
             'title': '🏥 Clínica de Datos (Doctor IA)',
@@ -598,6 +616,7 @@ class CatalogoMedicamentoAdmin(ImportExportModelAdmin):
             'claves_largas': claves_largas,
             'genericos_numeros': genericos_numeros,
             'genericos_sucios': genericos_sucios,
+            'claves_invertidas': claves_invertidas,
             'opts': self.model._meta,
         }
         return render(request, 'admin/licitaciones/catalogomedicamento/clinica.html', context)
@@ -738,14 +757,18 @@ class LicitacionAdmin(admin.ModelAdmin):
         if datos_excel:
             import io, csv
             from django.db import transaction
+            import re
             
             importes_agregados = 0
             claves_nuevas_creadas = []
             alertas_discrepancia = []
+            claves_rechazadas = []
             
             texto_seguro = datos_excel.replace('\r\n', '\n').replace('\r', '\n')
             f = io.StringIO(texto_seguro)
             lector = csv.reader(f, dialect='excel-tab')
+            
+            patron_clave = re.compile(r'^\d{3}\.\d{3}\.\d{4}\.\d{2}$')
             
             for columnas in lector:
                 if not columnas or not "".join(columnas).strip(): continue
@@ -764,9 +787,14 @@ class LicitacionAdmin(admin.ModelAdmin):
                             min_str = columnas[2].strip().replace(',', '').replace(' ', '')
                             max_str = columnas[3].strip().replace(',', '').replace(' ', '')
                         else:
-                            continue # Si no tiene ni 3 columnas, lo ignora
+                            continue 
                             
                         if not clave_val or not max_str: continue
+                        
+                        # 👇 EL CANDADO DE TITANIO (Validación Regex) 👇
+                        if not patron_clave.match(clave_val):
+                            claves_rechazadas.append(clave_val)
+                            continue # 🛑 SALTA ESTA FILA Y NO LA GUARDA
                         
                         num_partida = int(float(partida_val))
                         num_piezas_min = int(float(min_str)) if min_str else 0
@@ -776,7 +804,6 @@ class LicitacionAdmin(admin.ModelAdmin):
                         medicamentos_db = CatalogoMedicamento.objects.filter(clave_sector=clave_val)
                         
                         if medicamentos_db.count() > 1:
-                            # Tiene duplicados. Revisamos si dicen lo mismo
                             descripciones = set([m.denominacion_generica.strip().upper() for m in medicamentos_db if m.denominacion_generica])
                             if len(descripciones) > 1:
                                 alertas_discrepancia.append(clave_val)
@@ -787,7 +814,7 @@ class LicitacionAdmin(admin.ModelAdmin):
                         if not medicamento_db:
                             medicamento_db = CatalogoMedicamento(
                                 clave_sector=clave_val, 
-                                descripcion='⚠️ PENDIENTE DE ACTUALIZAR', 
+                                descripcion='⚠️️ PENDIENTE DE ACTUALIZAR', 
                                 denominacion_generica='⚠️ PENDIENTE DE ACTUALIZAR', 
                                 fabricante=''
                             )
@@ -819,6 +846,11 @@ class LicitacionAdmin(admin.ModelAdmin):
             if alertas_discrepancia:
                 claves_disc = ", ".join(list(set(alertas_discrepancia))[:10])
                 messages.error(request, f"⚠️ DISCREPANCIA EN CATÁLOGO: Tienes descripciones diferentes guardadas para las mismas claves: {claves_disc}. Por favor unifica tu catálogo.")
+
+            if claves_rechazadas:
+                rechazadas_str = ", ".join(list(set(claves_rechazadas))[:10])
+                messages.error(request, f"🛑 BLOQUEO DE SEGURIDAD: Se rechazaron {len(claves_rechazadas)} claves por no cumplir el formato estricto de 12 dígitos (XXX.XXX.XXXX.XX). Ejemplos: {rechazadas_str}")
+
 
     def borrar_partidas_view(self, request, object_id):
         licitacion = self.get_object(request, object_id)
@@ -1796,7 +1828,7 @@ class RemisionEntregaAdmin(admin.ModelAdmin):
 # 🚀 MÓDULO: COTIZACIONES Y VENTAS DIRECTAS
 # ==========================================
 class CotizacionForm(forms.ModelForm):
-    pegar_excel = forms.CharField(label="📥 Carga Masiva (Pegar desde Excel)", required=False, widget=forms.Textarea(attrs={'rows': 6, 'placeholder': 'Ejemplo:\n1\t010.000.4434.00\tPARACETAMOL 500MG\t500\t1000'}))
+    pegar_excel = forms.CharField(label="📥 Carga Masiva (Pegar desde Excel)", required=False, widget=forms.Textarea(attrs={'rows': 6, 'placeholder': 'Ejemplo:\n1\t010.000.4434.00\tPARACETAMOL 500MG\t500\t1000'}), help_text="NUEVO FORMATO: Solo 3 o 4 columnas: PARTIDA | CLAVE | (OPCIONAL: PIEZAS MIN) | PIEZAS MAX.")
     fecha_apertura = forms.DateTimeField(label="Fecha y hora de apertura", required=False, widget=forms.DateTimeInput(format='%Y-%m-%dT%H:%M', attrs={'type': 'datetime-local'}))
     class Meta: model = Cotizacion; fields = '__all__'
 
@@ -1836,25 +1868,41 @@ class CotizacionAdmin(admin.ModelAdmin):
         if datos_excel:
             import io, csv
             from django.db import transaction
-            importes_agregados, claves_nuevas = 0, []
+            import re
+            
+            importes_agregados, claves_nuevas, claves_rechazadas = 0, [], []
             f = io.StringIO(datos_excel.replace('\r\n', '\n').replace('\r', '\n'))
+            
+            patron_clave = re.compile(r'^\d{3}\.\d{3}\.\d{4}\.\d{2}$')
+            
             for columnas in csv.reader(f, dialect='excel-tab'):
-                if not columnas or not "".join(columnas).strip() or len(columnas) < 4: continue
+                if not columnas or not "".join(columnas).strip(): continue
                 try:
                     with transaction.atomic():
-                        clave_val = columnas[1].strip()
-                        descripcion_val = columnas[2].strip().replace('\n', ' ') 
-                        max_str = columnas[4].strip().replace(',', '').replace(' ', '') if len(columnas) >= 5 and columnas[4].strip() else columnas[3].strip().replace(',', '').replace(' ', '')
+                        if len(columnas) == 3:
+                            clave_val = columnas[1].strip()
+                            max_str = columnas[2].strip().replace(',', '').replace(' ', '')
+                        elif len(columnas) >= 4:
+                            clave_val = columnas[1].strip()
+                            max_str = columnas[3].strip().replace(',', '').replace(' ', '')
+                        else:
+                            continue
+                            
                         if not clave_val or not max_str: continue
+                        
+                        # 👇 EL CANDADO DE TITANIO (Validación Regex) 👇
+                        if not patron_clave.match(clave_val):
+                            claves_rechazadas.append(clave_val)
+                            continue # 🛑 SALTA ESTA FILA Y NO LA GUARDA
+                            
                         cantidad_final = int(float(max_str))
                         
-                        # SOLUCIÓN 1: Ya no choca si hay múltiples laboratorios con la misma clave
                         medicamento_db = CatalogoMedicamento.objects.filter(clave_sector=clave_val).first()
                         if not medicamento_db:
                             medicamento_db = CatalogoMedicamento.objects.create(
                                 clave_sector=clave_val, 
-                                descripcion=descripcion_val, 
-                                denominacion_generica=descripcion_val, 
+                                descripcion='⚠️ PENDIENTE DE ACTUALIZAR', 
+                                denominacion_generica='⚠️ PENDIENTE DE ACTUALIZAR', 
                                 fabricante=''
                             )
                             claves_nuevas.append(clave_val)
@@ -1862,10 +1910,12 @@ class CotizacionAdmin(admin.ModelAdmin):
                         PartidaCotizacion.objects.create(cotizacion=obj, medicamento=medicamento_db, cantidad=cantidad_final, precio_unitario=0.00)
                         importes_agregados += 1
                 except Exception as e: 
-                    print(f"Fila ignorada por error ({clave_val}): {e}")
                     continue 
             if importes_agregados > 0: messages.success(request, f"¡Éxito! Se cargaron {importes_agregados} partidas.")
-            if claves_nuevas: messages.warning(request, f"🔔 Se crearon {len(claves_nuevas)} CLAVES NUEVAS.")
+            if claves_nuevas: messages.warning(request, f"🔔 Se crearon {len(claves_nuevas)} CLAVES NUEVAS con descripción 'PENDIENTE'.")
+            if claves_rechazadas:
+                rechazadas_str = ", ".join(list(set(claves_rechazadas))[:10])
+                messages.error(request, f"🛑 BLOQUEO DE SEGURIDAD: Se rechazaron {len(claves_rechazadas)} claves por no cumplir el formato estricto de 12 dígitos (XXX.XXX.XXXX.XX). Ejemplos: {rechazadas_str}")
 
     def get_urls(self):
         urls = super().get_urls()
