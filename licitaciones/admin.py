@@ -503,29 +503,54 @@ class CatalogoMedicamentoAdmin(ImportExportModelAdmin):
         return custom_urls + urls
 
     def clinica_discrepancias_view(self, request):
-        from django.db.models import Count
+        from django.db.models import Count, Q
         from django.shortcuts import render, redirect
         from django.contrib import messages
         from .models import CatalogoMedicamento
 
-        # Si el usuario eligió una descripción ganadora y le dio clic a "Unificar"
+        # -----------------------------------------------------
+        # 💉 ZONA DE QUIRÓFANO (Cuando le das clic a un botón para sanar)
+        # -----------------------------------------------------
         if request.method == 'POST':
-            clave_a_arreglar = request.POST.get('clave')
-            id_ganador = request.POST.get('variante_ganadora')
+            accion = request.POST.get('accion')
             
-            if clave_a_arreglar and id_ganador:
-                ganador = CatalogoMedicamento.objects.get(id=id_ganador)
-                
-                # 💉 CIRUGÍA: Actualizamos TODAS las filas de esa clave con la descripción ganadora,
-                # pero SIN TOCAR ni borrar los laboratorios o precios.
-                CatalogoMedicamento.objects.filter(clave_sector=clave_a_arreglar).update(
-                    descripcion=ganador.descripcion,
-                    denominacion_generica=ganador.denominacion_generica
-                )
-                messages.success(request, f"¡Cirugía Exitosa! La clave {clave_a_arreglar} ahora tiene una descripción uniforme en todo el sistema.")
+            # 1. Unificar Discrepancias
+            if accion == 'unificar_descripcion':
+                clave_a_arreglar = request.POST.get('clave')
+                id_ganador = request.POST.get('variante_ganadora')
+                if clave_a_arreglar and id_ganador:
+                    ganador = CatalogoMedicamento.objects.get(id=id_ganador)
+                    CatalogoMedicamento.objects.filter(clave_sector=clave_a_arreglar).update(
+                        descripcion=ganador.descripcion,
+                        denominacion_generica=ganador.denominacion_generica
+                    )
+                    messages.success(request, f"¡Cirugía Exitosa! Clave {clave_a_arreglar} unificada.")
+            
+            # 2. Amputar .00 extra
+            elif accion == 'arreglar_clave_larga':
+                id_med = request.POST.get('id_medicamento')
+                med = CatalogoMedicamento.objects.get(id=id_med)
+                if med.clave_sector.endswith('.00.00'):
+                    med.clave_sector = med.clave_sector[:-3] # Le quita los últimos 3 caracteres (".00")
+                    med.save()
+                    messages.success(request, f"¡Clave reparada! Ahora es {med.clave_sector}")
+            
+            # 3. Purificar Denominación Genérica
+            elif accion == 'limpiar_generico':
+                id_med = request.POST.get('id_medicamento')
+                nuevo_nombre = request.POST.get('nuevo_generico')
+                med = CatalogoMedicamento.objects.get(id=id_med)
+                med.denominacion_generica = nuevo_nombre.strip()
+                med.save()
+                messages.success(request, f"¡Denominación genérica purificada para la clave {med.clave_sector}!")
+
             return redirect('admin:clinica_discrepancias')
 
-        # 🔍 DIAGNÓSTICO: Buscamos claves que tengan más de 1 descripción distinta
+        # -----------------------------------------------------
+        # 🔍 ZONA DE DIAGNÓSTICO (El Doctor IA analizando)
+        # -----------------------------------------------------
+        
+        # SÍNTOMA 1: Discrepancias de texto en la misma clave
         claves_agrupadas = CatalogoMedicamento.objects.values('clave_sector').annotate(
             num_desc=Count('descripcion', distinct=True)
         ).filter(num_desc__gt=1, clave_sector__isnull=False).exclude(clave_sector='')
@@ -533,16 +558,46 @@ class CatalogoMedicamentoAdmin(ImportExportModelAdmin):
         discrepancias = []
         for item in claves_agrupadas:
             clave = item['clave_sector']
-            # Traemos todas las variantes de esa clave
             variantes = CatalogoMedicamento.objects.filter(clave_sector=clave)
-            discrepancias.append({
-                'clave': clave, 
-                'variantes': variantes
-            })
-            
+            discrepancias.append({'clave': clave, 'variantes': variantes})
+
+        # SÍNTOMA 2: Claves mutantes (Terminan en .00.00)
+        claves_largas = CatalogoMedicamento.objects.filter(clave_sector__endswith='.00.00')
+
+        # SÍNTOMA 3: Genéricos que empiezan con número
+        genericos_numeros = CatalogoMedicamento.objects.filter(denominacion_generica__regex=r'^[0-9]')
+
+        # SÍNTOMA 4: Genéricos obesos (Tienen descripción completa)
+        genericos_sucios = CatalogoMedicamento.objects.filter(
+            Q(denominacion_generica__icontains=' mg') |
+            Q(denominacion_generica__icontains=' ml') |
+            Q(denominacion_generica__icontains=' envase') |
+            Q(denominacion_generica__icontains=' solucion') |
+            Q(denominacion_generica__icontains=' solución') |
+            Q(denominacion_generica__icontains=' inyectable') |
+            Q(denominacion_generica__icontains=' tableta')
+        ).exclude(denominacion_generica__regex=r'^[0-9]')[:30] # Limitamos a 30 por página para no saturar
+        
+        # 🧠 La IA genera sugerencias para extraer solo el principio activo
+        for g in genericos_sucios:
+            # Cortamos hasta el primer punto (Ej: "Epirubicina. Solución inyectable..." -> "Epirubicina")
+            sugerencia = g.denominacion_generica.split('.')[0]
+            # Si no había punto, cortamos antes de palabras clave
+            if len(sugerencia) == len(g.denominacion_generica):
+                for palabra in [' Solución', ' Tableta', ' Envase', ' Inyectable', ' Cápsula']:
+                    if palabra.lower() in sugerencia.lower():
+                        # Corta justo antes de la palabra problemática
+                        import re
+                        sugerencia = re.split(palabra, sugerencia, flags=re.IGNORECASE)[0]
+                        break
+            g.sugerencia_ia = sugerencia.strip() + "."
+
         context = {
-            'title': '🏥 Clínica de Discrepancias (Doctor IA)',
+            'title': '🏥 Clínica de Datos (Doctor IA)',
             'discrepancias': discrepancias,
+            'claves_largas': claves_largas,
+            'genericos_numeros': genericos_numeros,
+            'genericos_sucios': genericos_sucios,
             'opts': self.model._meta,
         }
         return render(request, 'admin/licitaciones/catalogomedicamento/clinica.html', context)
