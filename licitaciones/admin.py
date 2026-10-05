@@ -538,7 +538,7 @@ class AlmacenAdmin(admin.ModelAdmin):
     search_fields = ('nombre',)
 
 class LicitacionForm(forms.ModelForm):
-    pegar_excel = forms.CharField(label="📥 Carga Masiva (Pegar desde Excel)", required=False, widget=forms.Textarea(attrs={'rows': 6, 'placeholder': 'Ejemplo:\n1\t010.000.4434.00\tPARACETAMOL 500MG\t500\t1000'}), help_text="Copia de Excel 4 o 5 columnas juntas: PARTIDA | CLAVE | DESCRIPCIÓN | (OPCIONAL: PIEZAS MIN) | PIEZAS MAX.")
+    pegar_excel = forms.CharField(label="📥 Carga Masiva (Pegar desde Excel)", required=False, widget=forms.Textarea(attrs={'rows': 6, 'placeholder': 'Ejemplo:\n1\t010.000.4434.00\t500\t1000'}), help_text="NUEVO FORMATO: Solo 3 o 4 columnas: PARTIDA | CLAVE | (OPCIONAL: PIEZAS MIN) | PIEZAS MAX.")
     fecha_publicacion = forms.DateTimeField(label="Fecha y hora de publicación", required=False, widget=forms.DateTimeInput(format='%Y-%m-%dT%H:%M', attrs={'type': 'datetime-local'}))
     fecha_apertura = forms.DateTimeField(label="Fecha y hora de apertura", required=False, widget=forms.DateTimeInput(format='%Y-%m-%dT%H:%M', attrs={'type': 'datetime-local'}))
     fecha_junta = forms.DateTimeField(label="Fecha y hora de junta de aclaraciones", required=False, widget=forms.DateTimeInput(format='%Y-%m-%dT%H:%M', attrs={'type': 'datetime-local'}))
@@ -620,38 +620,91 @@ class LicitacionAdmin(admin.ModelAdmin):
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change) 
         datos_excel = form.cleaned_data.get('pegar_excel')
+        
         if datos_excel:
             import io, csv
             from django.db import transaction
-            importes_agregados, claves_nuevas_creadas, errores_filas = 0, [], []
+            
+            importes_agregados = 0
+            claves_nuevas_creadas = []
+            alertas_discrepancia = []
+            
             texto_seguro = datos_excel.replace('\r\n', '\n').replace('\r', '\n')
             f = io.StringIO(texto_seguro)
             lector = csv.reader(f, dialect='excel-tab')
+            
             for columnas in lector:
                 if not columnas or not "".join(columnas).strip(): continue
-                if len(columnas) >= 4:
-                    try:
-                        with transaction.atomic():
-                            partida_val, clave_val, descripcion_val = columnas[0].strip(), columnas[1].strip(), columnas[2].strip().replace('\n', ' ') 
-                            if len(columnas) >= 5 and columnas[4].strip():
-                                min_str, max_str = columnas[3].strip().replace(',', '').replace(' ', ''), columnas[4].strip().replace(',', '').replace(' ', '')
-                            else:
-                                min_str, max_str = "0", columnas[3].strip().replace(',', '').replace(' ', '')
-                            if not clave_val or not max_str: continue
-                            num_partida = int(float(partida_val))
-                            num_piezas_min, num_piezas_max = int(float(min_str)) if min_str else 0, int(float(max_str))
-                            medicamento_db = CatalogoMedicamento.objects.filter(clave_sector=clave_val).first()
-                            if not medicamento_db:
-                                medicamento_db = CatalogoMedicamento(clave_sector=clave_val, descripcion=descripcion_val, denominacion_generica=descripcion_val, fabricante='')
-                                medicamento_db.save()
-                                claves_nuevas_creadas.append(clave_val)
-                            PartidaRequerimiento.objects.create(licitacion=obj, numero_partida=num_partida, medicamento=medicamento_db, cantidad_minima=num_piezas_min, cantidad_maxima=num_piezas_max, costo=0, precio=0)
-                            importes_agregados += 1
-                    except Exception as e:
-                        errores_filas.append(f"Partida {columnas[0]}: Error ({e})")
-                        continue 
-            if importes_agregados > 0: messages.success(request, f"¡Éxito! Se cargaron {importes_agregados} partidas al evento.")
-            if claves_nuevas_creadas: messages.warning(request, f"🔔 Se agregaron {len(claves_nuevas_creadas)} CLAVES NUEVAS.")
+                
+                try:
+                    with transaction.atomic():
+                        # 👇 DETECCIÓN INTELIGENTE DE 3 O 4 COLUMNAS 👇
+                        if len(columnas) == 3:
+                            partida_val = columnas[0].strip()
+                            clave_val = columnas[1].strip()
+                            min_str = "0"
+                            max_str = columnas[2].strip().replace(',', '').replace(' ', '')
+                        elif len(columnas) >= 4:
+                            partida_val = columnas[0].strip()
+                            clave_val = columnas[1].strip()
+                            min_str = columnas[2].strip().replace(',', '').replace(' ', '')
+                            max_str = columnas[3].strip().replace(',', '').replace(' ', '')
+                        else:
+                            continue # Si no tiene ni 3 columnas, lo ignora
+                            
+                        if not clave_val or not max_str: continue
+                        
+                        num_partida = int(float(partida_val))
+                        num_piezas_min = int(float(min_str)) if min_str else 0
+                        num_piezas_max = int(float(max_str))
+                        
+                        # 👇 REVISIÓN DE DISCREPANCIAS EN EL CATÁLOGO 👇
+                        medicamentos_db = CatalogoMedicamento.objects.filter(clave_sector=clave_val)
+                        
+                        if medicamentos_db.count() > 1:
+                            # Tiene duplicados. Revisamos si dicen lo mismo
+                            descripciones = set([m.denominacion_generica.strip().upper() for m in medicamentos_db if m.denominacion_generica])
+                            if len(descripciones) > 1:
+                                alertas_discrepancia.append(clave_val)
+                        
+                        medicamento_db = medicamentos_db.first()
+                        
+                        # 👇 SI LA CLAVE NO EXISTE, SE CREA COMO PENDIENTE 👇
+                        if not medicamento_db:
+                            medicamento_db = CatalogoMedicamento(
+                                clave_sector=clave_val, 
+                                descripcion='⚠️ PENDIENTE DE ACTUALIZAR', 
+                                denominacion_generica='⚠️ PENDIENTE DE ACTUALIZAR', 
+                                fabricante=''
+                            )
+                            medicamento_db.save()
+                            claves_nuevas_creadas.append(clave_val)
+                            
+                        PartidaRequerimiento.objects.create(
+                            licitacion=obj, 
+                            numero_partida=num_partida, 
+                            medicamento=medicamento_db, 
+                            cantidad_minima=num_piezas_min, 
+                            cantidad_maxima=num_piezas_max, 
+                            costo=0, 
+                            precio=0
+                        )
+                        importes_agregados += 1
+                        
+                except Exception as e:
+                    continue 
+                    
+            # 👇 AVISOS AL USUARIO AL TERMINAR EL GUARDADO 👇
+            if importes_agregados > 0: 
+                messages.success(request, f"¡Éxito! Se cargaron {importes_agregados} partidas al evento.")
+                
+            if claves_nuevas_creadas: 
+                claves_str = ", ".join(list(set(claves_nuevas_creadas))[:10])
+                messages.warning(request, f"🚨 ATENCIÓN: Se detectaron {len(claves_nuevas_creadas)} CLAVES NUEVAS que no existían. Se guardaron con descripción 'PENDIENTE'. Ve al catálogo a completarlas. Ej: {claves_str}")
+                
+            if alertas_discrepancia:
+                claves_disc = ", ".join(list(set(alertas_discrepancia))[:10])
+                messages.error(request, f"⚠️ DISCREPANCIA EN CATÁLOGO: Tienes descripciones diferentes guardadas para las mismas claves: {claves_disc}. Por favor unifica tu catálogo.")
 
     def borrar_partidas_view(self, request, object_id):
         licitacion = self.get_object(request, object_id)
