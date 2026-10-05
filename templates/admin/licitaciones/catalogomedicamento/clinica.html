@@ -1,0 +1,44 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+<div style="padding: 20px;">
+    <h2>🏥 Clínica de Datos (Doctor IA)</h2>
+    <p>He detectado claves con <b>múltiples descripciones diferentes</b> en el catálogo. Por favor, selecciona la descripción correcta para cada clave. Unificaré los textos conservando los diferentes laboratorios intactos.</p>
+    
+    {% if not discrepancias %}
+        <div style="background-color: #d4edda; color: #155724; padding: 20px; border-radius: 8px; margin-top: 20px;">
+            <h4 style="margin:0;">✅ ¡Tu catálogo está perfectamente sano! No se encontraron discrepancias de texto.</h4>
+        </div>
+    {% else %}
+        <div class="row">
+            {% for item in discrepancias %}
+            <div class="col-md-6 mb-4">
+                <div style="background: #fff; padding: 20px; border-radius: 8px; border-top: 4px solid #f39c12; box-shadow: 0 2px 10px rgba(0,0,0,0.05);">
+                    <h3 style="margin-top: 0; color: #d35400;">Clave: {{ item.clave }}</h3>
+                    <p style="color: #666; font-size: 13px;">Selecciona la descripción que debe ser la <b>Oficial</b> para todos los laboratorios de esta clave:</p>
+                    
+                    <form method="POST" action="">
+                        {% csrf_token %}
+                        <input type="hidden" name="clave" value="{{ item.clave }}">
+                        
+                        <div style="max-height: 250px; overflow-y: auto; background: #f9f9f9; padding: 10px; border-radius: 5px; border: 1px solid #eee;">
+                            {% for variante in item.variantes %}
+                            <label style="display: block; padding: 10px; border-bottom: 1px solid #ddd; cursor: pointer;">
+                                <input type="radio" name="variante_ganadora" value="{{ variante.id }}" required>
+                                <b>Lab:</b> <span style="color: #005b96;">{{ variante.socio_contacto.nombre|default:"Sin Laboratorio" }}</span><br>
+                                <span style="font-size: 12px; color: #333;">{{ variante.descripcion }}</span>
+                            </label>
+                            {% endfor %}
+                        </div>
+                        
+                        <button type="submit" style="margin-top: 15px; width: 100%; background-color: #28a745; color: white; border: none; padding: 10px; border-radius: 5px; font-weight: bold; cursor: pointer;">
+                            💉 Unificar Textos con esta Opción
+                        </button>
+                    </form>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -491,6 +491,65 @@ class CatalogoMedicamentoAdmin(ImportExportModelAdmin):
         'semaforo_vigencia_display' 
     )
 
+    # ==========================================
+    # 👇 INICIO DEL DOCTOR IA (CLÍNICA DE DATOS) 👇
+    # ==========================================
+    def get_urls(self):
+        from django.urls import path
+        urls = super().get_urls()
+        custom_urls = [
+            path('clinica-discrepancias/', self.admin_site.admin_view(self.clinica_discrepancias_view), name='clinica_discrepancias')
+        ]
+        return custom_urls + urls
+
+    def clinica_discrepancias_view(self, request):
+        from django.db.models import Count
+        from django.shortcuts import render, redirect
+        from django.contrib import messages
+        from .models import CatalogoMedicamento
+
+        # Si el usuario eligió una descripción ganadora y le dio clic a "Unificar"
+        if request.method == 'POST':
+            clave_a_arreglar = request.POST.get('clave')
+            id_ganador = request.POST.get('variante_ganadora')
+            
+            if clave_a_arreglar and id_ganador:
+                ganador = CatalogoMedicamento.objects.get(id=id_ganador)
+                
+                # 💉 CIRUGÍA: Actualizamos TODAS las filas de esa clave con la descripción ganadora,
+                # pero SIN TOCAR ni borrar los laboratorios o precios.
+                CatalogoMedicamento.objects.filter(clave_sector=clave_a_arreglar).update(
+                    descripcion=ganador.descripcion,
+                    denominacion_generica=ganador.denominacion_generica
+                )
+                messages.success(request, f"¡Cirugía Exitosa! La clave {clave_a_arreglar} ahora tiene una descripción uniforme en todo el sistema.")
+            return redirect('admin:clinica_discrepancias')
+
+        # 🔍 DIAGNÓSTICO: Buscamos claves que tengan más de 1 descripción distinta
+        claves_agrupadas = CatalogoMedicamento.objects.values('clave_sector').annotate(
+            num_desc=Count('descripcion', distinct=True)
+        ).filter(num_desc__gt=1, clave_sector__isnull=False).exclude(clave_sector='')
+        
+        discrepancias = []
+        for item in claves_agrupadas:
+            clave = item['clave_sector']
+            # Traemos todas las variantes de esa clave
+            variantes = CatalogoMedicamento.objects.filter(clave_sector=clave)
+            discrepancias.append({
+                'clave': clave, 
+                'variantes': variantes
+            })
+            
+        context = {
+            'title': '🏥 Clínica de Discrepancias (Doctor IA)',
+            'discrepancias': discrepancias,
+            'opts': self.model._meta,
+        }
+        return render(request, 'admin/licitaciones/catalogomedicamento/clinica.html', context)
+    # ==========================================
+    # 👆 FIN DEL DOCTOR IA 👆
+    # ==========================================
+
     def registro_sanitario_formato(self, obj):
         return obj.num_registro_sanitario
     registro_sanitario_formato.short_description = "Reg. Sanitario"
