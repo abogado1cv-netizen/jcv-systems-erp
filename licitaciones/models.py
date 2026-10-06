@@ -87,7 +87,9 @@ class Licitacion(models.Model):
     fecha_apertura = models.DateTimeField(verbose_name="Fecha y hora de apertura", null=True, blank=True)
     fecha_junta = models.DateTimeField(verbose_name="Fecha y hora de junta de aclaraciones", null=True, blank=True)
     fecha_fallo = models.DateTimeField(verbose_name="Fecha y hora del acto del Fallo", null=True, blank=True)
+    requiere_anexos = models.BooleanField(default=False,verbose_name="¿Solicita Anexos o Carta Respaldo?")
     dependencia = models.CharField(max_length=100, choices=DEPENDENCIAS_MAESTRAS, verbose_name="Dependencia")
+    otra_dependencia = models.CharField(max_length=255,blank=True,null=True,verbose_name="Otra Dependencia (Manual)",help_text="Escribe aquí el nombre si la dependencia no aparece en la lista de arriba.")
     estatus = models.ForeignKey(EstatusProcedimiento, on_delete=models.SET_NULL, null=True)
     url_carpeta_drive = models.URLField(max_length=500, blank=True, null=True, verbose_name="URL Carpeta Drive")
 
@@ -117,6 +119,15 @@ class Licitacion(models.Model):
             except Exception as e:
                 print(f"Error Drive: {e}")
         super().save(*args, **kwargs)
+    @property
+    def dependencia_real(self):
+        """Si escribieron una dependencia manual, usa esa. Si no, usa la de la lista."""
+        if self.otra_dependencia:
+            return self.otra_dependencia
+        if self.dependencia:
+            return self.get_dependencia_display()
+        return "S/D"
+
 
 class CatalogoMedicamento(models.Model):
     clave_sector = models.CharField(max_length=50)
