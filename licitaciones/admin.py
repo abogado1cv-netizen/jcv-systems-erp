@@ -46,70 +46,67 @@ def exportar_a_csv(modeladmin, request, queryset):
     return response
 
 # ==========================================
-# 📊 MOTOR UNIFICADO: ANÁLISIS COMERCIAL EJECUTIVO (CON MIN/MAX)
+# ⚙️ FUNCIÓN AUXILIAR: AUTO-AJUSTE DE EXCEL
+# ==========================================
+def ajustar_columnas_excel(ws):
+    from openpyxl.utils import get_column_letter
+    for col in ws.columns:
+        max_length = 0
+        col_letter = get_column_letter(col[0].column)
+        for cell in col:
+            try:
+                if cell.value:
+                    max_length = max(max_length, len(str(cell.value)))
+            except: pass
+        ws.column_dimensions[col_letter].width = min(max_length + 2, 55) # Tope de 55 de ancho para que no se deforme
+
+# ==========================================
+# 📊 MOTOR UNIFICADO: ANÁLISIS COMERCIAL (SÁBANA GENERAL)
 # ==========================================
 @admin.action(description='📊 Descargar Análisis Comercial (Unificado)')
 def exportar_analisis_unificado(modeladmin, request, queryset):
-    from .models import CatalogoMedicamento
+    from .models import CatalogoMedicamento, HistorialPrecio
+    from django.db.models import Min
     response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     es_individual = queryset.count() == 1
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = "Análisis Comercial"
+    ws.title = "Sábana Comercial"
 
     font_cabecera = Font(bold=True, color="000000")
     fill_cabecera = PatternFill("solid", fgColor="D9D9D9")
-    fill_datos_grales = PatternFill("solid", fgColor="EFEFEF")
+    fill_datos = PatternFill("solid", fgColor="EFEFEF")
     alineacion_centro = Alignment(horizontal="center", vertical="center", wrap_text=True)
     alineacion_izq = Alignment(horizontal="left", vertical="center", wrap_text=True)
     borde_delgado = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
     formato_moneda = '"$"#,##0.00'
 
-    if es_individual:
-        obj = queryset.first()
+    encabezados = [
+        'NÚMERO DE PROCEDIMIENTO', 'EMPRESA PARTICIPANTE', 'DEPENDENCIA', 
+        'FECHA DE PUBLICACIÓN', 'FECHA DE APERTURA', 'JUNTA DE ACLARACIONES', 'ACTO DE FALLO',
+        'PARTIDA', 'CLAVE', 'DESCRIPCIÓN COMPLETA', 'DENOMINACIÓN GENÉRICA', 'DENOMINACIÓN DISTINTIVA', 
+        'SOCIO COMERCIAL', 'CANTIDAD MÍNIMA', 'CANTIDAD MÁXIMA', 
+        'PRECIO REF. HISTÓRICO ($)', 'PRECIO UNITARIO ACTUAL', 'IMPORTE MÁXIMO', 'RESULTADO'
+    ]
+    ws.append(encabezados)
+    
+    for col_num in range(1, len(encabezados) + 1):
+        celda = ws.cell(row=1, column=col_num)
+        celda.font = font_cabecera
+        celda.fill = fill_cabecera
+        celda.alignment = alineacion_centro
+        celda.border = borde_delgado
+
+    for obj in queryset:
         es_licitacion = hasattr(obj, 'num_procedimiento')
-        
         folio = getattr(obj, 'num_procedimiento', getattr(obj, 'folio', 'S/D'))
+        empresa = obj.empresa.nombre if getattr(obj, 'empresa', None) else 'S/D'
         cliente = obj.get_dependencia_display() if es_licitacion else (obj.razon_social or obj.get_dependencia_display() or "S/D")
         
         f_pub = obj.fecha_publicacion.strftime('%d/%m/%Y %H:%M') if es_licitacion and getattr(obj, 'fecha_publicacion', None) else 'N/A'
-        f_ape = obj.fecha_apertura.strftime('%d/%m/%Y %H:%M') if es_licitacion and getattr(obj, 'fecha_apertura', None) else 'N/A'
+        f_ape = obj.fecha_apertura.strftime('%d/%m/%Y %H:%M') if getattr(obj, 'fecha_apertura', None) else 'N/A'
         f_jun = obj.fecha_junta.strftime('%d/%m/%Y %H:%M') if es_licitacion and getattr(obj, 'fecha_junta', None) else 'N/A'
         f_fal = obj.fecha_fallo.strftime('%d/%m/%Y %H:%M') if es_licitacion and getattr(obj, 'fecha_fallo', None) else 'N/A'
-
-        response['Content-Disposition'] = f'attachment; filename="Analisis_Ejecutivo_{folio}.xlsx"'
-
-        ws.append(['', 'NÚMERO DE EXPEDIENTE', 'DEPENDENCIA', 'Observaciones '])
-        ws.append(['', folio, cliente, ''])
-        ws.append([])
-        ws.append(['', 'FECHA DE PUBLICACIÓN', 'JUNTA DE ACLARACIONES', 'APERTURA DE PROPUESTAS', 'ACTO DE FALLO'])
-        ws.append(['', f_pub, f_jun, f_ape, f_fal])
-        ws.append([])
-        ws.append([])
-
-        for r in [1, 4]:
-            for c in [2, 3, 4, 5]:
-                celda = ws.cell(row=r, column=c)
-                celda.font = font_cabecera
-                celda.fill = fill_datos_grales
-                celda.alignment = alineacion_centro
-                celda.border = borde_delgado
-        for r in [2, 5]:
-            for c in [2, 3, 4, 5]:
-                celda = ws.cell(row=r, column=c)
-                celda.alignment = alineacion_centro
-                celda.border = borde_delgado
-
-        encabezados = ['PARTIDA', 'CLAVE', 'Descripcion (completa) ', 'denominacion_generica', 'denominacion_distintiva', 'Socio Comercial', 'CANTIDAD MÍNIMA', 'CANTIDAD MÁXIMA', 'PRECIO UNITARIO', 'IMPORTE MÁXIMO', 'RESULTADO']
-        ws.append(encabezados)
-        fila_encabezados = ws.max_row
-
-        for col_num in range(1, len(encabezados) + 1):
-            celda = ws.cell(row=fila_encabezados, column=col_num)
-            celda.font = font_cabecera
-            celda.fill = fill_cabecera
-            celda.alignment = alineacion_centro
-            celda.border = borde_delgado
 
         partidas = obj.partidas.all() if es_licitacion else obj.partidas_cotizacion.all()
         for i, p in enumerate(partidas, 1):
@@ -120,98 +117,51 @@ def exportar_analisis_unificado(modeladmin, request, queryset):
             importe_max = cant_max * precio
             resultado = getattr(p, 'resultado', 'Pendiente') if es_licitacion else (obj.get_estatus_display() if hasattr(obj, 'get_estatus_display') else 'Pendiente')
             
+            # 🧠 IA: Obtenemos el precio histórico más bajo de esta clave
+            precio_hist_min = 0.0
             if med_original:
                 clave_buscar = med_original.clave_sector
-                meds_relacionados = CatalogoMedicamento.objects.filter(clave_sector=clave_buscar)
-                
-                if not meds_relacionados.exists():
-                    meds_relacionados = [med_original]
+                min_aggr = HistorialPrecio.objects.filter(medicamento__clave_sector=clave_buscar).aggregate(Min('precio'))
+                precio_hist_min = float(min_aggr['precio__min'] or 0.0)
+
+            if med_original:
+                meds_relacionados = CatalogoMedicamento.objects.filter(clave_sector=med_original.clave_sector)
+                if not meds_relacionados.exists(): meds_relacionados = [med_original]
                     
-                # Clonamos la fila para cada laboratorio que surte esta clave
                 for med in meds_relacionados:
-                    clave = med.clave_sector
-                    desc_completa = med.descripcion
-                    generica = med.denominacion_generica
-                    distintiva = med.denominacion_distintiva or ''
                     socio = med.socio_contacto.nombre if med.socio_contacto else 'Sin Laboratorio'
-                    
-                    ws.append([getattr(p, 'numero_partida', i), clave, desc_completa, generica, distintiva, socio, cant_min, cant_max, precio, importe_max, resultado])
-                    
+                    ws.append([
+                        folio, empresa, cliente, f_pub, f_ape, f_jun, f_fal,
+                        getattr(p, 'numero_partida', i), med.clave_sector, med.descripcion, 
+                        med.denominacion_generica, med.denominacion_distintiva or '', 
+                        socio, cant_min, cant_max, precio_hist_min, precio, importe_max, resultado
+                    ])
                     r = ws.max_row
                     for c in range(1, len(encabezados) + 1):
                         celda = ws.cell(row=r, column=c)
                         celda.border = borde_delgado
                         celda.alignment = alineacion_centro
-                        if c in [9, 10]: celda.number_format = formato_moneda
-                        if c in [3, 4, 5, 6]: celda.alignment = alineacion_izq
+                        if c in [16, 17, 18]: celda.number_format = formato_moneda
+                        if c in [10, 11, 12, 13]: celda.alignment = alineacion_izq
             else:
                 clave = getattr(p, 'clave_historica', 'S/C')
-                ws.append([getattr(p, 'numero_partida', i), clave, 'Pendiente Registro', 'Pendiente Registro', '', 'Sin Laboratorio', cant_min, cant_max, precio, importe_max, resultado])
+                ws.append([
+                    folio, empresa, cliente, f_pub, f_ape, f_jun, f_fal,
+                    getattr(p, 'numero_partida', i), clave, 'Pendiente Registro', 
+                    'Pendiente Registro', '', 'Sin Laboratorio', cant_min, cant_max, 
+                    0.0, precio, importe_max, resultado
+                ])
                 r = ws.max_row
                 for c in range(1, len(encabezados) + 1):
                     celda = ws.cell(row=r, column=c)
                     celda.border = borde_delgado
                     celda.alignment = alineacion_centro
-                    if c in [9, 10]: celda.number_format = formato_moneda
-                    if c in [3, 4, 5, 6]: celda.alignment = alineacion_izq
+                    if c in [16, 17, 18]: celda.number_format = formato_moneda
+                    if c in [10, 11, 12, 13]: celda.alignment = alineacion_izq
 
-    else:
-        response['Content-Disposition'] = 'attachment; filename="Analisis_Comercial_Global.xlsx"'
-        encabezados = ['FOLIO', 'PARTIDA', 'CLAVE', 'Descripcion (completa) ', 'denominacion_generica', 'denominacion_distintiva', 'Socio Comercial', 'CANTIDAD MÍNIMA', 'CANTIDAD MÁXIMA', 'PRECIO UNITARIO', 'IMPORTE MÁXIMO', 'RESULTADO']
-        ws.append(encabezados)
-        for col_num in range(1, len(encabezados) + 1):
-            celda = ws.cell(row=1, column=col_num)
-            celda.font = font_cabecera
-            celda.fill = fill_cabecera
-            celda.alignment = alineacion_centro
-            celda.border = borde_delgado
-
-        for obj in queryset:
-            es_licitacion = hasattr(obj, 'num_procedimiento')
-            folio = getattr(obj, 'num_procedimiento', getattr(obj, 'folio', 'S/D'))
-            partidas = obj.partidas.all() if hasattr(obj, 'num_procedimiento') else obj.partidas_cotizacion.all()
-            
-            for i, p in enumerate(partidas, 1):
-                med_original = p.medicamento
-                cant_min = getattr(p, 'cantidad_minima', 0)
-                cant_max = getattr(p, 'cantidad_maxima', getattr(p, 'cantidad', 0))
-                precio = float(getattr(p, 'precio', getattr(p, 'precio_unitario', 0)))
-                importe_max = cant_max * precio
-                resultado = getattr(p, 'resultado', 'Pendiente') if es_licitacion else (obj.get_estatus_display() if hasattr(obj, 'get_estatus_display') else 'Pendiente')
-
-                if med_original:
-                    clave_buscar = med_original.clave_sector
-                    meds_relacionados = CatalogoMedicamento.objects.filter(clave_sector=clave_buscar)
-                    
-                    if not meds_relacionados.exists():
-                        meds_relacionados = [med_original]
-                        
-                    for med in meds_relacionados:
-                        clave = med.clave_sector
-                        desc_completa = med.descripcion
-                        generica = med.denominacion_generica
-                        distintiva = med.denominacion_distintiva or ''
-                        socio = med.socio_contacto.nombre if med.socio_contacto else 'Sin Laboratorio'
-
-                        ws.append([folio, getattr(p, 'numero_partida', i), clave, desc_completa, generica, distintiva, socio, cant_min, cant_max, precio, importe_max, resultado])
-                        r = ws.max_row
-                        for c in range(1, len(encabezados) + 1):
-                            celda = ws.cell(row=r, column=c)
-                            celda.border = borde_delgado
-                            celda.alignment = alineacion_centro
-                            if c in [10, 11]: celda.number_format = formato_moneda
-                            if c in [4, 5, 6, 7]: celda.alignment = alineacion_izq
-                else:
-                    clave = getattr(p, 'clave_historica', 'S/C')
-                    ws.append([folio, getattr(p, 'numero_partida', i), clave, 'Pendiente Registro', 'Pendiente Registro', '', 'Sin Laboratorio', cant_min, cant_max, precio, importe_max, resultado])
-                    r = ws.max_row
-                    for c in range(1, len(encabezados) + 1):
-                        celda = ws.cell(row=r, column=c)
-                        celda.border = borde_delgado
-                        celda.alignment = alineacion_centro
-                        if c in [10, 11]: celda.number_format = formato_moneda
-                        if c in [4, 5, 6, 7]: celda.alignment = alineacion_izq
-
+    ajustar_columnas_excel(ws) # Auto-Ajuste de Columnas
+    if es_individual: response['Content-Disposition'] = f'attachment; filename="Sabana_General_{queryset.first().num_procedimiento if hasattr(queryset.first(), "num_procedimiento") else queryset.first().folio}.xlsx"'
+    else: response['Content-Disposition'] = 'attachment; filename="Sabana_Comercial_Global.xlsx"'
     wb.save(response)
     return response
 
@@ -220,11 +170,10 @@ def exportar_analisis_unificado(modeladmin, request, queryset):
 # ==========================================
 @admin.action(description='🏭 Descargar Reporte Agrupado por Socios (Unificado)')
 def exportar_socios_unificado(modeladmin, request, queryset):
-    from django.db.models import Sum
-    from .models import CatalogoMedicamento, Inventario
+    from django.db.models import Min
+    from .models import CatalogoMedicamento, Inventario, HistorialPrecio
     response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     es_individual = queryset.count() == 1
-    
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Socios Comerciales"
@@ -238,46 +187,17 @@ def exportar_socios_unificado(modeladmin, request, queryset):
     borde_delgado = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
     formato_moneda = '"$"#,##0.00'
 
-    if es_individual:
-        obj = queryset.first()
-        folio = getattr(obj, 'num_procedimiento', getattr(obj, 'folio', 'S/D'))
-        es_licitacion = hasattr(obj, 'num_procedimiento')
-        
-        f_pub = obj.fecha_publicacion.strftime('%d/%m/%Y %H:%M') if es_licitacion and getattr(obj, 'fecha_publicacion', None) else 'N/A'
-        f_ape = obj.fecha_apertura.strftime('%d/%m/%Y %H:%M') if es_licitacion and getattr(obj, 'fecha_apertura', None) else 'N/A'
-        f_jun = obj.fecha_junta.strftime('%d/%m/%Y %H:%M') if es_licitacion and getattr(obj, 'fecha_junta', None) else 'N/A'
-        f_fal = obj.fecha_fallo.strftime('%d/%m/%Y %H:%M') if es_licitacion and getattr(obj, 'fecha_fallo', None) else 'N/A'
-
-        response['Content-Disposition'] = f'attachment; filename="Reporte_Socios_{folio}.xlsx"'
-
-        ws.append(['', 'NÚMERO DE EXPEDIENTE', 'DEPENDENCIA', 'Observaciones '])
-        ws.append(['', folio, obj.get_dependencia_display() if es_licitacion else (obj.razon_social or "S/D"), ''])
-        ws.append([])
-        ws.append(['', 'FECHA DE PUBLICACIÓN', 'JUNTA DE ACLARACIONES', 'APERTURA DE PROPUESTAS', 'ACTO DE FALLO'])
-        ws.append(['', f_pub, f_jun, f_ape, f_fal])
-        ws.append([])
-        ws.append([])
-
-        for r in [1, 4]:
-            for c in [2, 3, 4, 5]:
-                celda = ws.cell(row=r, column=c)
-                celda.font = font_cabecera
-                celda.fill = PatternFill("solid", fgColor="EFEFEF")
-                celda.alignment = alineacion_centro
-                celda.border = borde_delgado
-        for r in [2, 5]:
-            for c in [2, 3, 4, 5]:
-                celda = ws.cell(row=r, column=c)
-                celda.alignment = alineacion_centro
-                celda.border = borde_delgado
-    else:
-        response['Content-Disposition'] = 'attachment; filename="Reporte_Socios_Global.xlsx"'
-
-    # ¡NUEVOS ENCABEZADOS! Agregamos CANTIDAD MÍNIMA y ajustamos a MÁXIMA
-    encabezados = ['Socio Comercial', 'Partida', 'Clave', 'Descripcion (completa) ', 'denominacion_generica', 'denominacion_distintiva', 'fabricante', 'rfc_fabricante', 'pais_fabricacion', 'num_registro_sanitario', 'num_prorroga', 'codigo_barras', 'fecha_expedicion', 'fecha_vigencia', 'CANTIDAD MÍNIMA', 'CANTIDAD MÁXIMA', 'Piezas en inventario', 'Ubicación del Inventario', '$ referencia', 'precio costo ', 'precio unitario', 'IMPORTE MÁXIMO']
+    encabezados = [
+        'NÚMERO DE PROCEDIMIENTO', 'EMPRESA PARTICIPANTE', 'DEPENDENCIA', 
+        'FECHA DE PUBLICACIÓN', 'FECHA DE APERTURA', 'JUNTA DE ACLARACIONES', 'ACTO DE FALLO',
+        'SOCIO COMERCIAL', 'PARTIDA', 'CLAVE', 'DESCRIPCIÓN COMPLETA', 'DENOMINACIÓN GENÉRICA', 'DENOMINACIÓN DISTINTIVA', 
+        'FABRICANTE', 'RFC FABRICANTE', 'PAÍS FABRICACIÓN', 'NUM REGISTRO SANITARIO', 'NUM PRÓRROGA', 
+        'CÓDIGO DE BARRAS', 'FECHA EXPEDICIÓN', 'FECHA VIGENCIA', 
+        'CANTIDAD MÍNIMA', 'CANTIDAD MÁXIMA', 'PIEZAS EN INVENTARIO', 'UBICACIÓN INVENTARIO', 
+        '$ REFERENCIA (HISTÓRICO BAJO)', 'PRECIO COSTO', 'PRECIO UNITARIO', 'IMPORTE MÁXIMO'
+    ]
     ws.append(encabezados)
     fila_encabezados = ws.max_row
-    
     for col_num in range(1, len(encabezados) + 1):
         celda = ws.cell(row=fila_encabezados, column=col_num)
         celda.font = font_cabecera
@@ -288,6 +208,15 @@ def exportar_socios_unificado(modeladmin, request, queryset):
     filas = []
     for obj in queryset:
         es_licitacion = hasattr(obj, 'num_procedimiento')
+        folio = getattr(obj, 'num_procedimiento', getattr(obj, 'folio', 'S/D'))
+        empresa = obj.empresa.nombre if getattr(obj, 'empresa', None) else 'S/D'
+        cliente = obj.get_dependencia_display() if es_licitacion else (obj.razon_social or "S/D")
+        
+        f_pub = obj.fecha_publicacion.strftime('%d/%m/%Y %H:%M') if es_licitacion and getattr(obj, 'fecha_publicacion', None) else 'N/A'
+        f_ape = obj.fecha_apertura.strftime('%d/%m/%Y %H:%M') if getattr(obj, 'fecha_apertura', None) else 'N/A'
+        f_jun = obj.fecha_junta.strftime('%d/%m/%Y %H:%M') if es_licitacion and getattr(obj, 'fecha_junta', None) else 'N/A'
+        f_fal = obj.fecha_fallo.strftime('%d/%m/%Y %H:%M') if es_licitacion and getattr(obj, 'fecha_fallo', None) else 'N/A'
+
         partidas = obj.partidas.all() if es_licitacion else obj.partidas_cotizacion.all()
         
         for i, p in enumerate(partidas, 1):
@@ -299,103 +228,92 @@ def exportar_socios_unificado(modeladmin, request, queryset):
             importe_max = cant_max * precio
             num_partida = getattr(p, 'numero_partida', i)
             
+            precio_hist_min = 0.0
             if med_original:
-                clave_buscar = med_original.clave_sector
-                meds_relacionados = CatalogoMedicamento.objects.filter(clave_sector=clave_buscar)
-                
-                if not meds_relacionados.exists():
-                    meds_relacionados = [med_original]
+                min_aggr = HistorialPrecio.objects.filter(medicamento__clave_sector=med_original.clave_sector).aggregate(Min('precio'))
+                precio_hist_min = float(min_aggr['precio__min'] or 0.0)
+            
+            if med_original:
+                meds_relacionados = CatalogoMedicamento.objects.filter(clave_sector=med_original.clave_sector)
+                if not meds_relacionados.exists(): meds_relacionados = [med_original]
                     
                 for med in meds_relacionados:
                     socio = med.socio_contacto.nombre if med.socio_contacto else 'Sin Laboratorio'
-                    clave = med.clave_sector
-                    descripcion = med.descripcion
-                    generica = med.denominacion_generica
-                    distintiva = med.denominacion_distintiva or ''
-                    fabricante = med.fabricante or ''
-                    rfc = med.rfc_fabricante or ''
-                    pais = med.pais_fabricacion or ''
-                    reg_san = med.num_registro_sanitario or ''
-                    prorroga = med.num_prorroga or ''
-                    codigo_b = med.codigo_barras or ''
-                    f_exp = med.fecha_expedicion.strftime('%Y-%m-%d') if med.fecha_expedicion else ''
-                    f_vig = med.fecha_vigencia.strftime('%Y-%m-%d') if med.fecha_vigencia else ''
-                    
                     stock_disp = Inventario.objects.filter(medicamento=med, cantidad_disponible__gt=0).select_related('almacen')
                     total_piezas = sum(item.cantidad_disponible for item in stock_disp)
                     texto_ubic = " | ".join([f"{item.almacen.nombre if item.almacen else 'Bodega'} ({item.cantidad_disponible})" for item in stock_disp]) if stock_disp else "Sin Inventario"
 
                     filas.append([
-                        socio, num_partida, clave, descripcion, generica, 
-                        distintiva, fabricante, rfc, 
-                        pais, reg_san, prorroga, 
-                        codigo_b, f_exp, f_vig, 
+                        folio, empresa, cliente, f_pub, f_ape, f_jun, f_fal,
+                        socio, num_partida, med.clave_sector, med.descripcion, med.denominacion_generica, 
+                        med.denominacion_distintiva or '', med.fabricante or '', med.rfc_fabricante or '', 
+                        med.pais_fabricacion or '', med.num_registro_sanitario or '', med.num_prorroga or '', 
+                        med.codigo_barras or '', med.fecha_expedicion.strftime('%Y-%m-%d') if med.fecha_expedicion else '', 
+                        med.fecha_vigencia.strftime('%Y-%m-%d') if med.fecha_vigencia else '', 
                         cant_min, cant_max, total_piezas, texto_ubic, 
-                        0, costo, precio, importe_max
+                        precio_hist_min, costo, precio, importe_max
                     ])
             else:
-                socio = 'Sin Laboratorio'
-                clave = getattr(p, 'clave_historica', 'S/C')
-                descripcion = 'Pendiente Registro en Catálogo'
-                
                 filas.append([
-                    socio, num_partida, clave, descripcion, 'Pendiente Registro', 
-                    '', '', '', 
-                    '', '', '', 
-                    '', '', '', 
+                    folio, empresa, cliente, f_pub, f_ape, f_jun, f_fal,
+                    'Sin Laboratorio', num_partida, getattr(p, 'clave_historica', 'S/C'), 'Pendiente Registro en Catálogo', 'Pendiente Registro', 
+                    '', '', '', '', '', '', '', '', '', 
                     cant_min, cant_max, 0, 'N/A', 
-                    0, costo, precio, importe_max
+                    0.0, costo, precio, importe_max
                 ])
             
-    filas.sort(key=lambda x: str(x[0])) 
+    # Agrupamos por socio comercial (Columna 7, índice 7)
+    filas.sort(key=lambda x: str(x[7])) 
     
     current_fab = None
     subtotal_importe = 0
+    total_cols = len(encabezados)
     
     for fila in filas:
-        fab = fila[0]
+        fab = fila[7]
         if current_fab != fab:
             if current_fab is not None:
-                # Ahora son 22 columnas en lugar de 21
-                r = ['' for _ in range(22)]
-                r[0] = f'Total {current_fab}'
-                r[21] = subtotal_importe
+                r = ['' for _ in range(total_cols)]
+                r[7] = f'Total {current_fab}'
+                r[28] = subtotal_importe
                 ws.append(r)
                 fila_subtotal = ws.max_row
-                for c in range(1, 23): 
+                for c in range(1, total_cols + 1): 
                     ws.cell(row=fila_subtotal, column=c).fill = fill_subtotal
                     ws.cell(row=fila_subtotal, column=c).font = font_subtotal
                     ws.cell(row=fila_subtotal, column=c).border = borde_delgado
-                ws.cell(row=fila_subtotal, column=22).number_format = formato_moneda
+                ws.cell(row=fila_subtotal, column=29).number_format = formato_moneda
             
             current_fab = fab
             subtotal_importe = 0
             
-        subtotal_importe += fila[21] 
+        subtotal_importe += fila[28] 
         ws.append(fila)
         fila_actual = ws.max_row
         
-        for c in range(1, 23):
+        for c in range(1, total_cols + 1):
             celda = ws.cell(row=fila_actual, column=c)
             celda.border = borde_delgado
-            # Aplicar formato de moneda a las últimas 4 columnas
-            if c in [19, 20, 21, 22]: celda.number_format = formato_moneda
+            if c in [26, 27, 28, 29]: celda.number_format = formato_moneda
 
     if current_fab is not None:
-        r = ['' for _ in range(22)]
-        r[0] = f'Total {current_fab}'
-        r[21] = subtotal_importe
+        r = ['' for _ in range(total_cols)]
+        r[7] = f'Total {current_fab}'
+        r[28] = subtotal_importe
         ws.append(r)
         fila_subtotal = ws.max_row
-        for c in range(1, 23):
+        for c in range(1, total_cols + 1):
             ws.cell(row=fila_subtotal, column=c).fill = fill_subtotal
             ws.cell(row=fila_subtotal, column=c).font = font_subtotal
             ws.cell(row=fila_subtotal, column=c).border = borde_delgado
-        ws.cell(row=fila_subtotal, column=22).number_format = formato_moneda
+        ws.cell(row=fila_subtotal, column=29).number_format = formato_moneda
 
+    ajustar_columnas_excel(ws) # Auto-Ajuste de Columnas
+    
+    if es_individual: response['Content-Disposition'] = f'attachment; filename="Sabana_Socios_{queryset.first().num_procedimiento if hasattr(queryset.first(), "num_procedimiento") else queryset.first().folio}.xlsx"'
+    else: response['Content-Disposition'] = 'attachment; filename="Sabana_Socios_Global.xlsx"'
     wb.save(response)
     return response
-
 # ==========================================
 # --- CLASES DEL ADMIN ---
 # ==========================================
@@ -758,8 +676,54 @@ class LicitacionAdmin(admin.ModelAdmin):
             path('<path:object_id>/notificar-socios/', self.admin_site.admin_view(self.notificar_socios_view), name='notificar_socios_licitacion'),
             path('<path:object_id>/notificar-resultados/', self.admin_site.admin_view(self.notificar_resultados_view), name='notificar_resultados_licitacion'),
             path('<path:object_id>/notificar-whatsapp/', self.admin_site.admin_view(self.notificar_whatsapp_view), name='notificar_whatsapp_licitacion'),
+            path('<path:object_id>/ver-sabana-general/', self.admin_site.admin_view(self.ver_sabana_general_view), name='ver_sabana_general_licitacion'),
+            path('<path:object_id>/ver-sabana-socios/', self.admin_site.admin_view(self.ver_sabana_socios_view), name='ver_sabana_socios_licitacion'),
         ]
         return custom_urls + urls
+
+    def ver_sabana_general_view(self, request, object_id):
+        licitacion = self.get_object(request, object_id)
+        from .models import CatalogoMedicamento, HistorialPrecio
+        from django.db.models import Min
+        
+        datos = []
+        for p in licitacion.partidas.all():
+            if p.medicamento:
+                meds = CatalogoMedicamento.objects.filter(clave_sector=p.medicamento.clave_sector)
+                min_precio = HistorialPrecio.objects.filter(medicamento__clave_sector=p.medicamento.clave_sector).aggregate(Min('precio'))['precio__min'] or 0.0
+                for med in meds:
+                    datos.append({
+                        'partida': p.numero_partida, 'clave': med.clave_sector, 'descripcion': med.descripcion,
+                        'generica': med.denominacion_generica, 'socio': med.socio_contacto.nombre if med.socio_contacto else 'S/D',
+                        'min': p.cantidad_minima, 'max': p.cantidad_maxima, 
+                        'precio_hist': float(min_precio), 'precio': float(p.precio), 'importe': float(p.cantidad_maxima * p.precio), 'res': p.resultado
+                    })
+        context = {'title': f'Sábana General: {licitacion.num_procedimiento}', 'licitacion': licitacion, 'datos': datos, 'tipo': 'general', 'opts': self.model._meta}
+        return render(request, 'admin/licitaciones/licitacion/sabana_visual.html', context)
+
+    def ver_sabana_socios_view(self, request, object_id):
+        licitacion = self.get_object(request, object_id)
+        from .models import CatalogoMedicamento, Inventario, HistorialPrecio
+        from django.db.models import Min
+        
+        datos = []
+        for p in licitacion.partidas.all():
+            if p.medicamento:
+                meds = CatalogoMedicamento.objects.filter(clave_sector=p.medicamento.clave_sector)
+                min_precio = HistorialPrecio.objects.filter(medicamento__clave_sector=p.medicamento.clave_sector).aggregate(Min('precio'))['precio__min'] or 0.0
+                for med in meds:
+                    stock_disp = Inventario.objects.filter(medicamento=med, cantidad_disponible__gt=0)
+                    total_piezas = sum(item.cantidad_disponible for item in stock_disp)
+                    datos.append({
+                        'socio': med.socio_contacto.nombre if med.socio_contacto else 'S/D',
+                        'partida': p.numero_partida, 'clave': med.clave_sector, 'descripcion': med.denominacion_generica,
+                        'fab': med.fabricante, 'reg': med.num_registro_sanitario,
+                        'min': p.cantidad_minima, 'max': p.cantidad_maxima, 'stock': total_piezas,
+                        'precio_hist': float(min_precio), 'costo': 0.0, 'precio': float(p.precio), 'importe': float(p.cantidad_maxima * p.precio)
+                    })
+        datos.sort(key=lambda x: str(x['socio']))
+        context = {'title': f'Sábana por Socios: {licitacion.num_procedimiento}', 'licitacion': licitacion, 'datos': datos, 'tipo': 'socios', 'opts': self.model._meta}
+        return render(request, 'admin/licitaciones/licitacion/sabana_visual.html', context)
 
     def exportar_analisis_view(self, request, object_id):
         return exportar_analisis_unificado(self, request, Licitacion.objects.filter(id=object_id))
