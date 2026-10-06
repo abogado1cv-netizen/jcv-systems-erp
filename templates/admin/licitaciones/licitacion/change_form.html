@@ -14,18 +14,6 @@
         </li>
         
         <li>
-            <a href="{% url 'admin:exportar_analisis_licitacion' original.pk %}" class="btn" style="background-color: #ff9800; color: white; border: none; font-weight: bold; width: 100%; margin-bottom: 10px;">
-                <i class="fas fa-file-excel"></i> Descargar Análisis Comercial
-            </a>
-        </li>
-
-        <li>
-            <a href="{% url 'admin:exportar_reporte_laboratorios_licitacion' original.pk %}" class="btn" style="background-color: #6f42c1; color: white; border: none; font-weight: bold; width: 100%; margin-bottom: 10px;">
-                <i class="fas fa-industry"></i> Reporte por Socio Comercial
-            </a>
-        </li>
-        
-        <li>
             <a href="{% url 'admin:notificar_socios_licitacion' original.pk %}" class="btn btn-info" style="background-color: #17a2b8; color: white; padding: 10px 15px; border-radius: 4px; text-decoration: none; width: 100%; margin-bottom: 10px; display: block; text-align: center; font-weight: bold;">
                 <i class="fas fa-envelope"></i> Notificar a Socios
             </a>
@@ -38,7 +26,7 @@
         </li>
         
         <li>
-            <a href="{% url 'admin:borrar_partidas_licitacion' original.pk %}" class="btn" style="background-color: #dc3545; color: white; border: none; font-weight: bold; margin-right: 5px; width: 100%; margin-bottom: 10px;" onclick="return confirm('⚠️️ ¿Estás seguro de que quieres BORRAR TODAS LAS PARTIDAS de este requerimiento? \n\nTranquilo, los datos de la Licitación NO se borrarán.');">
+            <a href="{% url 'admin:borrar_partidas_licitacion' original.pk %}" class="btn" style="background-color: #dc3545; color: white; border: none; font-weight: bold; margin-right: 5px; width: 100%; margin-bottom: 10px;" onclick="return confirm('⚠️ ¿Estás seguro de que quieres BORRAR TODAS LAS PARTIDAS de este requerimiento? \n\nTranquilo, los datos de la Licitación NO se borrarán.');">
                 <i class="fas fa-trash-alt"></i> Vaciar Requerimiento
             </a>
         </li>
@@ -48,6 +36,14 @@
 
 {% block content %}
     <style>
+    /* Ocultar botones estorbozos de Guardar */
+    input[name="_addanother"],
+    button[name="_addanother"],
+    input[name="_continue"],
+    button[name="_continue"] {
+        display: none !important;
+    }
+
     /* Convertir la tabla interminable en una caja con scroll */
     .inline-group .table-responsive,
     .inline-group .tabular {
