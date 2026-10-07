@@ -683,43 +683,57 @@ class PartidaRequerimientoInline(admin.TabularInline):
             return ('precio', 'cantidad_maxima', 'licitacion', 'medicamento')
         return super().get_readonly_fields(request, obj)
 
+# =========================================================================
+# 🍏 MAGIA AURA PRO EN EL ADMIN DE LICITACIONES
+# =========================================================================
 @admin.register(Licitacion)
 class LicitacionAdmin(admin.ModelAdmin):
     list_per_page = 30
     form = LicitacionForm 
-    list_display = ('num_procedimiento', 'dependencia', 'estatus_color', 'apertura_semaforo', 'fecha_fallo', 'notificar_whatsapp_btn')
+    
+    # 👇 ESTO CONECTA EL PANEL LATERAL (DRAWER) CON EL DISEÑO AURA PRO 👇
+    change_list_template = "admin/licitaciones/licitacion/change_list_aura.html"
+    
+    # 🎯 COLUMNAS QUE SE MOSTRARÁN EN LA LISTA Y SE ENVIARÁN AL DRAWER
+    list_display = ('num_procedimiento', 'dependencia_real_visual', 'estatus_color', 'apertura_semaforo', 'fecha_fallo', 'notificar_whatsapp_btn')
+    
     search_fields = ['num_procedimiento', 'dependencia']
     inlines = [PartidaRequerimientoInline]
     
     actions = [exportar_a_csv, exportar_analisis_unificado, exportar_socios_unificado]
-    
     change_form_template = "admin/licitaciones/licitacion/change_form.html"
+
+    # Propiedad segura por si no han actualizado models.py con `dependencia_real`
+    def dependencia_real_visual(self, obj):
+        if hasattr(obj, 'otra_dependencia') and obj.otra_dependencia: return obj.otra_dependencia
+        return obj.get_dependencia_display() if obj.dependencia else "S/D"
+    dependencia_real_visual.short_description = "Dependencia"
 
     def estatus_color(self, obj):
         if not obj.estatus: return "-"
         estado = obj.estatus.estado.upper()
-        if estado == 'EN_PROCESO': color_fondo = '#3498db' 
-        elif estado == 'ADJUDICADO': color_fondo = '#2ecc71' 
-        elif estado == 'PERDIDO': color_fondo = '#e74c3c' 
-        else: color_fondo = '#95a5a6' 
+        if estado == 'EN_PROCESO': color_fondo = '#0071e3' # Apple Blue
+        elif estado == 'ADJUDICADO': color_fondo = '#1e833f' # Green
+        elif estado == 'PERDIDO': color_fondo = '#d9201e' # Red
+        else: color_fondo = '#86868b' # Gray
         return format_html('<span style="color: white; background-color: {}; padding: 4px 8px; border-radius: 6px; font-weight: bold; font-size: 11px;">{}</span>', color_fondo, estado)
     estatus_color.short_description = 'Estatus'
 
     def apertura_semaforo(self, obj):
         if not obj.fecha_apertura: 
-            return format_html('<span style="color: #aaa;">{}</span>', 'Sin fecha asignada')
+            return format_html('<span style="color: #aaa;">{}</span>', 'Sin fecha')
             
         hoy = timezone.now().date()
         dias_faltantes = (obj.fecha_apertura.date() - hoy).days
         
         if dias_faltantes < 0:
-            return format_html('<span style="color: gray;"><b>Ya pasó</b> (hace {} días)</span>', abs(dias_faltantes))
+            return format_html('<span style="color: #86868b;"><b>Ya pasó</b> (hace {} días)</span>', abs(dias_faltantes))
         elif dias_faltantes <= 3:
-            return format_html('<span style="color: red;"><b>Crítico</b> (Faltan {} días)</span>', dias_faltantes)
+            return format_html('<span style="color: #d9201e;"><b>Crítico</b> (Faltan {} días)</span>', dias_faltantes)
         elif dias_faltantes <= 7:
-            return format_html('<span style="color: orange;"><b>Atención</b> (Faltan {} días)</span>', dias_faltantes)
+            return format_html('<span style="color: #f39c12;"><b>Atención</b> (Faltan {} días)</span>', dias_faltantes)
         else:
-            return format_html('<span style="color: green;"><b>A tiempo</b> (Faltan {} días)</span>', dias_faltantes)
+            return format_html('<span style="color: #1e833f;"><b>A tiempo</b> (Faltan {} días)</span>', dias_faltantes)
             
     apertura_semaforo.short_description = "Fecha de Apertura"
 
@@ -851,7 +865,7 @@ class LicitacionAdmin(admin.ModelAdmin):
                         if not medicamento_db:
                             medicamento_db = CatalogoMedicamento(
                                 clave_sector=clave_val, 
-                                descripcion='⚠️️ PENDIENTE DE ACTUALIZAR', 
+                                descripcion='⚠ PENDIENTE DE ACTUALIZAR', 
                                 denominacion_generica='⚠️ PENDIENTE DE ACTUALIZAR', 
                                 fabricante=''
                             )
@@ -2091,12 +2105,13 @@ class CotizacionAdmin(admin.ModelAdmin):
             conexion_dinamica = get_connection()
             correos_enviados = 0
             
-            for s_id in socios_seleccionados:
-                data = socios_dict.get(int(s_id))
+            for socio_id in socios_seleccionados:
+                data = socios_dict.get(int(socio_id))
                 if not data: continue
                 socio = data['socio']
                 
-                destinatarios = [c.strip() for c in (socio.correos or "").split(',') if c.strip()]
+                correos_raw = socio.correos if socio.correos else ""
+                destinatarios = [c.strip() for c in correos_raw.split(',') if c.strip()]
                 if not destinatarios: continue
                 
                 color_empresa = "#8B0000" if "SAGO" in nombre_empresa_up else ("#005b96" if "GAMS" in nombre_empresa_up else ("#218838" if "GSM" in nombre_empresa_up else "#3498db"))
@@ -2399,9 +2414,8 @@ class EntradaAlmacenForm(forms.ModelForm):
                 var $ = django.jQuery || window.jQuery;
                 $('#id_orden').on('change', function() {
                     var ordenId = $(this).val();
-                    var $medSelect = $('#id_medicamento');
-                    if (!ordenId) { $medSelect.empty(); return; }
-                    $medSelect.html('<option value="">🔄 Buscando en la OC...</option>');
+                    var $medSelect =$('#id_medicamento');
+                    if (!ordenId) { $medSelect.empty(); return; }$medSelect.html('<option value="">🔄 Buscando en la OC...</option>');
                     $.ajax({
                         url: '/admin/licitaciones/entradaalmacen/ajax/load-medicamentos/?orden_id=' + ordenId,
                         success: function(data) {
