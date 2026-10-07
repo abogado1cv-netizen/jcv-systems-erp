@@ -101,7 +101,7 @@ JAZZMIN_SETTINGS = {
     
     "site_logo": "logo.png",
     "login_logo": "logo.png",
-    "custom_css": "custom_login.css", 
+    "custom_css": "css/aura_pro.css", 
     "site_logo_classes": "img-fluid",
     "login_logo_classes": "img-fluid", 
     

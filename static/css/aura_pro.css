@@ -1,0 +1,156 @@
+/* DISEÑO DE PANTALLA DIVIDIDA PARA LOGIN - GPHARMA */
+
+@media (min-width: 768px) {
+    /* Hacemos la caja principal más ancha y la dividimos en 2 columnas */
+    .login-box {
+        width: 850px !important;
+        display: flex !important;
+        align-items: center;
+        justify-content: center;
+        gap: 40px;
+    }
+
+    /* Columna Izquierda: Logo */
+    .login-logo {
+        width: 50%;
+        margin: 0 !important;
+    }
+
+    /* Hacemos que el logo ocupe todo su lado */
+    .login-logo img {
+        width: 100% !important;
+        max-width: 450px !important;
+        border-radius: 8px; /* Un toque elegante en las esquinas */
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2); /* Sombrita elegante */
+    }
+
+    /* Columna Derecha: Formulario */
+    .login-box .card {
+        width: 50%;
+        margin: 0 !important;
+    }
+}
+/* ====================================================
+   🍏 AURA PRO STYLE GLOBAL - GPHARMA ERP
+   ==================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+/* 1. TIPOGRAFÍA Y FONDO GLOBAL */
+body, h1, h2, h3, h4, h5, h6, .brand-text, .nav-link, th, td, label, p, a, button, input {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif !important;
+    -webkit-font-smoothing: antialiased;
+}
+
+body {
+    background-color: #f5f5f7 !important; /* Gris claro tipo macOS */
+}
+
+/* 2. PANELES Y TARJETAS (GLASSMORPHISM) */
+.card, .info-box, .small-box {
+    background: rgba(255, 255, 255, 0.75) !important;
+    backdrop-filter: blur(25px) saturate(200%) !important;
+    -webkit-backdrop-filter: blur(25px) saturate(200%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.9) !important;
+    border-radius: 20px !important;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04) !important;
+    transition: transform 0.3s ease, box-shadow 0.3s ease !important;
+}
+
+.card-header {
+    background-color: transparent !important;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05) !important;
+    padding: 15px 20px !important;
+}
+
+.card-title {
+    font-weight: 700 !important;
+    color: #1d1d1f !important;
+    letter-spacing: -0.5px !important;
+}
+
+/* 3. BOTONES ESTILO iOS (PÍLDORAS FLOTANTES) */
+.btn {
+    border-radius: 980px !important;
+    font-weight: 600 !important;
+    padding: 8px 22px !important;
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1) !important;
+    border: none !important;
+    text-transform: none !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
+}
+
+.btn:hover {
+    transform: scale(1.03) !important;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15) !important;
+}
+
+.btn-primary { background: #0071e3 !important; color: #fff !important; }
+.btn-primary:hover { background: #0077ED !important; }
+.btn-success { background: #1e833f !important; color: #fff !important; }
+.btn-danger { background: #d9201e !important; color: #fff !important; }
+.btn-info { background: #1d1d1f !important; color: #fff !important; } /* Botón oscuro Apple */
+
+/* 4. FORMULARIOS Y CAJAS DE TEXTO */
+.form-control, .select2-selection {
+    border-radius: 12px !important;
+    border: 1px solid #d2d2d7 !important;
+    background: rgba(255, 255, 255, 0.8) !important;
+    padding: 8px 15px !important;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.02) !important;
+    transition: all 0.3s ease !important;
+    color: #1d1d1f !important;
+}
+
+.form-control:focus, .select2-container--focus .select2-selection {
+    border-color: #0071e3 !important;
+    box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.2) !important;
+    background: #fff !important;
+}
+
+/* 5. TABLAS MINIMALISTAS */
+.table-bordered, .table-bordered th, .table-bordered td {
+    border: none !important;
+    border-bottom: 1px solid #e5e5ea !important;
+}
+
+.table th {
+    background: rgba(245, 245, 247, 0.6) !important;
+    backdrop-filter: blur(10px);
+    color: #86868b !important;
+    text-transform: uppercase !important;
+    font-size: 11px !important;
+    letter-spacing: 0.5px !important;
+    border-top: none !important;
+}
+
+.table tbody tr:hover td {
+    background: rgba(0, 113, 227, 0.04) !important;
+}
+
+/* 6. NAVBAR Y BARRA LATERAL (MENU) */
+.main-header {
+    background: rgba(255, 255, 255, 0.65) !important;
+    backdrop-filter: blur(25px) saturate(200%) !important;
+    -webkit-backdrop-filter: blur(25px) saturate(200%) !important;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05) !important;
+    box-shadow: none !important;
+}
+
+/* Oscuro profundo para el menú lateral (Tipo MacOS Dark Mode) */
+.main-sidebar {
+    background: #1c1c1e !important; 
+}
+.brand-link {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+}
+.nav-sidebar .nav-link p {
+    color: #f5f5f7 !important;
+    font-weight: 500 !important;
+}
+.nav-sidebar .nav-item.menu-open > .nav-link, .nav-sidebar .nav-link.active {
+    background-color: #0071e3 !important;
+    border-radius: 12px !important;
+    margin: 0 10px !important;
+    width: auto !important;
+}
