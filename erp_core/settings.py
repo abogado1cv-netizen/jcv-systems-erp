@@ -92,7 +92,7 @@ SESSION_SAVE_EVERY_REQUEST = True
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 
 # ==========================================
-# CONFIGURACIÓN DEL MENÚ GPHARMA (JAZZMIN PREMIUM)
+# CONFIGURACIÓN DEL MENÚ GPHARMA (JAZZMIN PREMIUM AURA)
 # ==========================================
 JAZZMIN_SETTINGS = {
     "site_title": "GPHARMA ERP",
@@ -109,7 +109,7 @@ JAZZMIN_SETTINGS = {
     "copyright": "JCV Systems",
     
     # ==================================================
-    # 🎯 1. MENÚ SUPERIOR (El "Modo Dueño" con los KPIs)
+    # 🎯 1. MENÚ SUPERIOR
     # ==================================================
     "topmenu_links": [
         {"name": "Inicio",  "url": "admin:index", "permissions": ["auth.view_user"]},
@@ -129,39 +129,36 @@ JAZZMIN_SETTINGS = {
         }]
     },
 
-    # ==================================================
-    # 🚫 2. LO QUE EL USUARIO NO DEBE VER (Ocultar basura)
-    # ==================================================
     "hide_models": [
         "licitaciones.estatusprocedimiento",
         "licitaciones.configuracionemail",
         "licitaciones.partidarequerimiento",
     ],
-    "hide_apps": ["auth"], # Oculta la app de Usuarios y Grupos
+    "hide_apps": ["auth"], 
 
     # ==================================================
-    # 🎨 3. ICONOS EXACTOS DE TUS MÓDULOS (Nuevos agregados)
+    # 🎨 3. ICONOS MINIMALISTAS (Look Apple / SF Symbols)
     # ==================================================
     "icons": {
         # Maestros
-        "licitaciones.catalogomedicamento": "fas fa-pills", 
+        "licitaciones.catalogomedicamento": "fas fa-capsules", 
         "licitaciones.empresa": "fas fa-building",           
-        "licitaciones.sociocomercial": "fas fa-handshake-angle", 
+        "licitaciones.sociocomercial": "fas fa-handshake", 
         "licitaciones.almacen": "fas fa-warehouse",
         
         # Comercial
-        "licitaciones.licitacion": "fas fa-gavel",
-        "licitaciones.cotizacion": "fas fa-file-invoice-dollar",
+        "licitaciones.licitacion": "fas fa-folder-open", # Carpeta limpia
+        "licitaciones.cotizacion": "fas fa-file-invoice", # Documento ligero
         "licitaciones.contrato": "fas fa-file-signature",          
         
         # Compras
         "licitaciones.ordencompra": "fas fa-shopping-cart",
-        "licitaciones.entradaalmacen": "fas fa-dolly",
+        "licitaciones.entradaalmacen": "fas fa-box-open", # Caja abierta limpia
         
         # Inventario
         "licitaciones.inventario": "fas fa-boxes",               
         "licitaciones.traspasointercompany": "fas fa-exchange-alt",
-        "licitaciones.incidenciainventario": "fas fa-radiation-alt", # Ícono de Cuarentena
+        "licitaciones.incidenciainventario": "fas fa-radiation-alt", 
         "licitaciones.escanerkardex": "fas fa-barcode",
         
         # Logística
@@ -169,41 +166,19 @@ JAZZMIN_SETTINGS = {
         "licitaciones.pedidodirecto": "fas fa-paper-plane",
         "licitaciones.remisionentrega": "fas fa-receipt",
         
-        # Extras
+        # Extras y Auth
         "licitaciones.registroubicacion": "fas fa-map-marker-alt",
+        "auth.user": "fas fa-user-circle",
+        "auth.group": "fas fa-users-cog",
     },
     
-    # ==================================================
-    # 📋 4. ORDEN EXACTO EN LA BARRA LATERAL (Flujo lógico)
-    # ==================================================
+    # ... tu "order_with_respect_to" se queda igual ...
     "order_with_respect_to": [
-        # --- A. CATÁLOGOS MAESTROS ---
-        "licitaciones.catalogomedicamento",
-        "licitaciones.empresa",
-        "licitaciones.sociocomercial",
-        "licitaciones.almacen",
-        
-        # --- B. ÁREA COMERCIAL ---
-        "licitaciones.licitacion",
-        "licitaciones.cotizacion",
-        "licitaciones.contrato",
-        
-        # --- C. COMPRAS Y ABASTECIMIENTO ---
-        "licitaciones.ordencompra",
-        "licitaciones.entradaalmacen",
-        
-        # --- D. INVENTARIO Y CALIDAD ---
-        "licitaciones.inventario",
-        "licitaciones.traspasointercompany",
-        "licitaciones.incidenciainventario", # Módulo de mermas
-        "licitaciones.escanerkardex", 
-        
-        # --- E. LOGÍSTICA Y DESPACHO ---
-        "licitaciones.ordensuministro",
-        "licitaciones.pedidodirecto",
-        "licitaciones.remisionentrega",
-        
-        # --- F. EXTRAS ---
+        "licitaciones.catalogomedicamento", "licitaciones.empresa", "licitaciones.sociocomercial", "licitaciones.almacen",
+        "licitaciones.licitacion", "licitaciones.cotizacion", "licitaciones.contrato",
+        "licitaciones.ordencompra", "licitaciones.entradaalmacen",
+        "licitaciones.inventario", "licitaciones.traspasointercompany", "licitaciones.incidenciainventario", "licitaciones.escanerkardex", 
+        "licitaciones.ordensuministro", "licitaciones.pedidodirecto", "licitaciones.remisionentrega",
         "licitaciones.registroubicacion",
     ],
     
@@ -211,30 +186,40 @@ JAZZMIN_SETTINGS = {
     "default_icon_children": "fas fa-circle",
     "show_sidebar": True,
     "navigation_expanded": True,
+    
+    # 👇 ESTO ES CLAVE PARA ACTIVAR EL INTERRUPTOR DE MODO OSCURO EN LA PANTALLA 👇
+    "show_ui_builder": False, 
 }
 
+# ==================================================
+# 🌗 TWEAKS ADAPTATIVOS (SOPORTE LIGHT/DARK AUTOMÁTICO)
+# ==================================================
 JAZZMIN_UI_TWEAKS = {
     "navbar_small_text": False,
     "footer_small_text": False,
     "body_small_text": False,
     "brand_small_text": False,
-    "brand_colour": "navbar-white", 
-    "accent": "accent-primary",
-    "navbar": "navbar-white navbar-light",
-    "no_navbar_border": False,
+    
+    # Dejamos que los colores los dicte nuestro CSS
+    "brand_colour": False, 
+    "navbar": False,
+    "no_navbar_border": True,
     "navbar_fixed": True,
     "layout_boxed": False,
     "footer_fixed": False,
     "sidebar_fixed": True,
-    "sidebar": "sidebar-light-primary",
+    "sidebar": "sidebar-dark-primary", # El sidebar siempre se ve más pro oscuro
     "sidebar_nav_small_text": False,
     "sidebar_disable_expand": False,
-    "sidebar_nav_child_indent": False,
+    "sidebar_nav_child_indent": True,
     "sidebar_nav_compact_style": False,
     "sidebar_nav_legacy_style": False,
     "sidebar_nav_flat_style": True, 
-    "theme": "lumen", 
-    "dark_mode_theme": None,
+    
+    # Habilitamos temas neutros para que nuestra magia CSS brille
+    "theme": "default", 
+    "dark_mode_theme": "darkly", # 🌙 Activa el soporte nativo oscuro
+    
     "button_classes": {
         "primary": "btn-primary",
         "secondary": "btn-secondary",

@@ -30,127 +30,207 @@
         margin: 0 !important;
     }
 }
+
+
 /* ====================================================
-   🍏 AURA PRO STYLE GLOBAL - GPHARMA ERP
+   🍏 AURA PRO (LIGHT & DARK ADAPTIVE) - GPHARMA ERP
    ==================================================== */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
-/* 1. TIPOGRAFÍA Y FONDO GLOBAL */
+/* ☀️ 1. VARIABLES MODO CLARO (Por Defecto) */
+:root {
+    --bg-global: #f5f5f7;
+    --text-main: #1d1d1f;
+    --text-muted: #86868b;
+    --glass-panel: rgba(255, 255, 255, 0.65);
+    --glass-border: rgba(255, 255, 255, 0.8);
+    --glass-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
+    --header-glass: rgba(245, 245, 247, 0.8);
+    --sidebar-bg: #ffffff;
+    --input-bg: rgba(255, 255, 255, 0.8);
+    --input-border: #d2d2d7;
+    --table-border: #e5e5ea;
+    --title-grad: linear-gradient(135deg, #1d1d1f 0%, #434344 100%);
+    --icon-stroke: rgba(0, 0, 0, 0.2);
+}
+
+/* 🌙 2. VARIABLES MODO OSCURO (Automático si la PC está en Oscuro, o forzado por Jazzmin) */
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg-global: #000000;
+        --text-main: #f5f5f7;
+        --text-muted: #a1a1aa;
+        --glass-panel: rgba(25, 25, 27, 0.65);
+        --glass-border: rgba(255, 255, 255, 0.08);
+        --glass-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        --header-glass: rgba(22, 22, 23, 0.72);
+        --sidebar-bg: #000000;
+        --input-bg: rgba(0, 0, 0, 0.4);
+        --input-border: rgba(255, 255, 255, 0.1);
+        --table-border: rgba(255, 255, 255, 0.05);
+        --title-grad: linear-gradient(135deg, #e4e4e7 0%, #a1a1aa 50%, #71717a 100%);
+        --icon-stroke: rgba(255, 255, 255, 0.3);
+    }
+}
+body.dark-mode { /* Soporte extra si usan el botón nocturno del propio ERP */
+    --bg-global: #000000;
+    --text-main: #f5f5f7;
+    --text-muted: #a1a1aa;
+    --glass-panel: rgba(25, 25, 27, 0.65);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --glass-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    --header-glass: rgba(22, 22, 23, 0.72);
+    --sidebar-bg: #000000;
+    --input-bg: rgba(0, 0, 0, 0.4);
+    --input-border: rgba(255, 255, 255, 0.1);
+    --table-border: rgba(255, 255, 255, 0.05);
+    --title-grad: linear-gradient(135deg, #e4e4e7 0%, #a1a1aa 50%, #71717a 100%);
+    --icon-stroke: rgba(255, 255, 255, 0.3);
+}
+
+/* ====================================================
+   APLICACIÓN DE LOS ESTILOS INTELIGENTES
+   ==================================================== */
+
 body, h1, h2, h3, h4, h5, h6, .brand-text, .nav-link, th, td, label, p, a, button, input {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif !important;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif !important;
     -webkit-font-smoothing: antialiased;
 }
 
-body {
-    background-color: #f5f5f7 !important; /* Gris claro tipo macOS */
+body, .content-wrapper, .wrapper {
+    background-color: var(--bg-global) !important;
+    color: var(--text-main) !important;
+    transition: background-color 0.4s ease, color 0.4s ease !important;
 }
 
-/* 2. PANELES Y TARJETAS (GLASSMORPHISM) */
-.card, .info-box, .small-box {
-    background: rgba(255, 255, 255, 0.75) !important;
+/* SCROLLBAR ESTILO APPLE */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--bg-global); }
+::-webkit-scrollbar-thumb { background: rgba(134, 134, 139, 0.3); border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(134, 134, 139, 0.6); }
+
+/* PANELES Y TARJETAS (GLASSMORPHISM) */
+.card, .info-box, .small-box, .modal-content {
+    background: var(--glass-panel) !important;
     backdrop-filter: blur(25px) saturate(200%) !important;
     -webkit-backdrop-filter: blur(25px) saturate(200%) !important;
-    border: 1px solid rgba(255, 255, 255, 0.9) !important;
+    border: 1px solid var(--glass-border) !important;
     border-radius: 20px !important;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04) !important;
-    transition: transform 0.3s ease, box-shadow 0.3s ease !important;
+    box-shadow: var(--glass-shadow) !important;
+    color: var(--text-main) !important;
+    transition: all 0.4s ease !important;
 }
 
 .card-header {
     background-color: transparent !important;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.05) !important;
+    border-bottom: 1px solid var(--table-border) !important;
     padding: 15px 20px !important;
 }
 
-.card-title {
+/* TEXTOS Y TÍTULOS EN GRADIENTE */
+.card-title, .brand-text, h1 {
+    background: var(--title-grad) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
     font-weight: 700 !important;
-    color: #1d1d1f !important;
     letter-spacing: -0.5px !important;
 }
 
-/* 3. BOTONES ESTILO iOS (PÍLDORAS FLOTANTES) */
+/* ICONOS ESTILO 'SF SYMBOLS' (MÁS FINOS) */
+i.fas, i.fa {
+    -webkit-text-stroke: 0.5px var(--icon-stroke);
+    opacity: 0.85;
+    color: var(--text-main);
+    transition: all 0.3s ease;
+}
+.nav-link:hover i.fas { opacity: 1; transform: scale(1.05); }
+
+/* BOTONES ESTILO iOS */
 .btn {
     border-radius: 980px !important;
     font-weight: 600 !important;
     padding: 8px 22px !important;
     transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1) !important;
-    border: none !important;
+    border: 1px solid var(--glass-border) !important;
     text-transform: none !important;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
 }
+.btn:hover { transform: scale(1.03) !important; }
 
-.btn:hover {
-    transform: scale(1.03) !important;
-    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15) !important;
-}
+.btn-primary { background: #0071e3 !important; color: #fff !important; border:none !important; }
+.btn-primary:hover { background: #0077ED !important; box-shadow: 0 4px 14px rgba(0, 113, 227, 0.4) !important;}
+.btn-success { background: rgba(40, 167, 69, 0.2) !important; color: #28a745 !important; border: 1px solid rgba(40,167,69,0.3) !important; }
+.btn-danger { background: rgba(220, 53, 69, 0.2) !important; color: #dc3545 !important; border: 1px solid rgba(220,53,69,0.3) !important; }
 
-.btn-primary { background: #0071e3 !important; color: #fff !important; }
-.btn-primary:hover { background: #0077ED !important; }
-.btn-success { background: #1e833f !important; color: #fff !important; }
-.btn-danger { background: #d9201e !important; color: #fff !important; }
-.btn-info { background: #1d1d1f !important; color: #fff !important; } /* Botón oscuro Apple */
-
-/* 4. FORMULARIOS Y CAJAS DE TEXTO */
-.form-control, .select2-selection {
+/* FORMULARIOS Y CAJAS DE TEXTO CORREGIDOS */
+.form-control, .select2-container .select2-selection--single {
     border-radius: 12px !important;
-    border: 1px solid #d2d2d7 !important;
-    background: rgba(255, 255, 255, 0.8) !important;
-    padding: 8px 15px !important;
+    border: 1px solid var(--input-border) !important;
+    background: var(--input-bg) !important;
+    color: var(--text-main) !important;
     box-shadow: inset 0 1px 3px rgba(0,0,0,0.02) !important;
+    height: auto !important;
     transition: all 0.3s ease !important;
-    color: #1d1d1f !important;
 }
 
 .form-control:focus, .select2-container--focus .select2-selection {
     border-color: #0071e3 !important;
     box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.2) !important;
-    background: #fff !important;
 }
 
-/* 5. TABLAS MINIMALISTAS */
-.table-bordered, .table-bordered th, .table-bordered td {
-    border: none !important;
-    border-bottom: 1px solid #e5e5ea !important;
+.select2-container .select2-selection--single {
+    height: 42px !important;
+    display: flex !important;
+    align-items: center !important;
+}
+.select2-container .select2-selection--single .select2-selection__rendered {
+    padding-left: 15px !important;
+    color: var(--text-main) !important;
+    line-height: normal !important;
+    margin-top: 0 !important;
+}
+.select2-container .select2-selection--single .select2-selection__arrow { height: 40px !important; right: 8px !important; }
+
+/* FILTROS SUPERIORES */
+#changelist-filter select, .search-filters select {
+    padding: 6px 12px !important;
+    height: 38px !important;
+    line-height: 1.2 !important;
+    font-size: 13px !important;
 }
 
-.table th {
-    background: rgba(245, 245, 247, 0.6) !important;
-    backdrop-filter: blur(10px);
-    color: #86868b !important;
-    text-transform: uppercase !important;
-    font-size: 11px !important;
-    letter-spacing: 0.5px !important;
-    border-top: none !important;
-}
-
-.table tbody tr:hover td {
-    background: rgba(0, 113, 227, 0.04) !important;
-}
-
-/* 6. NAVBAR Y BARRA LATERAL (MENU) */
+/* MENÚ LATERAL Y NAVBAR (APPLE GLASS) */
 .main-header {
-    background: rgba(255, 255, 255, 0.65) !important;
-    backdrop-filter: blur(25px) saturate(200%) !important;
-    -webkit-backdrop-filter: blur(25px) saturate(200%) !important;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.05) !important;
-    box-shadow: none !important;
+    background: var(--header-glass) !important;
+    backdrop-filter: blur(20px) saturate(180%) !important;
+    -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+    border-bottom: 1px solid var(--table-border) !important;
 }
 
-/* Oscuro profundo para el menú lateral (Tipo MacOS Dark Mode) */
 .main-sidebar {
-    background: #1c1c1e !important; 
+    background: var(--sidebar-bg) !important;
+    border-right: 1px solid var(--table-border) !important;
 }
-.brand-link {
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
-}
-.nav-sidebar .nav-link p {
-    color: #f5f5f7 !important;
-    font-weight: 500 !important;
-}
+
 .nav-sidebar .nav-item.menu-open > .nav-link, .nav-sidebar .nav-link.active {
-    background-color: #0071e3 !important;
+    background: var(--input-border) !important;
     border-radius: 12px !important;
     margin: 0 10px !important;
     width: auto !important;
+    color: var(--text-main) !important;
+}
+
+/* TABLAS */
+.table th {
+    background: var(--header-glass) !important;
+    color: var(--text-muted) !important;
+    border-bottom: 1px solid var(--table-border) !important;
+    border-top: none !important;
+}
+.table td {
+    border-bottom: 1px solid var(--table-border) !important;
+    color: var(--text-main) !important;
+}
+.table tbody tr:hover td {
+    background: rgba(0, 113, 227, 0.04) !important;
 }
