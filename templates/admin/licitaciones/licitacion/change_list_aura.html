@@ -4,26 +4,6 @@
 {% block extrastyle %}
   {{ block.super }}
   <style>
-    /* ==========================================
-       🌟 AURA PRO - ESTILOS DE LA LISTA Y EL PANEL
-       ========================================== */
-    /* Tarjetas de Estadísticas Superiores */
-    .aura-stats-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-        gap: 20px;
-        margin-bottom: 25px;
-    }
-    .aura-stat-card {
-        background: var(--glass-panel, rgba(25, 25, 27, 0.65));
-        border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.08));
-        border-radius: 16px;
-        padding: 20px;
-        color: var(--text-main, #f5f5f7);
-    }
-    .aura-stat-card h3 { font-size: 32px; font-weight: 700; margin: 10px 0 5px 0; color: #fff;}
-    .aura-stat-card p { margin: 0; font-size: 13px; color: var(--text-muted, #a1a1aa); }
-    
     /* Configuración de Filas Clickeables */
     #result_list tbody tr {
         cursor: pointer;
@@ -32,19 +12,16 @@
     #result_list tbody tr:hover {
         background-color: rgba(0, 113, 227, 0.1) !important;
     }
-    /* El enlace del número de procedimiento (Para ir a editar) */
     #result_list .field-numero_procedimiento a {
         font-weight: 700;
         color: #0071e3 !important;
         text-decoration: none;
         position: relative;
-        z-index: 2; /* Para que sea clickeable por encima de la fila */
+        z-index: 2;
     }
     #result_list .field-numero_procedimiento a:hover { text-decoration: underline; }
 
-    /* ==========================================
-       👉 EL PANEL LATERAL (DRAWER)
-       ========================================== */
+    /* EL PANEL LATERAL (DRAWER) LIMPIO */
     .aura-drawer-overlay {
         position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
         background: rgba(0,0,0,0.5); backdrop-filter: blur(5px);
@@ -54,60 +31,35 @@
 
     .aura-drawer {
         position: fixed; top: 0; right: -500px; width: 450px; height: 100vh;
-        background: var(--bg-global, #000000);
-        border-left: 1px solid var(--glass-border, rgba(255,255,255,0.1));
-        box-shadow: -10px 0 30px rgba(0,0,0,0.5);
+        background: var(--bg-global, #ffffff);
+        border-left: 1px solid var(--glass-border, rgba(0,0,0,0.1));
+        box-shadow: -10px 0 30px rgba(0,0,0,0.2);
         z-index: 9999; transition: right 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-        overflow-y: auto; padding: 30px; color: var(--text-main, #fff);
+        overflow-y: auto; padding: 30px; color: var(--text-main, #333);
     }
     .aura-drawer.active { right: 0; }
 
     .drawer-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px;}
-    .drawer-close { background: transparent; border: none; color: #a1a1aa; font-size: 24px; cursor: pointer; }
-    .drawer-close:hover { color: #fff; }
+    .drawer-close { background: transparent; border: none; color: #6c757d; font-size: 24px; cursor: pointer; }
+    .drawer-close:hover { color: #dc3545; }
     
-    .drawer-badge { background: rgba(40, 167, 69, 0.2); color: #4ade80; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; display: inline-block;}
+    .drawer-badge { background: rgba(40, 167, 69, 0.2); color: #28a745; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; display: inline-block;}
     .drawer-title { font-size: 18px; font-weight: 700; margin: 10px 0; line-height: 1.3;}
-    .drawer-dep { font-size: 13px; color: #a1a1aa; margin-bottom: 20px;}
+    .drawer-dep { font-size: 13px; color: #6c757d; margin-bottom: 20px;}
     
-    .drawer-section { background: var(--glass-panel, rgba(25,25,27,0.6)); border-radius: 12px; padding: 15px; margin-bottom: 15px;}
-    .drawer-section h4 { font-size: 12px; text-transform: uppercase; color: #a1a1aa; margin: 0 0 10px 0; font-weight: 600; }
+    .drawer-section { background: var(--glass-panel, rgba(0,0,0,0.03)); border-radius: 12px; padding: 15px; margin-bottom: 15px;}
+    .drawer-section h4 { font-size: 12px; text-transform: uppercase; color: #6c757d; margin: 0 0 10px 0; font-weight: 600; }
     .drawer-data-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 14px;}
-    .drawer-data-row strong { color: #fff; }
+    .drawer-data-row strong { color: var(--text-main, #333); }
     
     .drawer-actions { display: flex; gap: 10px; margin-top: 20px;}
     .drawer-btn { flex: 1; text-align: center; padding: 12px; border-radius: 8px; font-weight: 600; text-decoration: none; font-size: 14px;}
     .btn-edit { background: #0071e3; color: white;}
-    .btn-wa { background: rgba(40, 167, 69, 0.2); color: #4ade80; border: 1px solid rgba(40, 167, 69, 0.3);}
   </style>
 {% endblock %}
 
 {% block content %}
-  <!-- 📊 TARJETAS DE ESTADÍSTICAS -->
-  <div class="aura-stats-grid">
-      <div class="aura-stat-card">
-          <p><i class="fas fa-folder-open"></i> Total Procedimientos</p>
-          <h3>{{ cl.result_count }}</h3>
-          <p>Registrados en el sistema</p>
-      </div>
-      <div class="aura-stat-card">
-          <p><i class="fas fa-check-circle" style="color:#4ade80;"></i> Adjudicadas</p>
-          <h3>14</h3>
-          <p>Procedimientos ganados</p>
-      </div>
-      <div class="aura-stat-card">
-          <p><i class="fas fa-clock" style="color:#60a5fa;"></i> En Evaluación</p>
-          <h3>4</h3>
-          <p>Juntas y aperturas técnicas</p>
-      </div>
-      <div class="aura-stat-card" style="border-color: rgba(220,53,69,0.3);">
-          <p><i class="fas fa-exclamation-triangle" style="color:#f87171;"></i> Críticos</p>
-          <h3>2 <span style="background: rgba(220,53,69,0.2); color:#f87171; font-size:10px; padding:2px 6px; border-radius:4px;">URGENTE</span></h3>
-          <p>Atención en < 24h</p>
-      </div>
-  </div>
-
-  <!-- LA TABLA ORIGINAL DE DJANGO -->
+  <!-- LA TABLA ORIGINAL DE DJANGO SIN LAS TARJETAS FEAS -->
   {{ block.super }}
 
   <!-- 🎛️ EL PANEL LATERAL (DRAWER) -->
@@ -117,26 +69,20 @@
           <div class="drawer-badge" id="d-estatus">ADJUDICADO</div>
           <button class="drawer-close" onclick="closeDrawer()"><i class="fas fa-times"></i></button>
       </div>
-      <p style="font-size: 11px; color:#a1a1aa; margin:0;">EXPEDIENTE DIGITAL GPHARMA</p>
-      <div class="drawer-title" id="d-folio">LA-12-NEF-012NEF001-T-218-2026</div>
-      <div class="drawer-dep" id="d-dep">Laboratorios de Biológicos y Reactivos de México (BIRMEX)</div>
+      <p style="font-size: 11px; color:#6c757d; margin:0;">EXPEDIENTE DIGITAL GPHARMA</p>
+      <div class="drawer-title" id="d-folio">-</div>
+      <div class="drawer-dep" id="d-dep">-</div>
       
       <div class="drawer-section" style="display: flex; justify-content: space-between; align-items: center;">
           <div>
               <h4 style="margin:0;">FECHA APERTURA</h4>
-              <strong style="font-size:16px;" id="d-apertura">04 de Agosto de 2026</strong>
-          </div>
-          <div style="text-align: right;">
-              <h4 style="margin:0;">RESPONSABLE</h4>
-              <strong style="font-size:16px;" id="d-resp">Josué</strong>
+              <strong style="font-size:16px;" id="d-apertura">-</strong>
           </div>
       </div>
 
       <div class="drawer-section">
           <h4>Cronograma del Procedimiento</h4>
-          <div class="drawer-data-row"><span>Publicación:</span> <strong id="d-pub">-</strong></div>
-          <div class="drawer-data-row"><span>Junta de Aclaraciones:</span> <strong id="d-jun">-</strong></div>
-          <div class="drawer-data-row"><span>Fallo:</span> <strong id="d-fal">25 Sep 2026 23:00</strong></div>
+          <div class="drawer-data-row"><span>Fallo:</span> <strong id="d-fal">-</strong></div>
       </div>
       
       <div class="drawer-actions">
@@ -144,14 +90,12 @@
       </div>
   </div>
 
-  <!-- ⚙️ JAVASCRIPT PARA LA MAGIA DEL CLIC -->
   <script>
     document.addEventListener('DOMContentLoaded', function() {
         const rows = document.querySelectorAll('#result_list tbody tr');
         const drawer = document.getElementById('sideDrawer');
         const overlay = document.getElementById('drawerOverlay');
 
-        // Función para cerrar el Drawer
         window.closeDrawer = function() {
             drawer.classList.remove('active');
             overlay.classList.remove('active');
@@ -159,42 +103,27 @@
         overlay.addEventListener('click', closeDrawer);
 
         rows.forEach(row => {
-            // Buscamos el enlace real del número de procedimiento para saber el ID de Django
             const linkTag = row.querySelector('.field-numero_procedimiento a');
             if(!linkTag) return;
             
-            const editUrl = linkTag.getAttribute('href'); // Ej: /admin/licitaciones/licitacion/1/change/
-            
-            // Extraer datos de la fila (Django genera clases td.field-<nombre_campo>)
+            const editUrl = linkTag.getAttribute('href'); 
             const folio = linkTag.innerText;
-            const dep = row.querySelector('.field-dependencia_real')?.innerText || 'S/D';
-            const estatus = row.querySelector('.field-estatus')?.innerText || 'EN_PROCESO';
-            const apertura = row.querySelector('.field-fecha_apertura')?.innerText || 'S/D';
+            const dep = row.querySelector('.field-dependencia_real_visual')?.innerText || row.querySelector('.field-dependencia')?.innerText || 'S/D';
+            const estatus = row.querySelector('.field-estatus_color')?.innerText || 'EN_PROCESO';
+            const apertura = row.querySelector('.field-apertura_semaforo')?.innerText || 'S/D';
             const fallo = row.querySelector('.field-fecha_fallo')?.innerText || 'S/D';
-            const resp = row.querySelector('.field-responsable')?.innerText || 'S/D';
 
-            // Al hacer clic en cualquier parte de la fila (Excepto en el enlace mismo)
             row.addEventListener('click', function(e) {
-                // Si el clic fue directamente en el enlace (texto azul), dejamos que Django abra la página
-                if(e.target.tagName.toLowerCase() === 'a') {
-                    return; 
-                }
-
-                // Prevenir comportamiento default
+                if(e.target.tagName.toLowerCase() === 'a') return; 
                 e.preventDefault();
 
-                // Llenar el Drawer con los datos de esta fila
                 document.getElementById('d-folio').innerText = folio;
                 document.getElementById('d-dep').innerText = dep;
                 document.getElementById('d-estatus').innerText = estatus;
                 document.getElementById('d-apertura').innerText = apertura;
                 document.getElementById('d-fal').innerText = fallo;
-                document.getElementById('d-resp').innerText = resp;
-                
-                // Configurar el botón azul del drawer para que lleve a la pantalla de edición
                 document.getElementById('d-link-edit').setAttribute('href', editUrl);
 
-                // Abrir el Drawer
                 overlay.classList.add('active');
                 drawer.classList.add('active');
             });
