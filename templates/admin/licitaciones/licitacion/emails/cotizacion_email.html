@@ -161,6 +161,15 @@
                 Por medio de la presente, solicitamos amablemente su cotización para las partidas del sector salud que se detallan a continuación, correspondientes al evento de licitación solicitado por <strong>{{ empresa_emisora }}</strong>.
             </div>
 
+            <!-- 👇 AQUÍ EMPIEZA LA CAJA NUEVA DE OBSERVACIONES 👇 -->
+            {% if observaciones_extra %}
+            <div style="background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0 25px 0; border-radius: 4px;">
+                <h4 style="margin: 0 0 8px 0; color: #856404; font-size: 14px; text-transform: uppercase;">📝 Indicaciones Especiales:</h4>
+                <p style="margin: 0; color: #856404; font-size: 13px; line-height: 1.5; white-space: pre-wrap;">{{ observaciones_extra }}</p>
+            </div>
+            {% endif %}
+            <!-- 👆 AQUÍ TERMINA LA CAJA NUEVA 👆 -->
+
             <div class="info-box">
                 <div class="info-row"><span class="info-label">Evento #</span> {{ evento_num }}</div>
                 <div class="info-row"><span class="info-label">Dependencia:</span> {{ dependencia }}</div>
