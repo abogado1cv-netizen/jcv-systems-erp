@@ -945,6 +945,7 @@ class LicitacionAdmin(admin.ModelAdmin):
             archivos_adjuntos = request.FILES.getlist('adjuntos') 
             empresa_id = request.POST.get('empresa_emisora')
             empresa_emisora = Empresa.objects.get(id=empresa_id)
+            observaciones_extra = request.POST.get('observaciones_extra', '').strip()
             
             nombre_empresa_up = empresa_emisora.nombre.upper()
             if "SAGO" in nombre_empresa_up: lista_respuesta = ["sagomedical.licitaciones@gmail.com"]
@@ -999,6 +1000,7 @@ class LicitacionAdmin(admin.ModelAdmin):
                     'color_empresa': color_empresa,
                     'fecha_actual': timezone.now().strftime('%d/%m/%Y'),
                     'items': partidas_html,
+                    'observaciones_extra': observaciones_extra,
                 }
                 
                 html_content = render_to_string('admin/licitaciones/licitacion/emails/cotizacion_email.html', contexto_email)
@@ -2023,6 +2025,7 @@ class CotizacionAdmin(admin.ModelAdmin):
             empresa_emisora = Empresa.objects.get(id=request.POST.get('empresa_emisora'))
             
             nombre_empresa_up = empresa_emisora.nombre.upper()
+            observaciones_extra = request.POST.get('observaciones_extra', '').strip()
             lista_respuesta = ["sagomedical.licitaciones@gmail.com"] if "SAGO" in nombre_empresa_up else (["gsm.licitaciones@gmail.com"] if "GSM" in nombre_empresa_up else ["licitaciones2@gpharma.com"])
             if empresa_emisora.correos_notificacion: lista_respuesta.extend([c.strip() for c in empresa_emisora.correos_notificacion.split(',') if c.strip()])
 
@@ -2053,7 +2056,8 @@ class CotizacionAdmin(admin.ModelAdmin):
                     'url_logo': empresa_emisora.url_logo if hasattr(empresa_emisora, 'url_logo') else None, 
                     'color_empresa': color_empresa, 
                     'fecha_actual': timezone.now().strftime('%d/%m/%Y'), 
-                    'items': items
+                    'items': items,
+                    'observaciones_extra': observaciones_extra,
                 }
                 
                 html_content = render_to_string('admin/licitaciones/licitacion/emails/cotizacion_email.html', ctx)
