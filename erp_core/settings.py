@@ -15,6 +15,10 @@ EMPRESA_SLUG = os.getenv('EMPRESA_SLUG', 'gpharma') # Ej: sago, gsm, gams, empre
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-aakcsii+s+*f$%&7t5lm2w50m@9q(1)%4&lw3ffvm@!2vm%)@y')
 DEBUG = os.getenv('DEBUG', 'True').lower() == 'true'
 ALLOWED_HOSTS = [h.strip() for h in os.getenv('ALLOWED_HOSTS', '*').split(',') if h.strip()]
+CSRF_TRUSTED_ORIGINS = [
+    'https://*.jcv-sistemas.lat',
+]
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # Evita que las sesiones choquen si un admin abre 2 empresas en el mismo navegador
 SESSION_COOKIE_NAME = f"sessionid_{EMPRESA_SLUG}"
