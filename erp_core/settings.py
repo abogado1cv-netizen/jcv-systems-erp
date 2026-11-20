@@ -1,13 +1,24 @@
 import os
 from pathlib import Path
 from dotenv import load_dotenv
-load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = 'django-insecure-aakcsii+s+*f$%&7t5lm2w50m@9q(1)%4&lw3ffvm@!2vm%)@y'
-DEBUG = True
-ALLOWED_HOSTS = ['*']
+# 👇 CARGA EL .ENV DE LA EMPRESA CORRESPONDIENTE (Por defecto usa '.env') 👇
+env_file = os.getenv('ENV_FILE', BASE_DIR / '.env')
+load_dotenv(env_file)
+
+# ==========================================
+# 🔐 IDENTIDAD Y SEGURIDAD POR INSTANCIA
+# ==========================================
+EMPRESA_SLUG = os.getenv('EMPRESA_SLUG', 'gpharma') # Ej: sago, gsm, gams, empresa4...
+SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-aakcsii+s+*f$%&7t5lm2w50m@9q(1)%4&lw3ffvm@!2vm%)@y')
+DEBUG = os.getenv('DEBUG', 'True').lower() == 'true'
+ALLOWED_HOSTS = [h.strip() for h in os.getenv('ALLOWED_HOSTS', '*').split(',') if h.strip()]
+
+# Evita que las sesiones choquen si un admin abre 2 empresas en el mismo navegador
+SESSION_COOKIE_NAME = f"sessionid_{EMPRESA_SLUG}"
+CSRF_COOKIE_NAME = f"csrftoken_{EMPRESA_SLUG}"
 
 INSTALLED_APPS = [
     'jazzmin',
@@ -17,7 +28,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'django.contrib.humanize', # <--- Formato de dinero
+    'django.contrib.humanize',
     'licitaciones',
     'import_export',
 ]
@@ -51,10 +62,15 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'erp_core.wsgi.application'
 
+# ==========================================
+# 🗄️ BASE DE DATOS INDEPENDIENTE POR EMPRESA
+# ==========================================
+DB_NAME = os.getenv('DB_NAME', f'db_{EMPRESA_SLUG}.sqlite3')
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'NAME': BASE_DIR / DB_NAME,
     }
 }
 
@@ -75,10 +91,10 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
 
 # ==========================================
-# GESTIÓN DE ARCHIVOS SUBIDOS
+# 📂 ARCHIVOS SUBIDOS AISLADOS POR EMPRESA
 # ==========================================
-MEDIA_URL = 'http://67.205.175.17/media/'
-MEDIA_ROOT = '/var/www/media/'
+MEDIA_URL = os.getenv('MEDIA_URL', f'/media/{EMPRESA_SLUG}/')
+MEDIA_ROOT = os.getenv('MEDIA_ROOT', f'/var/www/media/{EMPRESA_SLUG}/')
 
 LOGIN_REDIRECT_URL = '/dashboard/inicio/'
 LOGOUT_REDIRECT_URL = '/admin/login/'
@@ -92,34 +108,58 @@ SESSION_SAVE_EVERY_REQUEST = True
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 
 # ==========================================
-# CONFIGURACIÓN DEL MENÚ GPHARMA (JAZZMIN PREMIUM AURA)
+# 🎛️ CONTROL DINÁMICO DE MÓDULOS (DESDE .ENV)
 # ==========================================
+# 1. Modelos que SIEMPRE van ocultos + los que quieras ocultar por empresa
+BASE_HIDE_MODELS = [
+    "licitaciones.estatusprocedimiento",
+    "licitaciones.configuracionemail",
+    "licitaciones.partidarequerimiento",
+]
+EXTRA_HIDE_MODELS = [
+    m.strip() for m in os.getenv('HIDE_MODELS_EXTRA', '').split(',') if m.strip()
+]
+
+# 2. Menú superior dinámico según los módulos activos en el .env
+CATALOGO_TOPMENU = {
+    "comercial": {"name": "📊 Comercial", "url": "/dashboard/licitaciones/"},
+    "precios":   {"name": "🔍 Historial de Precios", "url": "/dashboard/historial-precios/"},
+    "contratos": {"name": "📁 Contratos", "url": "/dashboard/contratos/"},
+    "compras":   {"name": "🛒 Compras", "url": "/dashboard/compras/"},
+    "logistica": {"name": "🚚 Logística", "url": "/dashboard/ordenes/"},
+    "almacen":   {"name": "📦 Almacén", "url": "/dashboard/inventario/"},
+}
+
+TOPMENU_ACTIVOS = [
+    k.strip().lower() for k in os.getenv('TOPMENU_MODULOS', 'comercial,precios,contratos,compras,logistica,almacen').split(',') if k.strip()
+]
+
+TOPMENU_LINKS = [{"name": "Inicio", "url": "admin:index", "permissions": ["auth.view_user"]}]
+for modulo in TOPMENU_ACTIVOS:
+    if modulo in CATALOGO_TOPMENU:
+        TOPMENU_LINKS.append(CATALOGO_TOPMENU[modulo])
+
+# ==========================================
+# 🎨 CONFIGURACIÓN VISUAL (JAZZMIN WHITE-LABEL)
+# ==========================================
+SITE_BRAND = os.getenv('SITE_BRAND', 'GPHARMA')
+SITE_LOGO = os.getenv('SITE_LOGO', 'logo.png')
+
 JAZZMIN_SETTINGS = {
-    "site_title": "GPHARMA ERP",
+    "site_title": os.getenv('SITE_TITLE', f'{SITE_BRAND} ERP'),
     "site_header": "Módulos",
-    "site_brand": "GPHARMA",
+    "site_brand": SITE_BRAND,
     
-    "site_logo": "logo.png",
-    "login_logo": "logo.png",
+    "site_logo": SITE_LOGO,
+    "login_logo": SITE_LOGO,
     "custom_css": "css/aura_pro.css", 
     "site_logo_classes": "img-fluid",
     "login_logo_classes": "img-fluid", 
     
-    "welcome_sign": "Bienvenido al Centro de Control GPHARMA",
-    "copyright": "JCV Systems",
+    "welcome_sign": os.getenv('WELCOME_SIGN', f'Bienvenido al Centro de Control {SITE_BRAND}'),
+    "copyright": os.getenv('COPYRIGHT_TEXT', 'JCV Systems'),
     
-    # ==================================================
-    # 🎯 1. MENÚ SUPERIOR
-    # ==================================================
-    "topmenu_links": [
-        {"name": "Inicio",  "url": "admin:index", "permissions": ["auth.view_user"]},
-        {"name": "📊 Comercial", "url": "/dashboard/licitaciones/"},
-        {'name': '🔍 Historial de Precios', 'url': '/dashboard/historial-precios/'},
-        {"name": "📁 Contratos", "url": "/dashboard/contratos/"},
-        {"name": "🛒 Compras", "url": "/dashboard/compras/"},
-        {"name": "🚚 Logística", "url": "/dashboard/ordenes/"},
-        {"name": "📦 Almacén", "url": "/dashboard/inventario/"},
-    ],
+    "topmenu_links": TOPMENU_LINKS,
 
     "custom_links": {
         "licitaciones": [{
@@ -129,50 +169,31 @@ JAZZMIN_SETTINGS = {
         }]
     },
 
-    "hide_models": [
-        "licitaciones.estatusprocedimiento",
-        "licitaciones.configuracionemail",
-        "licitaciones.partidarequerimiento",
-    ],
+    "hide_models": BASE_HIDE_MODELS + EXTRA_HIDE_MODELS,
     "hide_apps": ["auth"], 
 
-    # ==================================================
-    # 🎨 3. ICONOS MINIMALISTAS (Look Apple / SF Symbols)
-    # ==================================================
     "icons": {
-        # Maestros
         "licitaciones.catalogomedicamento": "fas fa-capsules", 
         "licitaciones.empresa": "fas fa-building",           
         "licitaciones.sociocomercial": "fas fa-handshake", 
         "licitaciones.almacen": "fas fa-warehouse",
-        
-        # Comercial
-        "licitaciones.licitacion": "fas fa-folder-open", # Carpeta limpia
-        "licitaciones.cotizacion": "fas fa-file-invoice", # Documento ligero
+        "licitaciones.licitacion": "fas fa-folder-open",
+        "licitaciones.cotizacion": "fas fa-file-invoice",
         "licitaciones.contrato": "fas fa-file-signature",          
-        
-        # Compras
         "licitaciones.ordencompra": "fas fa-shopping-cart",
-        "licitaciones.entradaalmacen": "fas fa-box-open", # Caja abierta limpia
-        
-        # Inventario
+        "licitaciones.entradaalmacen": "fas fa-box-open",
         "licitaciones.inventario": "fas fa-boxes",               
         "licitaciones.traspasointercompany": "fas fa-exchange-alt",
         "licitaciones.incidenciainventario": "fas fa-radiation-alt", 
         "licitaciones.escanerkardex": "fas fa-barcode",
-        
-        # Logística
         "licitaciones.ordensuministro": "fas fa-truck-loading",
         "licitaciones.pedidodirecto": "fas fa-paper-plane",
         "licitaciones.remisionentrega": "fas fa-receipt",
-        
-        # Extras y Auth
         "licitaciones.registroubicacion": "fas fa-map-marker-alt",
         "auth.user": "fas fa-user-circle",
         "auth.group": "fas fa-users-cog",
     },
     
-    # ... tu "order_with_respect_to" se queda igual ...
     "order_with_respect_to": [
         "licitaciones.catalogomedicamento", "licitaciones.empresa", "licitaciones.sociocomercial", "licitaciones.almacen",
         "licitaciones.licitacion", "licitaciones.cotizacion", "licitaciones.contrato",
@@ -186,21 +207,14 @@ JAZZMIN_SETTINGS = {
     "default_icon_children": "fas fa-circle",
     "show_sidebar": True,
     "navigation_expanded": True,
-    
-    # 👇 ESTO ES CLAVE PARA ACTIVAR EL INTERRUPTOR DE MODO OSCURO EN LA PANTALLA 👇
     "show_ui_builder": False, 
 }
 
-# ==================================================
-# 🌗 TWEAKS ADAPTATIVOS (SOPORTE LIGHT/DARK AUTOMÁTICO)
-# ==================================================
 JAZZMIN_UI_TWEAKS = {
     "navbar_small_text": False,
     "footer_small_text": False,
     "body_small_text": False,
     "brand_small_text": False,
-    
-    # Dejamos que los colores los dicte nuestro CSS
     "brand_colour": False, 
     "navbar": False,
     "no_navbar_border": True,
@@ -208,18 +222,15 @@ JAZZMIN_UI_TWEAKS = {
     "layout_boxed": False,
     "footer_fixed": False,
     "sidebar_fixed": True,
-    "sidebar": "sidebar-dark-primary", # El sidebar siempre se ve más pro oscuro
+    "sidebar": "sidebar-dark-primary",
     "sidebar_nav_small_text": False,
     "sidebar_disable_expand": False,
     "sidebar_nav_child_indent": True,
     "sidebar_nav_compact_style": False,
     "sidebar_nav_legacy_style": False,
     "sidebar_nav_flat_style": True, 
-    
-    # Habilitamos temas neutros para que nuestra magia CSS brille
     "theme": "default", 
-    "dark_mode_theme": "darkly", # 🌙 Activa el soporte nativo oscuro
-    
+    "dark_mode_theme": "darkly",
     "button_classes": {
         "primary": "btn-primary",
         "secondary": "btn-secondary",
@@ -240,7 +251,7 @@ EMAIL_HOST_USER = 'resend'
 EMAIL_HOST_PASSWORD = os.getenv('RESEND_API_KEY')
 EMAIL_USE_SSL = False 
 EMAIL_USE_TLS = True 
-DEFAULT_FROM_EMAIL = 'notificaciones@jcv-sistemas.lat'
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'notificaciones@jcv-sistemas.lat')
 
 # ==========================================
 # FORMATOS DE FECHA Y HORA
@@ -256,14 +267,12 @@ DATETIME_INPUT_FORMATS = [
     '%Y-%m-%dT%H:%M',
 ]
 
-# --- CONFIGURACIÓN PARA LÍMITES MASIVOS ---
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 100000
 DATA_UPLOAD_MAX_MEMORY_SIZE = 52428800
 
 # ==========================================
 # CONFIGURACIÓN DE TWILIO (WHATSAPP Y SMS)
 # ==========================================
-
-TWILIO_ACCOUNT_SID = 'SID_FALSO_AQUI'
-TWILIO_AUTH_TOKEN = 'TOKEN_FALSO_AQUI'
-TWILIO_PHONE_NUMBER = 'whatsapp:NUM_FALSO_AQUI'
+TWILIO_ACCOUNT_SID = os.getenv('TWILIO_ACCOUNT_SID', 'SID_FALSO_AQUI')
+TWILIO_AUTH_TOKEN = os.getenv('TWILIO_AUTH_TOKEN', 'TOKEN_FALSO_AQUI')
+TWILIO_PHONE_NUMBER = os.getenv('TWILIO_PHONE_NUMBER', 'whatsapp:NUM_FALSO_AQUI')

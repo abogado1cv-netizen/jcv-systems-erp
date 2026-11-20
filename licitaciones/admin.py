@@ -22,6 +22,8 @@ from .models import EscanerKardex
 from django.http import HttpResponseRedirect
 from django.urls import reverse
 from .models import HistorialPrecio
+from django.template.loader import render_to_string
+from django.utils.html import strip_tags
 import re
 
 from .models import (
