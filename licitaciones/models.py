@@ -153,6 +153,22 @@ class CatalogoMedicamento(models.Model):
         lab = self.fabricante if self.fabricante else "Sin Laboratorio"
         return f"Clave: {self.clave_sector} | Marca: {marca} | Lab: {lab}"
 
+    def save(self, *args, **kwargs):
+        if self.clave_sector:
+            import re
+            solo_digitos = re.sub(r'\D', '', str(self.clave_sector).strip())
+
+            # Si Excel se comió el 0 inicial (quedó de 9 dígitos empezando en 60)
+            if len(solo_digitos) == 9 and solo_digitos.startswith('60'):
+                solo_digitos = '0' + solo_digitos
+
+            # Si es grupo 060, la guardamos a 10 dígitos con puntos: 060.XXX.XXXX
+            if solo_digitos.startswith('060'):
+                solo_digitos = solo_digitos[:10].zfill(10)
+                self.clave_sector = f"{solo_digitos[:3]}.{solo_digitos[3:6]}.{solo_digitos[6:10]}"
+
+        super().save(*args, **kwargs)
+
 class PartidaRequerimiento(models.Model):
     licitacion = models.ForeignKey(Licitacion, on_delete=models.CASCADE, related_name='partidas')
     numero_partida = models.IntegerField(verbose_name="No. Partida", null=True, blank=True) 
