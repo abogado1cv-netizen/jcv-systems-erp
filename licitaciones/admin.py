@@ -509,7 +509,7 @@ class CatalogoMedicamentoAdmin(ImportExportModelAdmin):
                 med = CatalogoMedicamento.objects.get(id=id_med)
 
                 import re
-                patron = re.compile(r'^\d{3}\.\d{3}\.\d{4}\.\d{2}$')
+                patron = re.compile(r'^(\d{3}\.\d{3}\.\d{4}\.\d{2}|060\.\d{3}\.\d{4})$')
 
                 if patron.match(nueva_clave):
                     med.clave_sector = nueva_clave
@@ -821,7 +821,7 @@ class LicitacionAdmin(admin.ModelAdmin):
             f = io.StringIO(texto_seguro)
             lector = csv.reader(f, dialect='excel-tab')
             
-            patron_clave = re.compile(r'^\d{3}\.\d{3}\.\d{4}\.\d{2}$')
+            patron_clave = re.compile(r'^(\d{3}\.\d{3}\.\d{4}\.\d{2}|060\.\d{3}\.\d{4})$')
             
             for columnas in lector:
                 if not columnas or not "".join(columnas).strip(): continue
@@ -1928,7 +1928,7 @@ class CotizacionAdmin(admin.ModelAdmin):
             importes_agregados, claves_nuevas, claves_rechazadas = 0, [], []
             f = io.StringIO(datos_excel.replace('\r\n', '\n').replace('\r', '\n'))
             
-            patron_clave = re.compile(r'^\d{3}\.\d{3}\.\d{4}\.\d{2}$')
+            patron_clave = re.compile(r'^(\d{3}\.\d{3}\.\d{4}\.\d{2}|060\.\d{3}\.\d{4})$')
             
             for columnas in csv.reader(f, dialect='excel-tab'):
                 if not columnas or not "".join(columnas).strip(): continue
