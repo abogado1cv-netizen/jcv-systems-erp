@@ -297,7 +297,7 @@ class SocioComercial(models.Model):
 # ==========================================
 
 class Contrato(models.Model):
-    empresa = models.ForeignKey('Empresa', on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Empresa GPHARMA")
+    empresa = models.ForeignKey('Empresa', on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Empresa")
     numero_contrato = models.CharField(max_length=100, unique=True, verbose_name="Número de Contrato")
     dependencia = models.CharField(max_length=100, choices=DEPENDENCIAS_MAESTRAS, verbose_name="Dependencia / Cliente")
     fecha_inicio = models.DateField(verbose_name="Inicio de Vigencia", null=True, blank=True)
@@ -813,7 +813,7 @@ class OrdenCompra(models.Model):
     costo_administrativo = models.DecimalField("Costo Administrativo de OC", max_digits=8, decimal_places=2, default=500.00, help_text="Costo interno de procesamiento ($)")
     
     estatus = models.CharField(max_length=20, choices=ESTATUS_COMPRA, default='BORRADOR')
-    destino = models.CharField("Destino de Entrega", max_length=255, default="ALMACÉN GENERAL GPHARMA", help_text="Dirección o unidad donde se recibirá el medicamento")
+    destino = models.CharField("Destino de Entrega", max_length=255, default="ALMACÉN GENERAL", help_text="Dirección o unidad donde se recibirá el producto")
     observaciones = models.TextField(blank=True, null=True)
 
     class Meta:

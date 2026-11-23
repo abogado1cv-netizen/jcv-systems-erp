@@ -10,7 +10,7 @@
     <form method="POST" enctype="multipart/form-data" action="">
         {% csrf_token %}
         <div style="margin-bottom: 20px;">
-            <label style="font-weight: bold; color: #444;">Empresa Emisora (GPHARMA / SAGO / GSM):</label><br>
+            <label style="font-weight: bold; color: #444;">Empresa Emisora :</label><br>
             <select name="empresa_emisora" required style="width: 100%; padding: 10px; border-radius: 4px; border: 1px solid #ccc; margin-top: 5px;">
                 {% for emp in empresas_grupo %}
                     <option value="{{ emp.id }}">{{ emp.nombre }}</option>

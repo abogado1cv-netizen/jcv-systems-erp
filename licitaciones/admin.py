@@ -1221,7 +1221,7 @@ class LicitacionAdmin(admin.ModelAdmin):
         if request.method == 'POST':
             miembros_ids = request.POST.getlist('miembros')
             estatus_txt = licitacion.estatus.estado if licitacion.estatus else "Finalizado"
-            mensaje_texto = f"📋 *GPHARMA ERP - Alerta de Fallo*\n\nEl analista ha registrado los resultados del evento:\n• *Procedimiento:* {licitacion.num_procedimiento}\n• *Dependencia:* {licitacion.get_dependencia_display()}\n• *Resultado General:* {estatus_txt}\n\nPor favor ingresa al ERP para consultar el desglose de las claves asignadas."
+            mensaje_texto = f"📋 *{settings.SITE_TITLE} - Alerta de Fallo*\n\nEl analista ha registrado los resultados del evento:\n• *Procedimiento:* {licitacion.num_procedimiento}\n• *Dependencia:* {licitacion.get_dependencia_display()}\n• *Resultado General:* {estatus_txt}\n\nPor favor ingresa al ERP para consultar el desglose de las claves asignadas."
 
             if miembros_ids:
                 try:
@@ -1813,7 +1813,7 @@ class InventarioResource(resources.ModelResource):
 @admin.action(description='📊 Descargar Inventario Ejecutivo (Excel Especial)')
 def exportar_inventario_personalizado(modeladmin, request, queryset):
     response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-    response['Content-Disposition'] = 'attachment; filename="Inventario_Detallado_Gpharma.xlsx"'
+    response['Content-Disposition'] = f'attachment; filename="Inventario_Detallado_{settings.SITE_BRAND}.xlsx"'
     
     wb = openpyxl.Workbook()
     ws = wb.active

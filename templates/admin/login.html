@@ -32,7 +32,7 @@
         const body = document.body;
         
         // 2. Leemos si el usuario ya había elegido un tema (Por defecto dejamos Dark)
-        const currentTheme = localStorage.getItem('gpharma_theme') || 'dark';
+        const currentTheme = localStorage.getItem('systems_theme') || 'dark';
         
         function applyTheme(theme) {
             let link = document.getElementById('jazzmin-theme');
@@ -54,7 +54,7 @@
         themeToggle.addEventListener('click', function(e) {
             e.preventDefault();
             let newTheme = body.classList.contains('dark-mode') ? 'light' : 'dark';
-            localStorage.setItem('gpharma_theme', newTheme);
+            localStorage.setItem('systems_theme', newTheme);
             applyTheme(newTheme);
         });
     });
