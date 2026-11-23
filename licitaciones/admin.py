@@ -675,15 +675,47 @@ class LicitacionForm(forms.ModelForm):
 
 class PartidaRequerimientoInline(admin.TabularInline):
     model = PartidaRequerimiento
-    extra = 0 
-    autocomplete_fields = ['medicamento'] 
-    fields = ('numero_partida', 'medicamento', 'cantidad_maxima', 'precio', 'resultado', 'motivo_perdida')
+    extra = 0
+    fields = (
+        'numero_partida',
+        'medicamento_compacto',
+        'cantidad_minima',
+        'cantidad_maxima',
+        'porcentaje_asignacion',
+        'cantidad_minima_asignada',
+        'cantidad_maxima_asignada',
+        'precio',
+        'resultado',
+        'motivo_perdida',
+    )
+    readonly_fields = ('medicamento_compacto',)
     ordering = ['numero_partida']
 
+    def medicamento_compacto(self, obj):
+        if not obj or not obj.medicamento:
+            return "-"
+        med = obj.medicamento
+        marca = med.denominacion_distintiva or "Genérico"
+        lab = med.fabricante or "Sin Lab"
+        url_editar = reverse('admin:editar_marca_lab_partida', args=[med.id])
+        return format_html(
+            '<div style="display:flex; align-items:center; justify-content:space-between; gap:8px; max-width:360px;">'
+            '<span style="font-size:12px; line-height:1.3;">'
+            '<b>{}</b> | Marca: {} | Lab: {}'
+            '</span>'
+            '<a href="{}" onclick="window.open(this.href, \'edit_med\', \'width=460,height=340,resizable=yes\'); return false;" '
+            'style="background:#0071e3; color:#fff; padding:3px 9px; border-radius:5px; font-size:11px; font-weight:600; text-decoration:none; white-space:nowrap;">'
+            'Editar</a>'
+            '</div>',
+            med.clave_sector, marca, lab, url_editar
+        )
+    medicamento_compacto.short_description = "Medicamento"
+
     def get_readonly_fields(self, request, obj=None):
+        base = ('medicamento_compacto',)
         if not request.user.is_superuser:
-            return ('precio', 'cantidad_maxima', 'licitacion', 'medicamento')
-        return super().get_readonly_fields(request, obj)
+            return base + ('precio', 'cantidad_minima', 'cantidad_maxima', 'licitacion')
+        return base
 
 # =========================================================================
 # 🍏 MAGIA AURA PRO EN EL ADMIN DE LICITACIONES
@@ -750,8 +782,50 @@ class LicitacionAdmin(admin.ModelAdmin):
             path('<path:object_id>/notificar-whatsapp/', self.admin_site.admin_view(self.notificar_whatsapp_view), name='notificar_whatsapp_licitacion'),
             path('<path:object_id>/ver-sabana-general/', self.admin_site.admin_view(self.ver_sabana_general_view), name='ver_sabana_general_licitacion'),
             path('<path:object_id>/ver-sabana-socios/', self.admin_site.admin_view(self.ver_sabana_socios_view), name='ver_sabana_socios_licitacion'),
+            path('editar-marca-lab/<int:med_id>/', self.admin_site.admin_view(self.editar_marca_lab_view), name='editar_marca_lab_partida'),
         ]
         return custom_urls + urls
+
+    def editar_marca_lab_view(self, request, med_id):
+        med = CatalogoMedicamento.objects.get(id=med_id)
+        if request.method == 'POST':
+            med.denominacion_distintiva = request.POST.get('marca', '').strip()
+            med.fabricante = request.POST.get('fabricante', '').strip()
+            med.save()
+            return HttpResponse("""
+                <html><body style="font-family:sans-serif; text-align:center; padding:30px;">
+                    <h3 style="color:#1e833f;">✅ Marca y Fabricante actualizados</h3>
+                    <script>
+                        if (window.opener) { window.opener.location.reload(); }
+                        setTimeout(function(){ window.close(); }, 400);
+                    </script>
+                </body></html>
+            """)
+
+        html = f"""
+        <html>
+        <head><title>Editar Marca y Fabricante</title></head>
+        <body style="font-family:-apple-system,sans-serif; padding:20px; background:#f8fafc;">
+            <h3 style="margin-top:0;">Editar Marca y Laboratorio</h3>
+            <p style="font-size:13px; color:#475569;">Clave (intacta): <b>{med.clave_sector}</b></p>
+            <form method="post">
+                <input type="hidden" name="csrfmiddlewaretoken" value="{request.META.get('CSRF_COOKIE', '')}">
+                <div style="margin-bottom:12px;">
+                    <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px;">Marca (Denominación Distintiva)</label>
+                    <input type="text" name="marca" value="{med.denominacion_distintiva or ''}" style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:6px;">
+                </div>
+                <div style="margin-bottom:16px;">
+                    <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px;">Fabricante / Laboratorio</label>
+                    <input type="text" name="fabricante" value="{med.fabricante or ''}" style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:6px;">
+                </div>
+                <button type="submit" style="background:#0071e3; color:#fff; border:none; padding:9px 16px; border-radius:6px; font-weight:600; cursor:pointer;">Guardar cambios</button>
+                <button type="button" onclick="window.close()" style="background:#e2e8f0; color:#334155; border:none; padding:9px 14px; border-radius:6px; margin-left:8px; cursor:pointer;">Cancelar</button>
+            </form>
+        </body>
+        </html>
+        """
+        return HttpResponse(html)
+
 
     def ver_sabana_general_view(self, request, object_id):
         licitacion = self.get_object(request, object_id)

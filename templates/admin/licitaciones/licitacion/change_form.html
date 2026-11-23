@@ -113,4 +113,71 @@
     </script>
     
     {{ block.super }}
+
+    <style>
+    /* Ajuste estético de columnas en Partida Requerimientos */
+    .field-numero_partida input { width: 55px !important; text-align: center; padding: 4px !important; }
+    .field-cantidad_minima input,
+    .field-cantidad_maxima input,
+    .field-cantidad_minima_asignada input,
+    .field-cantidad_maxima_asignada input { width: 85px !important; text-align: right; padding: 4px 6px !important; }
+    .field-porcentaje_asignacion input { width: 70px !important; text-align: center; padding: 4px !important; font-weight: 600; border-color: #0071e3 !important; }
+    .field-precio input { width: 85px !important; text-align: right; padding: 4px 6px !important; }
+    .field-resultado select { width: 135px !important; padding: 4px !important; }
+    .field-motivo_perdida input { width: 150px !important; padding: 4px 6px !important; }
+    td.field-medicamento_compacto { min-width: 320px; max-width: 380px; white-space: normal !important; }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    function recalcularFila(row) {
+        const minSolic = row.querySelector('input[name$="-cantidad_minima"]');
+        const maxSolic = row.querySelector('input[name$="-cantidad_maxima"]');
+        const pctInput = row.querySelector('input[name$="-porcentaje_asignacion"]');
+        const minAsig  = row.querySelector('input[name$="-cantidad_minima_asignada"]');
+        const maxAsig  = row.querySelector('input[name$="-cantidad_maxima_asignada"]');
+        const resSel   = row.querySelector('select[name$="-resultado"]');
+
+        if (!pctInput || !minAsig || !maxAsig || !resSel) return;
+
+        const valStr = pctInput.value.trim();
+        if (valStr === '') {
+            minAsig.value = 0;
+            maxAsig.value = 0;
+            if (resSel.value !== 'Perdida técnicamente') {
+                resSel.value = 'Pendiente';
+            }
+            return;
+        }
+
+        const pct = parseFloat(valStr);
+        if (isNaN(pct)) return;
+
+        if (pct === 0) {
+            minAsig.value = 0;
+            maxAsig.value = 0;
+            resSel.value = 'Perdida por precio';
+        } else if (pct > 0) {
+            const minVal = parseFloat(minSolic?.value || 0);
+            const maxVal = parseFloat(maxSolic?.value || 0);
+            minAsig.value = Math.round(minVal * (pct / 100));
+            maxAsig.value = Math.round(maxVal * (pct / 100));
+            resSel.value = 'Asignada';
+        }
+    }
+
+    document.addEventListener('input', function (e) {
+        if (
+            e.target.name &&
+            (e.target.name.endsWith('-porcentaje_asignacion') ||
+             e.target.name.endsWith('-cantidad_minima') ||
+             e.target.name.endsWith('-cantidad_maxima'))
+        ) {
+            const row = e.target.closest('tr');
+            if (row) recalcularFila(row);
+        }
+    });
+});
+</script>
+
 {% endblock %}

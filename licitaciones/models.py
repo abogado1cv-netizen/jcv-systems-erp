@@ -171,10 +171,18 @@ class CatalogoMedicamento(models.Model):
 
 class PartidaRequerimiento(models.Model):
     licitacion = models.ForeignKey(Licitacion, on_delete=models.CASCADE, related_name='partidas')
-    numero_partida = models.IntegerField(verbose_name="No. Partida", null=True, blank=True) 
+    numero_partida = models.IntegerField(verbose_name="No.", null=True, blank=True) 
     medicamento = models.ForeignKey(CatalogoMedicamento, on_delete=models.PROTECT, verbose_name="Medicamento")
-    cantidad_minima = models.PositiveIntegerField(null=True, blank=True, default=0)
-    cantidad_maxima = models.PositiveIntegerField(null=True, blank=True, default=0)
+    
+    # Cantidades Solicitadas
+    cantidad_minima = models.PositiveIntegerField(null=True, blank=True, default=0, verbose_name="Cant. Mín. (Solic.)")
+    cantidad_maxima = models.PositiveIntegerField(null=True, blank=True, default=0, verbose_name="Cant. Máx. (Solic.)")
+    
+    # Porcentaje y Cantidades Asignadas
+    porcentaje_asignacion = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name="% Asig.")
+    cantidad_minima_asignada = models.PositiveIntegerField(null=True, blank=True, default=0, verbose_name="Cant. Mín. (Asig.)")
+    cantidad_maxima_asignada = models.PositiveIntegerField(null=True, blank=True, default=0, verbose_name="Cant. Máx. (Asig.)")
+
     costo = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, default=0)
     precio = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, default=0)
 
@@ -197,7 +205,23 @@ class PartidaRequerimiento(models.Model):
     def valor_maximo_precio(self): return (self.precio * self.cantidad_maxima) if self.precio and self.cantidad_maxima else 0
 
     def save(self, *args, **kwargs):
-        super().save(*args, **kwargs) # Primero guardamos la partida normal
+        # Cálculo automático de cantidades asignadas y resultado según el %
+        if self.porcentaje_asignacion is None:
+            self.cantidad_minima_asignada = 0
+            self.cantidad_maxima_asignada = 0
+            if self.resultado not in ['Perdida técnicamente']:
+                self.resultado = 'Pendiente'
+        elif self.porcentaje_asignacion == 0:
+            self.cantidad_minima_asignada = 0
+            self.cantidad_maxima_asignada = 0
+            self.resultado = 'Perdida por precio'
+        else:
+            factor = Decimal(str(self.porcentaje_asignacion)) / Decimal('100')
+            self.cantidad_minima_asignada = round((self.cantidad_minima or 0) * factor)
+            self.cantidad_maxima_asignada = round((self.cantidad_maxima or 0) * factor)
+            self.resultado = 'Asignada'
+
+        super().save(*args, **kwargs)
         
         # Si ganamos la partida y tiene precio, la mandamos al historial
         if self.resultado == 'Asignada' and self.precio and self.precio > 0:
@@ -218,8 +242,8 @@ class PartidaRequerimiento(models.Model):
                     'institucion': self.licitacion.get_dependencia_display() if hasattr(self.licitacion, 'get_dependencia_display') else self.licitacion.dependencia,
                     'institucion_desagregada': self.licitacion.dependencia,
                     'precio': self.precio,
-                    'cantidad': self.cantidad_maxima or 0,
-                    'valor': (self.cantidad_maxima or 0) * self.precio
+                    'cantidad': self.cantidad_maxima_asignada or self.cantidad_maxima or 0,
+                    'valor': (self.cantidad_maxima_asignada or self.cantidad_maxima or 0) * self.precio
                 }
             )
 
