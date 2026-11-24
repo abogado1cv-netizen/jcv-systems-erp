@@ -120,6 +120,7 @@ BASE_HIDE_MODELS = [
     "licitaciones.estatusprocedimiento",
     "licitaciones.configuracionemail",
     "licitaciones.partidarequerimiento",
+    'licitaciones.perfilequipo',
 ]
 EXTRA_HIDE_MODELS = [
     m.strip() for m in os.getenv('HIDE_MODELS_EXTRA', '').split(',') if m.strip()
@@ -166,13 +167,7 @@ JAZZMIN_SETTINGS = {
     
     "topmenu_links": TOPMENU_LINKS,
 
-    "custom_links": {
-        "licitaciones": [{
-            "name": "Gestión de Equipo",
-            "url": "/dashboard/equipo/",
-            "icon": "fas fa-users",
-        }]
-    },
+    "custom_links": {},
 
     "hide_models": BASE_HIDE_MODELS + EXTRA_HIDE_MODELS,
     "hide_apps": ["auth"], 
