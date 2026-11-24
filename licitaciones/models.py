@@ -1358,6 +1358,9 @@ class ControlAccesoUsuario(models.Model):
 
     def sincronizar_permisos(self):
         """Aplica en Django los permisos reales según las casillas."""
+        from django.contrib.auth.models import Permission
+        from django.db.models import Q
+
         if self.usuario.is_superuser:
             return
 
@@ -1373,7 +1376,10 @@ class ControlAccesoUsuario(models.Model):
         # Asignamos permisos de ver/agregar/editar a los módulos elegidos
         cts = self.modulos_permitidos.all()
         permisos = Permission.objects.filter(
-            content_type__in=cts,
-            codename__startswith=('view_', 'add_', 'change_')
+            content_type__in=cts
+        ).filter(
+            Q(codename__startswith='view_') |
+            Q(codename__startswith='add_') |
+            Q(codename__startswith='change_')
         )
         self.usuario.user_permissions.set(permisos)
