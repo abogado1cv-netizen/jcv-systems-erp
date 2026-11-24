@@ -2647,3 +2647,42 @@ class HistorialPrecioAdmin(ImportExportModelAdmin):
     
     def get_instance(self, instance_loader, row):
         return None
+
+
+    @admin.register(ControlAccesoUsuario)
+class ControlAccesoUsuarioAdmin(admin.ModelAdmin):
+    list_display = ('usuario', 'solo_dashboards', 'dash_comercial', 'dash_precios', 'dash_contratos', 'dash_compras', 'dash_logistica', 'dash_almacen')
+    list_filter = ('solo_dashboards',)
+    search_fields = ('usuario__username', 'usuario__first_name', 'usuario__last_name')
+    filter_horizontal = ('modulos_permitidos',)
+
+    fieldsets = (
+        ('👤 Usuario', {'fields': ('usuario', 'solo_dashboards')}),
+        ('📊 Dashboards Permitidos', {
+            'fields': ('dash_comercial', 'dash_precios', 'dash_contratos', 'dash_compras', 'dash_logistica', 'dash_almacen')
+        }),
+        ('📂 Módulos del Panel Admin', {
+            'fields': ('modulos_permitidos',),
+            'description': 'Si activaste "Solo Dashboards", esta lista se ignora automáticamente.'
+        }),
+    )
+
+    # Candado: SOLO visible para superadministrador
+    def has_module_permission(self, request):
+        return request.user.is_superuser
+
+    def has_view_permission(self, request, obj=None):
+        return request.user.is_superuser
+
+    def has_add_permission(self, request):
+        return request.user.is_superuser
+
+    def has_change_permission(self, request, obj=None):
+        return request.user.is_superuser
+
+    def has_delete_permission(self, request, obj=None):
+        return request.user.is_superuser
+
+    def save_related(self, request, form, formsets, change):
+        super().save_related(request, form, formsets, change)
+        form.instance.sincronizar_permisos()

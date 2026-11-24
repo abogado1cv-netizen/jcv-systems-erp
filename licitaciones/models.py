@@ -1320,3 +1320,60 @@ class HistorialPrecio(models.Model):
 
     def __str__(self):
         return f"{self.clave} - ${self.precio}"
+
+    from django.contrib.auth.models import Permission
+from django.contrib.contenttypes.models import ContentType
+
+class ControlAccesoUsuario(models.Model):
+    usuario = models.OneToOneField(User, on_delete=models.CASCADE, related_name='control_acceso', verbose_name="Usuario")
+    
+    # Modo restringido
+    solo_dashboards = models.BooleanField(
+        default=False,
+        verbose_name="🔒 Solo Dashboards (Ocultar todos los módulos del Admin)"
+    )
+
+    # Dashboards permitidos
+    dash_comercial = models.BooleanField(default=False, verbose_name="📊 Dashboard Comercial")
+    dash_precios = models.BooleanField(default=False, verbose_name="🔍 Dashboard Historial de Precios")
+    dash_contratos = models.BooleanField(default=False, verbose_name="📁 Dashboard Contratos")
+    dash_compras = models.BooleanField(default=False, verbose_name="🛒 Dashboard Compras")
+    dash_logistica = models.BooleanField(default=False, verbose_name="🚚 Dashboard Logística")
+    dash_almacen = models.BooleanField(default=False, verbose_name="📦 Dashboard Almacén")
+
+    # Módulos del Admin permitidos (se eligen con selector doble)
+    modulos_permitidos = models.ManyToManyField(
+        ContentType,
+        blank=True,
+        limit_choices_to={'app_label': 'licitaciones'},
+        verbose_name="Módulos del Admin que puede ver y usar"
+    )
+
+    class Meta:
+        verbose_name = "Control de Acceso"
+        verbose_name_plural = "🔐 Control de Accesos (Solo Superadmin)"
+
+    def __str__(self):
+        return f"Accesos de {self.usuario.username}"
+
+    def sincronizar_permisos(self):
+        """Aplica en Django los permisos reales según las casillas."""
+        if self.usuario.is_superuser:
+            return
+
+        # Quitamos grupos previos y permisos directos para que mande este panel
+        self.usuario.groups.clear()
+        self.usuario.user_permissions.clear()
+        self.usuario.is_staff = True
+        self.usuario.save()
+
+        if self.solo_dashboards:
+            return  # Sin permisos de modelos = barra lateral limpia, solo dashboards
+
+        # Asignamos permisos de ver/agregar/editar a los módulos elegidos
+        cts = self.modulos_permitidos.all()
+        permisos = Permission.objects.filter(
+            content_type__in=cts,
+            codename__startswith=('view_', 'add_', 'change_')
+        )
+        self.usuario.user_permissions.set(permisos)
