@@ -2648,17 +2648,112 @@ class HistorialPrecioAdmin(ImportExportModelAdmin):
     def get_instance(self, instance_loader, row):
         return None
 
+from django.contrib.auth.models import User
 from .models import ControlAccesoUsuario
+
+class ControlAccesoUsuarioForm(forms.ModelForm):
+    username = forms.CharField(label="Nombre de usuario (Login)", max_length=150)
+    password = forms.CharField(
+        label="Contraseña",
+        required=False,
+        widget=forms.PasswordInput(render_value=False),
+        help_text="Al crear un usuario es obligatoria. Al editar, déjala vacía si no quieres cambiarla."
+    )
+    first_name = forms.CharField(label="Nombre completo", max_length=150, required=False)
+    email = forms.EmailField(label="Correo electrónico", required=False)
+    is_active = forms.BooleanField(label="Usuario activo (puede iniciar sesión)", required=False, initial=True)
+
+    class Meta:
+        model = ControlAccesoUsuario
+        exclude = ('usuario',)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance and self.instance.pk and self.instance.usuario:
+            u = self.instance.usuario
+            self.fields['username'].initial = u.username
+            self.fields['first_name'].initial = u.first_name
+            self.fields['email'].initial = u.email
+            self.fields['is_active'].initial = u.is_active
+
+    def clean(self):
+        cleaned = super().clean()
+        username = cleaned.get('username', '').strip()
+        password = cleaned.get('password', '').strip()
+
+        if not self.instance.pk:
+            # Creando un acceso nuevo
+            usuario_existente = User.objects.filter(username=username).first()
+            if usuario_existente:
+                if hasattr(usuario_existente, 'control_acceso'):
+                    raise forms.ValidationError(f"El usuario '{username}' ya existe en Control de Accesos.")
+            elif not password:
+                raise forms.ValidationError("Debes escribir una contraseña para crear un usuario nuevo.")
+        else:
+            # Editando uno existente: validar que el nuevo username no choque con otro
+            if User.objects.filter(username=username).exclude(pk=self.instance.usuario.pk).exists():
+                raise forms.ValidationError(f"Ya existe otro usuario con el nombre '{username}'.")
+        return cleaned
+
+    def save(self, commit=True):
+        acceso = super().save(commit=False)
+        username = self.cleaned_data['username'].strip()
+        password = self.cleaned_data.get('password', '').strip()
+        first_name = self.cleaned_data.get('first_name', '').strip()
+        email = self.cleaned_data.get('email', '').strip()
+        is_active = self.cleaned_data.get('is_active', True)
+
+        if acceso.pk and acceso.usuario:
+            u = acceso.usuario
+            u.username = username
+            u.first_name = first_name
+            u.email = email
+            u.is_active = is_active
+            if password:
+                u.set_password(password)
+            u.save()
+        else:
+            u = User.objects.filter(username=username).first()
+            if not u:
+                u = User.objects.create_user(
+                    username=username,
+                    password=password,
+                    first_name=first_name,
+                    email=email,
+                    is_staff=True,
+                    is_active=is_active
+                )
+            else:
+                u.first_name = first_name or u.first_name
+                u.email = email or u.email
+                u.is_staff = True
+                u.is_active = is_active
+                if password:
+                    u.set_password(password)
+                u.save()
+            acceso.usuario = u
+
+        if commit:
+            acceso.save()
+            self.save_m2m()
+        return acceso
+
 
 @admin.register(ControlAccesoUsuario)
 class ControlAccesoUsuarioAdmin(admin.ModelAdmin):
-    list_display = ('usuario', 'solo_dashboards', 'dash_comercial', 'dash_precios', 'dash_contratos', 'dash_compras', 'dash_logistica', 'dash_almacen')
-    list_filter = ('solo_dashboards',)
-    search_fields = ('usuario__username', 'usuario__first_name', 'usuario__last_name')
+    form = ControlAccesoUsuarioForm
+    list_display = ('usuario', 'nombre_usuario', 'activo', 'solo_dashboards', 'dash_comercial', 'dash_precios', 'dash_contratos', 'dash_compras', 'dash_logistica', 'dash_almacen')
+    list_filter = ('solo_dashboards', 'usuario__is_active')
+    search_fields = ('usuario__username', 'usuario__first_name', 'usuario__email')
     filter_horizontal = ('modulos_permitidos',)
 
     fieldsets = (
-        ('👤 Usuario', {'fields': ('usuario', 'solo_dashboards')}),
+        ('👤 Datos de Cuenta y Contraseña', {
+            'fields': ('username', 'password', 'first_name', 'email', 'is_active')
+        }),
+        ('🔒 Modo de Acceso', {
+            'fields': ('solo_dashboards',)
+        }),
         ('📊 Dashboards Permitidos', {
             'fields': ('dash_comercial', 'dash_precios', 'dash_contratos', 'dash_compras', 'dash_logistica', 'dash_almacen')
         }),
@@ -2668,7 +2763,16 @@ class ControlAccesoUsuarioAdmin(admin.ModelAdmin):
         }),
     )
 
-    # Candado: SOLO visible para superadministrador
+    def nombre_usuario(self, obj):
+        return obj.usuario.first_name or "-"
+    nombre_usuario.short_description = "Nombre"
+
+    def activo(self, obj):
+        return obj.usuario.is_active
+    activo.boolean = True
+    activo.short_description = "Activo"
+
+    # Candado: SOLO visible y editable para superadministrador
     def has_module_permission(self, request):
         return request.user.is_superuser
 
@@ -2687,3 +2791,15 @@ class ControlAccesoUsuarioAdmin(admin.ModelAdmin):
     def save_related(self, request, form, formsets, change):
         super().save_related(request, form, formsets, change)
         form.instance.sincronizar_permisos()
+
+    # Al eliminar un registro aquí, también borra el Usuario de Django (protegiendo superadmins)
+    def delete_model(self, request, obj):
+        usuario = obj.usuario
+        if usuario and not usuario.is_superuser and usuario != request.user:
+            usuario.delete()  # Por CASCADE borra también el ControlAccesoUsuario
+        else:
+            super().delete_model(request, obj)
+
+    def delete_queryset(self, request, queryset):
+        for obj in queryset:
+            self.delete_model(request, obj)
