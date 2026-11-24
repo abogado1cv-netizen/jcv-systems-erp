@@ -2648,6 +2648,7 @@ class HistorialPrecioAdmin(ImportExportModelAdmin):
     def get_instance(self, instance_loader, row):
         return None
 
+from .models import ControlAccesoUsuario
 
 @admin.register(ControlAccesoUsuario)
 class ControlAccesoUsuarioAdmin(admin.ModelAdmin):
