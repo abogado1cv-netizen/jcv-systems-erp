@@ -2649,7 +2649,7 @@ class HistorialPrecioAdmin(ImportExportModelAdmin):
         return None
 
 
-    @admin.register(ControlAccesoUsuario)
+@admin.register(ControlAccesoUsuario)
 class ControlAccesoUsuarioAdmin(admin.ModelAdmin):
     list_display = ('usuario', 'solo_dashboards', 'dash_comercial', 'dash_precios', 'dash_contratos', 'dash_compras', 'dash_logistica', 'dash_almacen')
     list_filter = ('solo_dashboards',)
