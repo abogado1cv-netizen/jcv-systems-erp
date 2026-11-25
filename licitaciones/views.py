@@ -938,3 +938,13 @@ def registrar_ubicacion_view(request):
             return JsonResponse({'ok': False, 'error': str(e)}, status=500)
 
     return render(request, 'registrar_ubicacion.html')
+
+from django.http import HttpResponseForbidden
+
+@login_required
+def monitor_ubicaciones_view(request):
+    if not request.user.is_superuser:
+        return HttpResponseForbidden()
+
+    registros = RegistroUbicacion.objects.select_related('usuario').order_by('-fecha_hora')[:100]
+    return render(request, 'monitor_ubicaciones.html', {'registros': registros})

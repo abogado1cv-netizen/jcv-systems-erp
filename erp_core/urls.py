@@ -7,6 +7,7 @@ from licitaciones.views import probar_whatsapp, panel_equipo
 # Importamos tus vistas para el tablero
 from licitaciones import views
 from licitaciones.views import registrar_ubicacion_view
+from licitaciones.views import registrar_ubicacion_view, monitor_ubicaciones_view
 
 # ==============================================================
 # 🚀 EL GOLPE DEFINITIVO A JAZZMIN (Monkey Patching)
@@ -38,6 +39,7 @@ urlpatterns = [
     path('probar-whatsapp/', probar_whatsapp, name='probar_whatsapp'),
     path('dashboard/historial-precios/', views.dashboard_historial, name='dashboard_historial'),
     path('ubicacion/registrar/', registrar_ubicacion_view, name='registrar_ubicacion'),
+    path('ubicacion/monitor/', monitor_ubicaciones_view, name='monitor_ubicaciones'),
 ]
 
 # ==============================================================

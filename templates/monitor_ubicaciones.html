@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitor de Ubicaciones (Solo Superadmin)</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f3f4f6; margin: 0; padding: 24px; color: #111827; }
+        .wrap { max-width: 960px; margin: 0 auto; background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 4px 16px rgba(0,0,0,0.06); }
+        .top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
+        h2 { margin: 0; font-size: 22px; }
+        .btn-back { background: #1f2937; color: #fff; text-decoration: none; padding: 8px 16px; border-radius: 8px; font-size: 14px; font-weight: 500; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { text-align: left; padding: 12px 14px; border-bottom: 1px solid #e5e7eb; font-size: 14px; }
+        th { background: #f8fafc; color: #4b5563; font-weight: 600; }
+        .btn-map { background: #16a34a; color: #fff; text-decoration: none; padding: 6px 12px; border-radius: 6px; font-weight: 600; font-size: 13px; display: inline-block; }
+        .btn-map:hover { background: #15803d; }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <div class="top">
+            <h2>🗺️ Monitor de Ubicaciones (Solo Superadmin)</h2>
+            <a href="/admin/" class="btn-back">← Volver al Panel</a>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Empleado</th>
+                    <th>Fecha y Hora Exacta</th>
+                    <th>Coordenadas</th>
+                    <th>Ubicación en Mapa</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in registros %}
+                <tr>
+                    <td><strong>{{ r.usuario.get_full_name|default:r.usuario.username }}</strong></td>
+                    <td>{{ r.fecha_hora|date:"d/m/Y H:i:s" }}</td>
+                    <td>{{ r.latitud }}, {{ r.longitud }}</td>
+                    <td>
+                        <a class="btn-map" target="_blank" href="https://www.google.com/maps?q={{ r.latitud }},{{ r.longitud }}">
+                            📍 Ver en Google Maps
+                        </a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="4" style="text-align:center; color:#6b7280; padding:24px;">Aún no hay ubicaciones registradas.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>

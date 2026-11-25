@@ -650,6 +650,14 @@ class RegistroUbicacionAdmin(admin.ModelAdmin):
     list_display = ('usuario', 'fecha_hora', 'latitud', 'longitud', 'ver_en_mapa')
     list_filter = ('usuario', 'fecha_hora')
 
+    def changelist_view(self, request, extra_context=None):
+        if not request.user.is_superuser:
+            return redirect('/ubicacion/registrar/')
+        return super().changelist_view(request, extra_context=extra_context)
+
+    def add_view(self, request, form_url='', extra_context=None):
+        return redirect('/ubicacion/registrar/')
+
     def ver_en_mapa(self, obj):
         if obj.latitud and obj.longitud:
             url = f"https://www.google.com/maps?q={obj.latitud},{obj.longitud}"
