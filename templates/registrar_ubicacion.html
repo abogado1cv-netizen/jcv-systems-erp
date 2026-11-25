@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registro de Ubicación</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f3f4f6; margin: 0; padding: 20px; display: flex; justify-content: center; align-items: center; min-height: 100vh; box-sizing: border-box; }
+        .card { background: #fff; padding: 28px 22px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.08); max-width: 420px; width: 100%; text-align: center; }
+        h2 { margin: 0 0 6px; color: #111827; font-size: 22px; }
+        .user { color: #6b7280; font-size: 14px; margin-bottom: 20px; }
+        .btn-gps { width: 100%; background: #2563eb; color: #fff; border: none; padding: 16px; border-radius: 12px; font-size: 16px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+        .btn-gps:hover { background: #1d4ed8; }
+        .btn-gps:disabled { background: #93c5fd; cursor: not-allowed; }
+        .status { margin-top: 16px; font-size: 14px; padding: 12px; border-radius: 10px; display: none; }
+        .status.ok { background: #dcfce7; color: #166534; display: block; }
+        .status.err { background: #fee2e2; color: #991b1b; display: block; }
+        .status.info { background: #e0f2fe; color: #075985; display: block; }
+        iframe { width: 100%; height: 240px; border: 0; border-radius: 12px; margin-top: 16px; display: none; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2>📍 Registro de Ubicación</h2>
+        <div class="user">Empleado: <strong>{{ request.user.get_full_name|default:request.user.username }}</strong></div>
+
+        <button id="btnRegistrar" class="btn-gps" onclick="registrarUbicacion()">
+            📍 Registro de ubicación
+        </button>
+
+        <div id="status" class="status"></div>
+        <iframe id="mapa" loading="lazy" allowfullscreen></iframe>
+    </div>
+
+    <script>
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                for (let cookie of document.cookie.split(';')) {
+                    cookie = cookie.trim();
+                    if (cookie.startsWith(name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+
+        function mostrarEstado(texto, tipo) {
+            const box = document.getElementById('status');
+            box.className = 'status ' + tipo;
+            box.innerHTML = texto;
+        }
+
+        function registrarUbicacion() {
+            const btn = document.getElementById('btnRegistrar');
+
+            if (!navigator.geolocation) {
+                mostrarEstado('Tu navegador no soporta GPS.', 'err');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = 'Obteniendo ubicación exacta...';
+            mostrarEstado('Acepta el permiso de ubicación en tu celular...', 'info');
+
+            navigator.geolocation.getCurrentPosition(
+                async (pos) => {
+                    const lat = pos.coords.latitude;
+                    const lng = pos.coords.longitude;
+
+                    try {
+                        const res = await fetch('/ubicacion/registrar/', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRFToken': getCookie('csrftoken') || '{{ csrf_token }}'
+                            },
+                            body: JSON.stringify({ latitud: lat, longitud: lng })
+                        });
+                        const data = await res.json();
+
+                        if (data.ok) {
+                            mostrarEstado(`✅ Ubicación registrada con éxito.<br><a href="${data.maps_url}" target="_blank" style="color:#166534; font-weight:bold;">Abrir en Google Maps ↗</a>`, 'ok');
+                            const mapa = document.getElementById('mapa');
+                            mapa.src = `https://maps.google.com/maps?q=${lat},${lng}&z=16&output=embed`;
+                            mapa.style.display = 'block';
+                        } else {
+                            mostrarEstado('Error al guardar: ' + data.error, 'err');
+                        }
+                    } catch (err) {
+                        mostrarEstado('Error de conexión con el servidor.', 'err');
+                    } finally {
+                        btn.disabled = false;
+                        btn.textContent = '📍 Registro de ubicación';
+                    }
+                },
+                (err) => {
+                    let msg = 'No se pudo obtener tu ubicación.';
+                    if (err.code === 1) msg = 'Permiso denegado. Activa la ubicación para este sitio en tu celular.';
+                    if (err.code === 2) msg = 'Señal GPS no disponible. Intenta en un lugar abierto.';
+                    if (err.code === 3) msg = 'Tiempo agotado buscando señal GPS. Intenta de nuevo.';
+                    mostrarEstado('❌ ' + msg, 'err');
+                    btn.disabled = false;
+                    btn.textContent = '📍 Registro de ubicación';
+                },
+                { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+            );
+        }
+    </script>
+</body>
+</html>

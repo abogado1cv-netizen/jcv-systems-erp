@@ -645,18 +645,20 @@ class CatalogoMedicamentoAdmin(ImportExportModelAdmin):
     semaforo_vigencia_display.short_description = "Vigencia Reg."
     semaforo_vigencia_display.admin_order_field = 'fecha_vigencia'
 
+@admin.register(RegistroUbicacion)
 class RegistroUbicacionAdmin(admin.ModelAdmin):
-    list_per_page = 30
-    list_display = ('usuario', 'fecha_hora', 'latitud', 'longitud', 'ver_mapa')
+    list_display = ('usuario', 'fecha_hora', 'latitud', 'longitud', 'ver_en_mapa')
     list_filter = ('usuario', 'fecha_hora')
-    actions = [exportar_a_csv] 
 
-    def ver_mapa(self, obj):
+    def ver_en_mapa(self, obj):
         if obj.latitud and obj.longitud:
             url = f"https://www.google.com/maps?q={obj.latitud},{obj.longitud}"
-            return format_html('<a href="{}" target="_blank" style="background-color: #28a745; color: white; padding: 5px 10px; border-radius: 4px; text-decoration: none;">📍 Ver en Mapa</a>', url)
-        return "Sin ubicación"
-    ver_mapa.short_description = "Google Maps"
+            return format_html(
+                '<a href="{}" target="_blank" style="background:#16a34a; color:#fff; padding:5px 10px; border-radius:6px; text-decoration:none; font-weight:600;">🗺️ Ver en Google Maps</a>',
+                url
+            )
+        return "-"
+    ver_en_mapa.short_description = "Google Maps"
 
 @admin.register(Almacen)
 class AlmacenAdmin(admin.ModelAdmin):

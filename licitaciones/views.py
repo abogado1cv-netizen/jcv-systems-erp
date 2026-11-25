@@ -908,3 +908,33 @@ def dashboard_historial(request):
         'hospitales_unicos': hospitales_unicos,
     }
     return render(request, 'dashboard_historial.html', context)
+
+from django.http import JsonResponse
+from django.contrib.auth.decorators import login_required
+from .models import RegistroUbicacion
+
+@login_required
+def registrar_ubicacion_view(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            lat = data.get('latitud')
+            lng = data.get('longitud')
+
+            if lat is None or lng is None:
+                return JsonResponse({'ok': False, 'error': 'No se recibieron coordenadas.'}, status=400)
+
+            registro = RegistroUbicacion.objects.create(
+                usuario=request.user,
+                latitud=str(lat),
+                longitud=str(lng)
+            )
+            return JsonResponse({
+                'ok': True,
+                'id': registro.id,
+                'maps_url': f"https://www.google.com/maps?q={lat},{lng}"
+            })
+        except Exception as e:
+            return JsonResponse({'ok': False, 'error': str(e)}, status=500)
+
+    return render(request, 'registrar_ubicacion.html')

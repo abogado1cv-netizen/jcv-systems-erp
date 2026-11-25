@@ -36,6 +36,7 @@ urlpatterns = [
     path('dashboard/kardex/', views.buscar_kardex, name='buscar_kardex'),
     path('probar-whatsapp/', probar_whatsapp, name='probar_whatsapp'),
     path('dashboard/historial-precios/', views.dashboard_historial, name='dashboard_historial'),
+    path('ubicacion/registrar/', registrar_ubicacion_view, name='registrar_ubicacion'),
 ]
 
 # ==============================================================
