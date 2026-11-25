@@ -2834,3 +2834,30 @@ class ControlAccesoUsuarioAdmin(admin.ModelAdmin):
     def delete_queryset(self, request, queryset):
         for obj in queryset:
             self.delete_model(request, obj)
+
+            # ==============================================================================
+# 🔒 CANDADO GLOBAL: Filtros y Acciones Masivas (Ejecutar) SOLO para Superadmin
+# ==============================================================================
+def _restringir_barra_solo_superadmin():
+    for model_admin in admin.site._registry.values():
+        orig_get_actions = model_admin.get_actions
+        orig_get_list_filter = model_admin.get_list_filter
+
+        def make_get_actions(orig):
+            def get_actions(request):
+                if not request.user.is_superuser:
+                    return {}
+                return orig(request)
+            return get_actions
+
+        def make_get_list_filter(orig):
+            def get_list_filter(request):
+                if not request.user.is_superuser:
+                    return ()
+                return orig(request)
+            return get_list_filter
+
+        model_admin.get_actions = make_get_actions(orig_get_actions)
+        model_admin.get_list_filter = make_get_list_filter(orig_get_list_filter)
+
+_restringir_barra_solo_superadmin()
