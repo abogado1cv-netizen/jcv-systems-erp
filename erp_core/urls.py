@@ -6,6 +6,7 @@ from django.conf.urls.static import static
 from licitaciones.views import probar_whatsapp, panel_equipo
 # Importamos tus vistas para el tablero
 from licitaciones import views
+from licitaciones.views import registrar_ubicacion_view
 
 # ==============================================================
 # 🚀 EL GOLPE DEFINITIVO A JAZZMIN (Monkey Patching)
