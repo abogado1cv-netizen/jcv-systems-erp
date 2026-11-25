@@ -2745,7 +2745,7 @@ class ControlAccesoUsuarioAdmin(admin.ModelAdmin):
     list_display = ('usuario', 'nombre_usuario', 'activo', 'solo_dashboards', 'dash_comercial', 'dash_precios', 'dash_contratos', 'dash_compras', 'dash_logistica', 'dash_almacen')
     list_filter = ('solo_dashboards', 'usuario__is_active')
     search_fields = ('usuario__username', 'usuario__first_name', 'usuario__email')
-    filter_horizontal = ('modulos_permitidos',)
+    filter_horizontal = ('modulos_permitidos', 'modulos_solo_lectura')
 
     fieldsets = (
         ('👤 Datos de Cuenta y Contraseña', {
@@ -2758,8 +2758,8 @@ class ControlAccesoUsuarioAdmin(admin.ModelAdmin):
             'fields': ('dash_comercial', 'dash_precios', 'dash_contratos', 'dash_compras', 'dash_logistica', 'dash_almacen')
         }),
         ('📂 Módulos del Panel Admin', {
-            'fields': ('modulos_permitidos',),
-            'description': 'Si activaste "Solo Dashboards", esta lista se ignora automáticamente.'
+            'fields': ('modulos_permitidos', 'modulos_solo_lectura'),
+            'description': 'Si activaste "Solo Dashboards", estas listas se ignoran automáticamente. Si un módulo está en ambas listas, gana Acceso Completo.'
         }),
     )
 

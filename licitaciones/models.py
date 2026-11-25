@@ -1324,16 +1324,47 @@ class HistorialPrecio(models.Model):
     from django.contrib.auth.models import Permission
 from django.contrib.contenttypes.models import ContentType
 
+MODULOS_PRINCIPALES = [
+    'catalogomedicamento',   # Claves
+    'empresa',               # Empresas
+    'sociocomercial',        # Directorio de Socios
+    'almacen',               # Almacenes Físicos
+    'licitacion',            # Licitaciones
+    'cotizacion',            # Cotizaciones y Ventas Directas
+    'contrato',              # Contratos
+    'ordencompra',           # Órdenes de Compra (OC)
+    'entradaalmacen',        # Recepciones de Almacén
+    'inventario',            # Inventarios
+    'traspasointercompany',  # Traspasos Inter-Compañía
+    'incidenciainventario',  # Cuarentenas y Devoluciones
+    'escanerkardex',         # Escáner Kardex
+    'ordensuministro',       # Órdenes de Suministro
+    'pedidodirecto',         # Pedidos Directos
+    'remisionentrega',       # Remisiones de Almacén
+    'registroubicacion',     # Registros de Ubicaciones
+    'historialprecio',       # Historial de Precios
+    'historialprecios',
+]
+
+# Tablas internas (inlines) que heredan el permiso de su módulo padre
+SUBMODELOS_POR_MODULO = {
+    'licitacion': ['partidarequerimiento'],
+    'contrato': ['claveasignada', 'fianzagarantia', 'fianza'],
+    'cotizacion': ['partidacotizacion', 'detallecotizacion'],
+    'ordencompra': ['detalleordencompra', 'partidaordencompra'],
+    'ordensuministro': ['detalleordensuministro', 'partidaordensuministro'],
+    'remisionentrega': ['detalleremision'],
+}
+
+
 class ControlAccesoUsuario(models.Model):
     usuario = models.OneToOneField(User, on_delete=models.CASCADE, related_name='control_acceso', verbose_name="Usuario")
-    
-    # Modo restringido
+
     solo_dashboards = models.BooleanField(
         default=False,
         verbose_name="🔒 Solo Dashboards (Ocultar todos los módulos del Admin)"
     )
 
-    # Dashboards permitidos
     dash_comercial = models.BooleanField(default=False, verbose_name="📊 Dashboard Comercial")
     dash_precios = models.BooleanField(default=False, verbose_name="🔍 Dashboard Historial de Precios")
     dash_contratos = models.BooleanField(default=False, verbose_name="📁 Dashboard Contratos")
@@ -1341,12 +1372,20 @@ class ControlAccesoUsuario(models.Model):
     dash_logistica = models.BooleanField(default=False, verbose_name="🚚 Dashboard Logística")
     dash_almacen = models.BooleanField(default=False, verbose_name="📦 Dashboard Almacén")
 
-    # Módulos del Admin permitidos (se eligen con selector doble)
     modulos_permitidos = models.ManyToManyField(
         ContentType,
         blank=True,
-        limit_choices_to={'app_label': 'licitaciones'},
-        verbose_name="Módulos del Admin que puede ver y usar"
+        related_name='accesos_completos',
+        limit_choices_to={'app_label': 'licitaciones', 'model__in': MODULOS_PRINCIPALES},
+        verbose_name="✅ Módulos con Acceso Completo (Ver, Crear, Editar y Eliminar)"
+    )
+
+    modulos_solo_lectura = models.ManyToManyField(
+        ContentType,
+        blank=True,
+        related_name='accesos_solo_lectura',
+        limit_choices_to={'app_label': 'licitaciones', 'model__in': MODULOS_PRINCIPALES},
+        verbose_name="👁️ Módulos de Solo Visualizar y Descargar"
     )
 
     class Meta:
@@ -1356,30 +1395,47 @@ class ControlAccesoUsuario(models.Model):
     def __str__(self):
         return f"Accesos de {self.usuario.username}"
 
+    def _expandir_con_submodelos(self, queryset_cts):
+        modelos = list(queryset_cts.values_list('model', flat=True))
+        extra = []
+        for m in modelos:
+            extra.extend(SUBMODELOS_POR_MODULO.get(m, []))
+        if not modelos:
+            return ContentType.objects.none()
+        return ContentType.objects.filter(app_label='licitaciones', model__in=set(modelos + extra))
+
     def sincronizar_permisos(self):
         """Aplica en Django los permisos reales según las casillas."""
         from django.contrib.auth.models import Permission
-        from django.db.models import Q
 
         if self.usuario.is_superuser:
             return
 
-        # Quitamos grupos previos y permisos directos para que mande este panel
         self.usuario.groups.clear()
         self.usuario.user_permissions.clear()
         self.usuario.is_staff = True
         self.usuario.save()
 
         if self.solo_dashboards:
-            return  # Sin permisos de modelos = barra lateral limpia, solo dashboards
+            return
 
-        # Asignamos permisos de ver/agregar/editar a los módulos elegidos
-        cts = self.modulos_permitidos.all()
-        permisos = Permission.objects.filter(
-            content_type__in=cts
-        ).filter(
-            Q(codename__startswith='view_') |
-            Q(codename__startswith='add_') |
-            Q(codename__startswith='change_')
-        )
-        self.usuario.user_permissions.set(permisos)
+        permisos_ids = set()
+
+        # 1. Acceso completo (view, add, change, delete) + submodelos internos
+        cts_completos = self._expandir_con_submodelos(self.modulos_permitidos.all())
+        if cts_completos.exists():
+            permisos_ids.update(
+                Permission.objects.filter(content_type__in=cts_completos).values_list('id', flat=True)
+            )
+
+        # 2. Solo visualizar y descargar (únicamente view_) + submodelos en solo lectura
+        cts_lectura = self._expandir_con_submodelos(self.modulos_solo_lectura.all())
+        if cts_lectura.exists():
+            permisos_ids.update(
+                Permission.objects.filter(
+                    content_type__in=cts_lectura,
+                    codename__startswith='view_'
+                ).values_list('id', flat=True)
+            )
+
+        self.usuario.user_permissions.set(permisos_ids)
