@@ -2649,7 +2649,17 @@ class HistorialPrecioAdmin(ImportExportModelAdmin):
         return None
 
 from django.contrib.auth.models import User
-from .models import ControlAccesoUsuario
+from django.contrib.contenttypes.models import ContentType
+from .models import ControlAccesoUsuario, MODULOS_PRINCIPALES
+
+
+class ModuloChoiceField(forms.ModelMultipleChoiceField):
+    def label_from_instance(self, obj):
+        modelo = obj.model_class()
+        if modelo:
+            return str(modelo._meta.verbose_name_plural).strip()
+        return obj.name
+
 
 class ControlAccesoUsuarioForm(forms.ModelForm):
     username = forms.CharField(label="Nombre de usuario (Login)", max_length=150)
@@ -2662,6 +2672,19 @@ class ControlAccesoUsuarioForm(forms.ModelForm):
     first_name = forms.CharField(label="Nombre completo", max_length=150, required=False)
     email = forms.EmailField(label="Correo electrónico", required=False)
     is_active = forms.BooleanField(label="Usuario activo (puede iniciar sesión)", required=False, initial=True)
+
+    modulos_permitidos = ModuloChoiceField(
+        queryset=ContentType.objects.filter(app_label='licitaciones', model__in=MODULOS_PRINCIPALES).order_by('model'),
+        widget=forms.CheckboxSelectMultiple(attrs={'class': 'grid-modulos-check'}),
+        required=False,
+        label="Acceso Completo (Ver, Crear, Editar y Eliminar)"
+    )
+    modulos_solo_lectura = ModuloChoiceField(
+        queryset=ContentType.objects.filter(app_label='licitaciones', model__in=MODULOS_PRINCIPALES).order_by('model'),
+        widget=forms.CheckboxSelectMultiple(attrs={'class': 'grid-modulos-check'}),
+        required=False,
+        label="Solo Visualizar y Descargar"
+    )
 
     class Meta:
         model = ControlAccesoUsuario
@@ -2745,7 +2768,6 @@ class ControlAccesoUsuarioAdmin(admin.ModelAdmin):
     list_display = ('usuario', 'nombre_usuario', 'activo', 'solo_dashboards', 'dash_comercial', 'dash_precios', 'dash_contratos', 'dash_compras', 'dash_logistica', 'dash_almacen')
     list_filter = ('solo_dashboards', 'usuario__is_active')
     search_fields = ('usuario__username', 'usuario__first_name', 'usuario__email')
-    filter_horizontal = ('modulos_permitidos', 'modulos_solo_lectura')
 
     fieldsets = (
         ('👤 Datos de Cuenta y Contraseña', {
