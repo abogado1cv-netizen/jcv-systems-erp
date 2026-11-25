@@ -1283,7 +1283,6 @@ class PartidaRequerimientoAdmin(admin.ModelAdmin):
     importe_total.admin_order_field = 'cantidad_maxima'
 
 admin.site.register(CatalogoMedicamento, CatalogoMedicamentoAdmin)
-admin.site.register(RegistroUbicacion, RegistroUbicacionAdmin)
 
 # ==========================================
 # --- FASE 2: MÓDULO DE CONTRATOS Y LOGÍSTICA ---
