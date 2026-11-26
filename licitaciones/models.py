@@ -1348,9 +1348,9 @@ MODULOS_PRINCIPALES = [
 
 # Tablas internas (inlines) que heredan el permiso de su módulo padre
 SUBMODELOS_POR_MODULO = {
-    'licitacion': ['partidarequerimiento'],
+    'licitacion': ['partidarequerimiento', 'documentobaselicitacion'],
     'contrato': ['claveasignada', 'fianzagarantia', 'fianza'],
-    'cotizacion': ['partidacotizacion', 'detallecotizacion'],
+    'cotizacion': ['partidacotizacion', 'detallecotizacion', 'documentobasecotizacion'],
     'ordencompra': ['detalleordencompra', 'partidaordencompra'],
     'ordensuministro': ['detalleordensuministro', 'partidaordensuministro'],
     'remisionentrega': ['detalleremision'],
@@ -1439,3 +1439,55 @@ class ControlAccesoUsuario(models.Model):
             )
 
         self.usuario.user_permissions.set(permisos_ids)
+
+import re
+
+def _limpiar_carpeta(texto):
+    """Limpia caracteres que rompen rutas de carpetas en S3 (como / o comillas)."""
+    if not texto:
+        return "Sin_Especificar"
+    texto = str(texto).strip().replace('/', '-').replace('\\', '-')
+    return re.sub(r'[<>:"|?*]', '', texto)
+
+def ruta_bases_licitacion(instance, filename):
+    dependencia = _limpiar_carpeta(instance.licitacion.dependencia_real)
+    evento = _limpiar_carpeta(instance.licitacion.num_procedimiento)
+    return f"Comercial/{dependencia}/{evento}/Bases/{filename}"
+
+def ruta_bases_cotizacion(instance, filename):
+    cot = instance.cotizacion
+    if cot.dependencia:
+        dep_texto = cot.get_dependencia_display()
+    else:
+        dep_texto = cot.razon_social or "Clientes_Privados"
+    dependencia = _limpiar_carpeta(dep_texto)
+    evento = _limpiar_carpeta(cot.folio)
+    return f"Comercial/{dependencia}/{evento}/Bases/{filename}"
+
+
+class DocumentoBaseLicitacion(models.Model):
+    licitacion = models.ForeignKey(Licitacion, related_name='documentos_bases', on_delete=models.CASCADE)
+    archivo = models.FileField(upload_to=ruta_bases_licitacion, verbose_name="Archivo de Bases / Anexo")
+    descripcion = models.CharField("Descripción", max_length=150, blank=True, help_text="Ej. Convocatoria, Anexo Técnico, Junta de Aclaraciones")
+    fecha_subida = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Documento de Bases"
+        verbose_name_plural = "📂 Bases del Evento (Amazon S3)"
+
+    def __str__(self):
+        return self.descripcion or self.archivo.name
+
+
+class DocumentoBaseCotizacion(models.Model):
+    cotizacion = models.ForeignKey(Cotizacion, related_name='documentos_bases', on_delete=models.CASCADE)
+    archivo = models.FileField(upload_to=ruta_bases_cotizacion, verbose_name="Archivo de Bases / Solicitud")
+    descripcion = models.CharField("Descripción", max_length=150, blank=True, help_text="Ej. Bases, Solicitud de Cotización, Anexo")
+    fecha_subida = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Documento de Bases"
+        verbose_name_plural = "📂 Bases del Evento (Amazon S3)"
+
+    def __str__(self):
+        return self.descripcion or self.archivo.name

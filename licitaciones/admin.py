@@ -727,6 +727,17 @@ class PartidaRequerimientoInline(admin.TabularInline):
             return base + ('cantidad_minima', 'cantidad_maxima', 'licitacion')
         return base
 
+from .models import DocumentoBaseLicitacion, DocumentoBaseCotizacion
+class DocumentoBaseLicitacionInline(admin.TabularInline):
+    model = DocumentoBaseLicitacion
+    extra = 1
+    fields = ('archivo', 'descripcion')
+
+class DocumentoBaseCotizacionInline(admin.TabularInline):
+    model = DocumentoBaseCotizacion
+    extra = 1
+    fields = ('archivo', 'descripcion')
+
 # =========================================================================
 # 🍏 MAGIA AURA PRO EN EL ADMIN DE LICITACIONES
 # =========================================================================
@@ -742,7 +753,7 @@ class LicitacionAdmin(admin.ModelAdmin):
     list_display = ('num_procedimiento', 'dependencia_real_visual', 'estatus_color', 'apertura_semaforo', 'fecha_fallo', 'notificar_whatsapp_btn')
     
     search_fields = ['num_procedimiento', 'dependencia']
-    inlines = [PartidaRequerimientoInline]
+    inlines = [PartidaRequerimientoInline, DocumentoBaseLicitacionInline]
     
     actions = [exportar_a_csv, exportar_analisis_unificado, exportar_socios_unificado]
     change_form_template = "admin/licitaciones/licitacion/change_form.html"
@@ -1986,7 +1997,7 @@ class PartidaCotizacionInline(admin.TabularInline):
 class CotizacionAdmin(admin.ModelAdmin):
     list_per_page = 30
     form = CotizacionForm
-    inlines = [PartidaCotizacionInline]
+    inlines = [PartidaCotizacionInline, DocumentoBaseCotizacionInline]
     change_form_template = "admin/licitaciones/cotizacion/change_form.html"
     list_display = ('folio', 'tipo_procedimiento', 'cliente_visual', 'fecha_emision', 'fecha_apertura', 'total_cotizado', 'estatus_badge', 'btn_convertir')
     search_fields = ('folio', 'razon_social', 'dependencia')
