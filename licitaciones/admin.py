@@ -724,7 +724,7 @@ class PartidaRequerimientoInline(admin.TabularInline):
     def get_readonly_fields(self, request, obj=None):
         base = ('medicamento_compacto',)
         if not request.user.is_superuser:
-            return base + ('precio', 'cantidad_minima', 'cantidad_maxima', 'licitacion')
+            return base + ('cantidad_minima', 'cantidad_maxima', 'licitacion')
         return base
 
 # =========================================================================
