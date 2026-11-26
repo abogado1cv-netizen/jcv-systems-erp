@@ -728,6 +728,41 @@ class PartidaRequerimientoInline(admin.TabularInline):
         return base
 
 from .models import DocumentoBaseLicitacion, DocumentoBaseCotizacion
+
+class MultipleFileInput(forms.ClearableFileInput):
+    allow_multiple_selected = True
+
+class MultipleFileField(forms.FileField):
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("widget", MultipleFileInput())
+        super().__init__(*args, **kwargs)
+
+    def clean(self, data, initial=None):
+        single_file_clean = super().clean
+        if isinstance(data, (list, tuple)):
+            return [single_file_clean(d, initial) for d in data]
+        return [single_file_clean(data, initial)] if data else []
+
+class LicitacionAdminForm(forms.ModelForm):
+    archivos_bases = MultipleFileField(
+        required=False,
+        label="📂 Subir múltiples Bases a la vez (Amazon S3)",
+        help_text="Puedes seleccionar 15 o más archivos juntos manteniendo presionado Ctrl o Shift."
+    )
+    class Meta:
+        model = Licitacion
+        fields = '__all__'
+
+class CotizacionAdminForm(forms.ModelForm):
+    archivos_bases = MultipleFileField(
+        required=False,
+        label="📂 Subir múltiples Bases a la vez (Amazon S3)",
+        help_text="Puedes seleccionar 15 o más archivos juntos manteniendo presionado Ctrl o Shift."
+    )
+    class Meta:
+        model = Cotizacion
+        fields = '__all__'
+
 class DocumentoBaseLicitacionInline(admin.TabularInline):
     model = DocumentoBaseLicitacion
     extra = 1
@@ -738,11 +773,68 @@ class DocumentoBaseCotizacionInline(admin.TabularInline):
     extra = 1
     fields = ('archivo', 'descripcion')
 
+
+
+from django.contrib import messages
+from django.utils.safestring import mark_safe
+from django.urls import reverse
+
+def _notificar_coincidencia_popup(request, tipo_destino, coincidencias):
+    """
+    Muestra un pop-up emergente cuando las partidas (clave + piezas)
+    coinciden entre Licitaciones y Cotizaciones/Ventas Directas.
+    """
+    if not coincidencias:
+        return
+
+    items_html = ""
+    for obj_id, folio, claves_lista in coincidencias:
+        if tipo_destino == 'cotizacion':
+            url = reverse('admin:licitaciones_cotizacion_change', args=[obj_id])
+            etiqueta = "Cotización / Venta Directa"
+        else:
+            url = reverse('admin:licitaciones_licitacion_change', args=[obj_id])
+            etiqueta = "Licitación"
+
+        claves_txt = ", ".join(claves_lista[:5])
+        if len(claves_lista) > 5:
+            claves_txt += f" (+{len(claves_lista) - 5} más)"
+
+        items_html += f"""
+        <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:8px; padding:12px; margin-bottom:10px; text-align:left;">
+            <div style="font-weight:700; color:#0f172a; font-size:15px;">📌 {etiqueta}: {folio}</div>
+            <div style="font-size:13px; color:#475569; margin:4px 0 10px;">Claves coincidentes: <strong>{claves_txt}</strong></div>
+            <a href="{url}" style="display:inline-block; background:#2563eb; color:#fff; padding:7px 14px; border-radius:6px; text-decoration:none; font-weight:600; font-size:13px;">
+                🔗 Ir al evento {folio}
+            </a>
+        </div>
+        """
+
+    titulo_origen = "Cotizaciones y Ventas Directas" if tipo_destino == 'cotizacion' else "Licitaciones"
+    modal_html = f"""
+    <div id="popup-coincidencia-erp" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(15,23,42,0.65); z-index:99999; display:flex; align-items:center; justify-content:center; padding:16px;">
+        <div style="background:#fff; border-radius:14px; max-width:520px; width:100%; padding:24px; box-shadow:0 20px 50px rgba(0,0,0,0.3); font-family:sans-serif; text-align:center;">
+            <div style="font-size:34px; margin-bottom:6px;">⚠️</div>
+            <h3 style="margin:0 0 8px; color:#b45309; font-size:19px;">Coincidencia Detectada</h3>
+            <p style="margin:0 0 16px; color:#334155; font-size:14px;">
+                Las partidas que cargaste coinciden (misma clave y piezas) con el siguiente evento en <strong>{titulo_origen}</strong>:
+            </p>
+            <div style="max-height:260px; overflow-y:auto;">{items_html}</div>
+            <button type="button" onclick="document.getElementById('popup-coincidencia-erp').remove();"
+                style="margin-top:12px; background:#0f172a; color:#fff; border:none; padding:10px 24px; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer;">
+                Aceptar
+            </button>
+        </div>
+    </div>
+    """
+    messages.warning(request, mark_safe(modal_html))
+
 # =========================================================================
 # 🍏 MAGIA AURA PRO EN EL ADMIN DE LICITACIONES
 # =========================================================================
 @admin.register(Licitacion)
 class LicitacionAdmin(admin.ModelAdmin):
+    form = LicitacionAdminForm
     list_per_page = 30
     form = LicitacionForm 
     
@@ -1259,6 +1351,38 @@ class LicitacionAdmin(admin.ModelAdmin):
 
         context = {'licitacion': licitacion, 'equipo': equipo, 'opts': self.model._meta}
         return render(request, 'admin/licitaciones/licitacion/notificar_whatsapp_popup.html', context)
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        for archivo in request.FILES.getlist('archivos_bases'):
+            DocumentoBaseLicitacion.objects.create(
+                licitacion=obj,
+                archivo=archivo,
+                descripcion=archivo.name
+            )
+    def save_related(self, request, form, formsets, change):
+        super().save_related(request, form, formsets, change)
+        licitacion = form.instance
+        encontrados = {}
+
+        for p in licitacion.partidas.select_related('medicamento').all():
+            if not p.medicamento_id or not p.cantidad_maxima:
+                continue
+            matches = PartidaCotizacion.objects.filter(
+                medicamento_id=p.medicamento_id,
+                cantidad=p.cantidad_maxima
+            ).select_related('cotizacion')
+
+            for m in matches:
+                cot = m.cotizacion
+                if cot.id not in encontrados:
+                    encontrados[cot.id] = [cot.id, cot.folio, []]
+                etiqueta_clave = f"{p.medicamento.clave_sector} ({p.cantidad_maxima} pzs)"
+                if etiqueta_clave not in encontrados[cot.id][2]:
+                    encontrados[cot.id][2].append(etiqueta_clave)
+
+        if encontrados:
+            _notificar_coincidencia_popup(request, 'cotizacion', list(encontrados.values()))
 
 @admin.register(Empresa)
 class EmpresaAdmin(ImportExportModelAdmin):
@@ -1977,6 +2101,11 @@ class RemisionEntregaAdmin(admin.ModelAdmin):
 # 🚀 MÓDULO: COTIZACIONES Y VENTAS DIRECTAS
 # ==========================================
 class CotizacionForm(forms.ModelForm):
+    archivos_bases = MultipleFileField(
+        required=False,
+        label="📂 Subir múltiples Bases a la vez (Amazon S3)",
+        help_text="Puedes seleccionar 15 o más archivos juntos manteniendo presionado Ctrl o Shift."
+    )
     pegar_excel = forms.CharField(label="📥 Carga Masiva (Pegar desde Excel)", required=False, widget=forms.Textarea(attrs={'rows': 6, 'placeholder': 'Ejemplo:\n1\t010.000.4434.00\tPARACETAMOL 500MG\t500\t1000'}), help_text="NUEVO FORMATO: Solo 3 o 4 columnas: PARTIDA | CLAVE | (OPCIONAL: PIEZAS MIN) | PIEZAS MAX.")
     fecha_apertura = forms.DateTimeField(label="Fecha y hora de apertura", required=False, widget=forms.DateTimeInput(format='%Y-%m-%dT%H:%M', attrs={'type': 'datetime-local'}))
     class Meta: model = Cotizacion; fields = '__all__'
@@ -2005,7 +2134,7 @@ class CotizacionAdmin(admin.ModelAdmin):
     actions = [exportar_analisis_unificado, exportar_socios_unificado]
 
     fieldsets = (
-        ('📄 Datos del Evento', {'fields': ('tipo_procedimiento', 'empresa', 'folio', 'fecha_emision', 'fecha_apertura', 'vigencia_dias')}),
+        ('📄 Datos del Evento', {'fields': ('tipo_procedimiento', 'empresa', 'folio', 'fecha_emision', 'fecha_apertura', 'vigencia_dias', 'archivos_bases')}),
         ('🏢 Cliente', {'fields': ('razon_social', 'dependencia')}),
         ('🚦 Estatus', {'fields': ('estatus',)}),
         ('⚡ Carga Automática (Excel)', {'fields': ('pegar_excel',)}),
@@ -2268,6 +2397,38 @@ class CotizacionAdmin(admin.ModelAdmin):
         cotizacion.save()
         messages.success(request, "Se generó el Pedido Directo.")
         return redirect('admin:licitaciones_pedidodirecto_change', nueva_orden.id)
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        for archivo in request.FILES.getlist('archivos_bases'):
+            DocumentoBaseCotizacion.objects.create(
+                cotizacion=obj,
+                archivo=archivo,
+                descripcion=archivo.name
+            )
+    def save_related(self, request, form, formsets, change):
+        super().save_related(request, form, formsets, change)
+        cotizacion = form.instance
+        encontrados = {}
+
+        for p in cotizacion.partidas_cotizacion.select_related('medicamento').all():
+            if not p.medicamento_id or not p.cantidad:
+                continue
+            matches = PartidaRequerimiento.objects.filter(
+                medicamento_id=p.medicamento_id,
+                cantidad_maxima=p.cantidad
+            ).select_related('licitacion')
+
+            for m in matches:
+                lic = m.licitacion
+                if lic.id not in encontrados:
+                    encontrados[lic.id] = [lic.id, lic.num_procedimiento, []]
+                etiqueta_clave = f"{p.medicamento.clave_sector} ({p.cantidad} pzs)"
+                if etiqueta_clave not in encontrados[lic.id][2]:
+                    encontrados[lic.id][2].append(etiqueta_clave)
+
+        if encontrados:
+            _notificar_coincidencia_popup(request, 'licitacion', list(encontrados.values()))
 
 # ==========================================
 # 🛑 PANEL DE CUARENTENA, MERMAS Y DEVOLUCIONES
