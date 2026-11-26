@@ -231,21 +231,29 @@ class PartidaRequerimiento(models.Model):
             elif self.medicamento.fabricante:
                 proveedor_nombre = self.medicamento.fabricante
 
-            HistorialPrecio.objects.update_or_create(
+            datos_historial = {
+                'medicamento': self.medicamento,
+                'descripcion': self.medicamento.descripcion,
+                'tipo_procedimiento': 'Licitación Pública',
+                'proveedor': proveedor_nombre,
+                'institucion': self.licitacion.get_dependencia_display() if hasattr(self.licitacion, 'get_dependencia_display') else self.licitacion.dependencia,
+                'institucion_desagregada': self.licitacion.dependencia,
+                'precio': self.precio,
+                'cantidad': self.cantidad_maxima_asignada or self.cantidad_maxima or 0,
+                'valor': (self.cantidad_maxima_asignada or self.cantidad_maxima or 0) * self.precio
+            }
+            qs_hist = HistorialPrecio.objects.filter(
                 procedimiento=self.licitacion.num_procedimiento,
                 clave=self.medicamento.clave_sector,
-                defaults={
-                    'medicamento': self.medicamento,
-                    'descripcion': self.medicamento.descripcion,
-                    'tipo_procedimiento': 'Licitación Pública',
-                    'proveedor': proveedor_nombre,
-                    'institucion': self.licitacion.get_dependencia_display() if hasattr(self.licitacion, 'get_dependencia_display') else self.licitacion.dependencia,
-                    'institucion_desagregada': self.licitacion.dependencia,
-                    'precio': self.precio,
-                    'cantidad': self.cantidad_maxima_asignada or self.cantidad_maxima or 0,
-                    'valor': (self.cantidad_maxima_asignada or self.cantidad_maxima or 0) * self.precio
-                }
             )
+            if qs_hist.exists():
+                qs_hist.update(**datos_historial)
+            else:
+                HistorialPrecio.objects.create(
+                    procedimiento=self.licitacion.num_procedimiento,
+                    clave=self.medicamento.clave_sector,
+                    **datos_historial
+                )
 
 class RegistroUbicacion(models.Model):
     usuario = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="Empleado")
@@ -1100,21 +1108,29 @@ class PartidaCotizacion(models.Model):
 
             institucion_cliente = self.cotizacion.get_dependencia_display() if self.cotizacion.dependencia else (self.cotizacion.razon_social or 'Privado')
 
-            HistorialPrecio.objects.update_or_create(
-                procedimiento=self.cotizacion.folio,
+            datos_historial = {
+                'medicamento': self.medicamento,
+                'descripcion': self.medicamento.descripcion,
+                'tipo_procedimiento': 'Licitación Pública',
+                'proveedor': proveedor_nombre,
+                'institucion': self.licitacion.get_dependencia_display() if hasattr(self.licitacion, 'get_dependencia_display') else self.licitacion.dependencia,
+                'institucion_desagregada': self.licitacion.dependencia,
+                'precio': self.precio,
+                'cantidad': self.cantidad_maxima_asignada or self.cantidad_maxima or 0,
+                'valor': (self.cantidad_maxima_asignada or self.cantidad_maxima or 0) * self.precio
+            }
+            qs_hist = HistorialPrecio.objects.filter(
+                procedimiento=self.licitacion.num_procedimiento,
                 clave=self.medicamento.clave_sector,
-                defaults={
-                    'medicamento': self.medicamento,
-                    'descripcion': self.medicamento.descripcion,
-                    'tipo_procedimiento': self.cotizacion.get_tipo_procedimiento_display(),
-                    'proveedor': proveedor_nombre,
-                    'institucion': institucion_cliente,
-                    'institucion_desagregada': self.cotizacion.dependencia or self.cotizacion.razon_social or 'Privado',
-                    'precio': self.precio_unitario,
-                    'cantidad': self.cantidad or 0,
-                    'valor': (self.cantidad or 0) * self.precio_unitario
-                }
             )
+            if qs_hist.exists():
+                qs_hist.update(**datos_historial)
+            else:
+                HistorialPrecio.objects.create(
+                    procedimiento=self.licitacion.num_procedimiento,
+                    clave=self.medicamento.clave_sector,
+                    **datos_historial
+                )
 
 
     class Meta:
