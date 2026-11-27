@@ -1111,23 +1111,23 @@ class PartidaCotizacion(models.Model):
             datos_historial = {
                 'medicamento': self.medicamento,
                 'descripcion': self.medicamento.descripcion,
-                'tipo_procedimiento': 'Licitación Pública',
+                'tipo_procedimiento': self.cotizacion.get_tipo_procedimiento_display(),
                 'proveedor': proveedor_nombre,
-                'institucion': self.licitacion.get_dependencia_display() if hasattr(self.licitacion, 'get_dependencia_display') else self.licitacion.dependencia,
-                'institucion_desagregada': self.licitacion.dependencia,
-                'precio': self.precio,
-                'cantidad': self.cantidad_maxima_asignada or self.cantidad_maxima or 0,
-                'valor': (self.cantidad_maxima_asignada or self.cantidad_maxima or 0) * self.precio
+                'institucion': institucion_cliente,
+                'institucion_desagregada': self.cotizacion.dependencia or self.cotizacion.razon_social or 'Privado',
+                'precio': self.precio_unitario,
+                'cantidad': self.cantidad or 0,
+                'valor': (self.cantidad or 0) * self.precio_unitario
             }
             qs_hist = HistorialPrecio.objects.filter(
-                procedimiento=self.licitacion.num_procedimiento,
+                procedimiento=self.cotizacion.folio,
                 clave=self.medicamento.clave_sector,
             )
             if qs_hist.exists():
                 qs_hist.update(**datos_historial)
             else:
                 HistorialPrecio.objects.create(
-                    procedimiento=self.licitacion.num_procedimiento,
+                    procedimiento=self.cotizacion.folio,
                     clave=self.medicamento.clave_sector,
                     **datos_historial
                 )
