@@ -734,7 +734,7 @@ class MultipleFileInput(forms.ClearableFileInput):
 
 class MultipleFileField(forms.FileField):
     def __init__(self, *args, **kwargs):
-        kwargs.setdefault("widget", MultipleFileInput())
+        kwargs.setdefault("widget", MultipleFileInput(attrs={'multiple': True}))
         super().__init__(*args, **kwargs)
 
     def clean(self, data, initial=None):
@@ -746,8 +746,8 @@ class MultipleFileField(forms.FileField):
 class LicitacionAdminForm(forms.ModelForm):
     archivos_bases = MultipleFileField(
         required=False,
-        label="📂 Subir múltiples Bases a la vez (Amazon S3)",
-        help_text="Puedes seleccionar 15 o más archivos juntos manteniendo presionado Ctrl o Shift."
+        label="📂 Subir múltiples documentos (Bases, Junta, Formatos...)",
+        help_text="Selecciona todos los archivos juntos con Ctrl + A o manteniendo Ctrl."
     )
     class Meta:
         model = Licitacion
