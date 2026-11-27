@@ -1360,18 +1360,27 @@ class LicitacionAdmin(admin.ModelAdmin):
     def save_related(self, request, form, formsets, change):
         super().save_related(request, form, formsets, change)
         licitacion = form.instance
-        encontrados = {}
+        dep_lic = (licitacion.dependencia or '').strip()
+        if not dep_lic:
+            return
 
+        encontrados = {}
         for p in licitacion.partidas.select_related('medicamento').all():
             if not p.medicamento_id or not p.cantidad_maxima:
                 continue
-            matches = PartidaCotizacion.objects.filter(
+
+            qs = PartidaCotizacion.objects.filter(
                 medicamento_id=p.medicamento_id,
-                cantidad=p.cantidad_maxima
+                cantidad=p.cantidad_maxima,
+                cotizacion__dependencia=dep_lic
             ).select_related('cotizacion')
 
-            for m in matches:
+            for m in qs:
                 cot = m.cotizacion
+                # Si la dependencia es "OTRA", valida que coincida el texto escrito
+                if dep_lic.upper() == 'OTRA':
+                    if (licitacion.otra_dependencia or '').strip().lower() != (cot.razon_social or '').strip().lower():
+                        continue
                 if cot.id not in encontrados:
                     encontrados[cot.id] = [cot.id, cot.folio, []]
                 etiqueta_clave = f"{p.medicamento.clave_sector} ({p.cantidad_maxima} pzs)"
@@ -2405,18 +2414,27 @@ class CotizacionAdmin(admin.ModelAdmin):
     def save_related(self, request, form, formsets, change):
         super().save_related(request, form, formsets, change)
         cotizacion = form.instance
-        encontrados = {}
+        dep_cot = (cotizacion.dependencia or '').strip()
+        if not dep_cot:
+            return
 
+        encontrados = {}
         for p in cotizacion.partidas_cotizacion.select_related('medicamento').all():
             if not p.medicamento_id or not p.cantidad:
                 continue
-            matches = PartidaRequerimiento.objects.filter(
+
+            qs = PartidaRequerimiento.objects.filter(
                 medicamento_id=p.medicamento_id,
-                cantidad_maxima=p.cantidad
+                cantidad_maxima=p.cantidad,
+                licitacion__dependencia=dep_cot
             ).select_related('licitacion')
 
-            for m in matches:
+            for m in qs:
                 lic = m.licitacion
+                # Si la dependencia es "OTRA", valida que coincida el texto escrito
+                if dep_cot.upper() == 'OTRA':
+                    if (cotizacion.razon_social or '').strip().lower() != (lic.otra_dependencia or '').strip().lower():
+                        continue
                 if lic.id not in encontrados:
                     encontrados[lic.id] = [lic.id, lic.num_procedimiento, []]
                 etiqueta_clave = f"{p.medicamento.clave_sector} ({p.cantidad} pzs)"
