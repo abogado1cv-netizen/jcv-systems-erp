@@ -767,11 +767,13 @@ class DocumentoBaseLicitacionInline(admin.TabularInline):
     model = DocumentoBaseLicitacion
     extra = 1
     fields = ('archivo', 'descripcion')
+    template = 'admin/bases_s3_inline.html'
 
 class DocumentoBaseCotizacionInline(admin.TabularInline):
     model = DocumentoBaseCotizacion
     extra = 1
     fields = ('archivo', 'descripcion')
+    template = 'admin/bases_s3_inline.html'
 
 
 
