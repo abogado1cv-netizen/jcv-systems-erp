@@ -1090,7 +1090,12 @@ class LicitacionAdmin(admin.ModelAdmin):
             if claves_rechazadas:
                 rechazadas_str = ", ".join(list(set(claves_rechazadas))[:10])
                 messages.error(request, f"🛑 BLOQUEO DE SEGURIDAD: Se rechazaron {len(claves_rechazadas)} claves por no cumplir el formato estricto de 12 dígitos (XXX.XXX.XXXX.XX). Ejemplos: {rechazadas_str}")
-
+        for archivo in request.FILES.getlist('archivos_bases'):
+            DocumentoBaseLicitacion.objects.create(
+               licitacion=obj,
+               archivo=archivo,
+               descripcion=archivo.name
+            )
 
     def borrar_partidas_view(self, request, object_id):
         licitacion = self.get_object(request, object_id)
@@ -1352,14 +1357,6 @@ class LicitacionAdmin(admin.ModelAdmin):
         context = {'licitacion': licitacion, 'equipo': equipo, 'opts': self.model._meta}
         return render(request, 'admin/licitaciones/licitacion/notificar_whatsapp_popup.html', context)
 
-    def save_model(self, request, obj, form, change):
-        super().save_model(request, obj, form, change)
-        for archivo in request.FILES.getlist('archivos_bases'):
-            DocumentoBaseLicitacion.objects.create(
-                licitacion=obj,
-                archivo=archivo,
-                descripcion=archivo.name
-            )
     def save_related(self, request, form, formsets, change):
         super().save_related(request, form, formsets, change)
         licitacion = form.instance
@@ -2195,6 +2192,13 @@ class CotizacionAdmin(admin.ModelAdmin):
                 rechazadas_str = ", ".join(list(set(claves_rechazadas))[:10])
                 messages.error(request, f"🛑 BLOQUEO DE SEGURIDAD: Se rechazaron {len(claves_rechazadas)} claves por no cumplir el formato estricto de 12 dígitos (XXX.XXX.XXXX.XX). Ejemplos: {rechazadas_str}")
 
+        for archivo in request.FILES.getlist('archivos_bases'):
+            DocumentoBaseLicitacion.objects.create(
+               licitacion=obj,
+               archivo=archivo,
+               descripcion=archivo.name
+            )
+
     def get_urls(self):
         urls = super().get_urls()
         custom_urls = [
@@ -2398,14 +2402,6 @@ class CotizacionAdmin(admin.ModelAdmin):
         messages.success(request, "Se generó el Pedido Directo.")
         return redirect('admin:licitaciones_pedidodirecto_change', nueva_orden.id)
 
-    def save_model(self, request, obj, form, change):
-        super().save_model(request, obj, form, change)
-        for archivo in request.FILES.getlist('archivos_bases'):
-            DocumentoBaseCotizacion.objects.create(
-                cotizacion=obj,
-                archivo=archivo,
-                descripcion=archivo.name
-            )
     def save_related(self, request, form, formsets, change):
         super().save_related(request, form, formsets, change)
         cotizacion = form.instance
