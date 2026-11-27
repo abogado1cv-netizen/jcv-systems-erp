@@ -35,6 +35,7 @@ INSTALLED_APPS = [
     'django.contrib.humanize',
     'licitaciones',
     'import_export',
+    'storages',
 ]
 
 MIDDLEWARE = [
@@ -276,3 +277,30 @@ DATA_UPLOAD_MAX_MEMORY_SIZE = 52428800
 TWILIO_ACCOUNT_SID = os.getenv('TWILIO_ACCOUNT_SID', 'SID_FALSO_AQUI')
 TWILIO_AUTH_TOKEN = os.getenv('TWILIO_AUTH_TOKEN', 'TOKEN_FALSO_AQUI')
 TWILIO_PHONE_NUMBER = os.getenv('TWILIO_PHONE_NUMBER', 'whatsapp:NUM_FALSO_AQUI')
+
+
+# ==========================================
+# ☁️ ALMACENAMIENTO EN AMAZON S3
+# ==========================================
+AWS_STORAGE_BUCKET_NAME = os.getenv('AWS_STORAGE_BUCKET_NAME', '')
+
+if AWS_STORAGE_BUCKET_NAME:
+    AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID')
+    AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
+    AWS_S3_REGION_NAME = os.getenv('AWS_S3_REGION_NAME', 'us-east-2')
+    AWS_S3_SIGNATURE_VERSION = 's3v4'
+    AWS_S3_FILE_OVERWRITE = False
+    AWS_DEFAULT_ACL = None
+    AWS_QUERYSTRING_AUTH = True  # Links privados temporales seguros
+
+    STORAGES = {
+        "default": {
+            "BACKEND": "storages.backends.s3.S3Storage",
+            "OPTIONS": {
+                "location": f"media/{EMPRESA_SLUG}",
+            },
+        },
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+        },
+    }
