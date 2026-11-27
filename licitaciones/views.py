@@ -212,6 +212,8 @@ def dashboard_licitaciones(request):
     if filtro_empresa:
         licitaciones = licitaciones.filter(empresa_id=filtro_empresa)
         partidas_lic = partidas_lic.filter(licitacion__empresa_id=filtro_empresa)
+        cotizaciones = cotizaciones.filter(empresa_id=filtro_empresa)
+        partidas_cot = partidas_cot.filter(cotizacion__empresa_id=filtro_empresa)
 
     if q:
         licitaciones = licitaciones.filter(Q(num_procedimiento__icontains=q) | Q(dependencia__icontains=q))
@@ -223,9 +225,13 @@ def dashboard_licitaciones(request):
             Q(resultado__icontains=q)
         )
 
-        q_limpio = q.strip()
-
-        cotizaciones = cotizaciones.filter(Q(folio__icontains=q) | Q(razon_social__icontains=q) | Q(dependencia__icontains=q) | Q(empresa__nombre__icontains=q) | Q(estatus__icontains=q))
+        cotizaciones = cotizaciones.filter(
+            Q(folio__icontains=q) |
+            Q(razon_social__icontains=q) |
+            Q(dependencia__icontains=q) |
+            Q(empresa__nombre__icontains=q) |
+            Q(estatus__icontains=q)
+        )
         partidas_cot = partidas_cot.filter(
             Q(cotizacion__folio__icontains=q) |
             Q(medicamento__clave_sector__icontains=q) |
@@ -237,16 +243,16 @@ def dashboard_licitaciones(request):
             Q(cotizacion__empresa__nombre__icontains=q)
         ).select_related('cotizacion', 'medicamento')
 
-    if partidas_cot.exists():
-        cotizaciones_ids = list(partidas_cot.values_list('cotizacion_id', flat=True).distinct())
-        cotizaciones = cotizaciones | Cotizacion.objects.filter(id__in=cotizaciones_ids)
+        if partidas_cot.exists():
+            cotizaciones_ids = list(partidas_cot.values_list('cotizacion_id', flat=True).distinct())
+            cotizaciones = (cotizaciones | Cotizacion.objects.filter(id__in=cotizaciones_ids)).distinct()
 
     total_licitaciones = licitaciones.count() + cotizaciones.count()
     en_proceso = licitaciones.filter(estatus__estado='EN_PROCESO').count() + cotizaciones.filter(estatus__in=['BORRADOR', 'ENVIADA']).count()
     adjudicadas = licitaciones.filter(estatus__estado='ADJUDICADO').count() + cotizaciones.filter(estatus='GANADA').count()
     perdidas = licitaciones.filter(estatus__estado='PERDIDO').count() + cotizaciones.filter(estatus__in=['PERDIDA', 'CANCELADA']).count()
 
-    # 💰 INICIA LA MAGIA FINANCIERA
+    # 💰 CÁLCULO FINANCIERO UNIFICADO (LICITACIONES + COTIZACIONES)
     monto_total = 0
     monto_ganado = 0
     monto_perdido = 0
@@ -280,29 +286,29 @@ def dashboard_licitaciones(request):
             if p.medicamento_id: claves_ganadas.add(p.medicamento_id)
         elif p.cotizacion.estatus in ['PERDIDA', 'CANCELADA']:
             monto_perdido += importe
-            monto_perdido_precio += importe # Las cotizaciones perdidas se asumen por precio/mercado
+            monto_perdido_precio += importe
 
     monto_en_proceso = monto_total - monto_ganado - monto_perdido
     if monto_en_proceso < 0: monto_en_proceso = 0
 
-    # 🎯 CÁLCULO DEL HIT RATE (TASA DE EFECTIVIDAD)
     hit_rate_dinero = (monto_ganado / monto_total * 100) if monto_total > 0 else 0
     hit_rate_claves = (len(claves_ganadas) / len(claves_participadas) * 100) if len(claves_participadas) > 0 else 0
 
-    # 📊 PREPARACIÓN DE DATOS PARA CHART.JS
     grafica_distribucion = {
         'labels': ['Adjudicado (Ganado)', 'Perdido (Precio)', 'Perdido (Técnica)', 'En Proceso / Evaluación'],
         'data': [monto_ganado, monto_perdido_precio, monto_perdido_tecnica, monto_en_proceso],
-        'colors': ['#25D366', '#ef4444', '#f59e0b', '#3b82f6'] # Verde, Rojo, Ámbar, Azul
+        'colors': ['#25D366', '#ef4444', '#f59e0b', '#3b82f6']
     }
 
-    # ... (El código de top_claves y detalle_ganadas/perdidas se queda idéntico al tuyo) ...
+    # 🏆 TOP 5 CLAVES ESTRELLA (LICITACIONES + COTIZACIONES)
     claves_dict = {}
     for p in partidas_lic.filter(resultado='Asignada'):
+        if not p.medicamento: continue
         k = (p.medicamento.clave_sector, p.medicamento.fabricante)
         claves_dict[k] = claves_dict.get(k, 0) + (float(p.cantidad_maxima or 0) * float(p.precio or 0))
 
     for p in partidas_cot.filter(cotizacion__estatus='GANADA'):
+        if not p.medicamento: continue
         k = (p.medicamento.clave_sector, p.medicamento.fabricante)
         claves_dict[k] = claves_dict.get(k, 0) + (float(p.cantidad or 0) * float(p.precio_unitario or 0))
 
@@ -316,11 +322,13 @@ def dashboard_licitaciones(request):
         nombres_top.append(clave)
         montos_top.append(importe)
 
+    # 📋 HISTORIAL DE CLAVES GANADAS Y PERDIDAS (LICITACIONES + COTIZACIONES)
     class DummyObj: pass
     detalle_ganadas = []
     detalle_perdidas = []
 
     for p in partidas_lic.filter(resultado__in=['Asignada', 'Perdida por precio', 'Perdida técnicamente']):
+        if not p.medicamento: continue
         item = DummyObj()
         item.licitacion = DummyObj()
         item.licitacion.num_procedimiento = p.licitacion.num_procedimiento
@@ -329,10 +337,28 @@ def dashboard_licitaciones(request):
         item.medicamento.clave_sector = p.medicamento.clave_sector
         item.medicamento.fabricante = p.medicamento.fabricante
         item.resultado = p.resultado
+        item.motivo_perdida = getattr(p, 'motivo_perdida', '')
         item.importe = float(p.cantidad_maxima or 0) * float(p.precio or 0)
         item.importe_ganado = item.importe
 
         if p.resultado == 'Asignada': detalle_ganadas.append(item)
+        else: detalle_perdidas.append(item)
+
+    for p in partidas_cot.filter(cotizacion__estatus__in=['GANADA', 'PERDIDA', 'CANCELADA']):
+        if not p.medicamento: continue
+        item = DummyObj()
+        item.licitacion = DummyObj()
+        item.licitacion.num_procedimiento = f"[COT] {p.cotizacion.folio}"
+        item.licitacion.fecha_fallo = getattr(p.cotizacion, 'fecha_apertura', None)
+        item.medicamento = DummyObj()
+        item.medicamento.clave_sector = p.medicamento.clave_sector
+        item.medicamento.fabricante = p.medicamento.fabricante
+        item.resultado = p.cotizacion.get_estatus_display()
+        item.motivo_perdida = p.cotizacion.get_tipo_procedimiento_display()
+        item.importe = float(p.cantidad or 0) * float(p.precio_unitario or 0)
+        item.importe_ganado = item.importe
+
+        if p.cotizacion.estatus == 'GANADA': detalle_ganadas.append(item)
         else: detalle_perdidas.append(item)
 
     detalle_ganadas.sort(key=lambda x: x.importe, reverse=True)
@@ -340,10 +366,26 @@ def dashboard_licitaciones(request):
     detalle_perdidas.sort(key=lambda x: x.importe, reverse=True)
     detalle_perdidas = detalle_perdidas[:50]
 
-    proximos_fallos = licitaciones.filter(estatus__estado='EN_PROCESO', fecha_fallo__gte=timezone.now()).order_by('fecha_fallo')[:5]
+    # 📅 PRÓXIMOS FALLOS / APERTURAS (LICITACIONES + COTIZACIONES)
+    ahora = timezone.now()
+    eventos_proximos = []
+    for lic in licitaciones.filter(estatus__estado='EN_PROCESO', fecha_fallo__gte=ahora):
+        ev = DummyObj()
+        ev.num_procedimiento = lic.num_procedimiento
+        ev.fecha_fallo = lic.fecha_fallo
+        eventos_proximos.append(ev)
+
+    for cot in cotizaciones.filter(estatus__in=['BORRADOR', 'ENVIADA'], fecha_apertura__gte=ahora):
+        ev = DummyObj()
+        ev.num_procedimiento = f"[COT] {cot.folio}"
+        ev.fecha_fallo = cot.fecha_apertura
+        eventos_proximos.append(ev)
+
+    eventos_proximos.sort(key=lambda x: x.fecha_fallo)
+    proximos_fallos = eventos_proximos[:5]
+
     empresas_disponibles = Empresa.objects.all()
 
-    # 🚀 PASAMOS TODAS LAS VARIABLES AL HTML
     context = {
         'title': 'Panel Ejecutivo Omnicanal',
         'q': q, 
@@ -371,7 +413,6 @@ def dashboard_licitaciones(request):
     }
         
     return render(request, 'dashboard_licitaciones.html', context)
-
 # ==========================================
 # 3. DASHBOARD DE ÓRDENES DE SUMINISTRO (LOGÍSTICA)
 # ==========================================
